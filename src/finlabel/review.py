@@ -35,6 +35,7 @@ class ReviewDecision:
     task_id: Optional[str] = None
     input_digest: Optional[str] = None
     suggestion_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
     def to_dict(self) -> dict:
         result = asdict(self)
@@ -65,6 +66,7 @@ class ReviewLog:
         task_id: Optional[str] = None,
         input_digest: Optional[str] = None,
         suggestion_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> ReviewDecision:
         """Validate and append one human review event to the local JSONL file."""
         event = ReviewDecision(
@@ -81,6 +83,7 @@ class ReviewLog:
             task_id=task_id,
             input_digest=input_digest,
             suggestion_id=suggestion_id,
+            idempotency_key=idempotency_key,
         )
         _validate(event)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,6 +120,7 @@ class ReviewLog:
                             task_id=raw.get("task_id"),
                             input_digest=raw.get("input_digest"),
                             suggestion_id=raw.get("suggestion_id"),
+                            idempotency_key=raw.get("idempotency_key"),
                         )
                         _validate(event)
                     except (ValueError, KeyError, TypeError) as exc:
@@ -135,11 +139,12 @@ def _validate(event: ReviewDecision) -> None:
     for field_name, value in (("event_id", event.event_id), ("created_at", event.created_at)):
         if not isinstance(value, str) or not value.strip():
             raise ValueError("{} must be a non-empty string.".format(field_name))
-    if event.schema_version == 1 and any((event.run_id, event.source_name, event.task_id, event.input_digest, event.suggestion_id)):
+    if event.schema_version == 1 and any((event.run_id, event.source_name, event.task_id, event.input_digest, event.suggestion_id, event.idempotency_key)):
         raise ValueError("Schema-v1 review events cannot contain provenance fields.")
     for field_name, value in (
         ("run_id", event.run_id), ("source_name", event.source_name), ("task_id", event.task_id),
         ("input_digest", event.input_digest), ("suggestion_id", event.suggestion_id),
+        ("idempotency_key", event.idempotency_key),
     ):
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise ValueError("{} must be a non-empty string when provided.".format(field_name))

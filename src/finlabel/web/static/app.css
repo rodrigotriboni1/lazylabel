@@ -45,6 +45,10 @@ code { overflow-wrap: anywhere; }
 .result-section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 22px; }
 .highlights { display: grid; gap: 8px; margin-bottom: 14px; }
 .highlight { border-left: 3px solid var(--accent); padding: 8px 12px; background: #f3f8f5; }
+.suggestion-list { display: grid; gap: 12px; }
+.suggestion-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.suggestion-card.stale { border-color: #a32c28; }
+.suggestion-card pre { overflow: auto; padding: 12px; border-radius: 8px; background: #f3f8f5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .table-scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
