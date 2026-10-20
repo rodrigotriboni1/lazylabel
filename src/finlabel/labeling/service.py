@@ -1,6 +1,7 @@
 """Source-to-suggestion workflow with selected-field-only model prompts."""
 
 import json
+import hashlib
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -84,6 +85,18 @@ def suggest_labels(source, task: LabelTask, backend, *, workspace_dir: PathLike)
             os.fsync(handle.fileno())
         suggestion_path = run_dir / "suggestions.jsonl"
         os.replace(temporary_name, suggestion_path)
+        run_metadata = {
+            "run_id": run_id,
+            "source_name": source.spec.name,
+            "task_id": task.task_id,
+            "model_ref": model_ref,
+            "row_count": row_count,
+            "invalid_count": invalid_count,
+            "suggestions_sha256": hashlib.sha256(suggestion_path.read_bytes()).hexdigest(),
+        }
+        (run_dir / "run.json").write_text(
+            json.dumps(run_metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
     except BaseException:
         try:
             os.unlink(temporary_name)
