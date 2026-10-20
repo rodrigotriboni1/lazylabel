@@ -44,6 +44,15 @@ finlabel source add-sqlite carteira ./dados/carteira.db --table contratos --id-c
 
 CSV identifica registros pela posição lógica no arquivo e calcula um digest dos campos selecionados. SQLite abre a base com `mode=ro`; a análise agregada não exige ID, mas revisão persistente de linhas exige uma coluna configurada com valores únicos e não nulos. Nenhum conector grava na fonte.
 
+## Capturar e monitorar esquema
+
+```bash
+finlabel schema capture vendas --output ./candidate-schema.json --project ./meu-projeto
+finlabel monitor vendas --baseline ./candidate-schema.json --project ./meu-projeto
+```
+
+O primeiro comando grava um candidato editável. Tipos capturados são inferências iniciais; confirme ou ajuste colunas obrigatórias e limites de valores ausentes antes de usar o arquivo como baseline. Nenhum limite de qualidade é presumido.
+
 ## Registrar revisão humana
 
 ```python

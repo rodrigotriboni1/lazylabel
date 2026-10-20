@@ -4,12 +4,14 @@ import argparse
 import json
 import sqlite3
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional, Sequence
 
 from finlabel.profile import inspect_csv
-from finlabel.project import init_project, load_project, save_project
+from finlabel.project import init_project, load_project, open_source, save_project
 from finlabel.sources.base import ProjectConfig, SourceSpec
+from finlabel.monitor import capture_schema, load_schema_baseline, monitor_source, save_schema_baseline
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -34,6 +36,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     add_sqlite.add_argument("--table", required=True)
     add_sqlite.add_argument("--id-column")
     add_sqlite.add_argument("--project", default=".")
+    schema = commands.add_parser("schema", help="capture an editable source schema")
+    schema_commands = schema.add_subparsers(dest="schema_command", required=True)
+    capture = schema_commands.add_parser("capture", help="write a candidate schema file")
+    capture.add_argument("source")
+    capture.add_argument("--output", required=True)
+    capture.add_argument("--project", default=".")
+    monitor = commands.add_parser("monitor", help="compare a source with a confirmed schema")
+    monitor.add_argument("source")
+    monitor.add_argument("--baseline", required=True)
+    monitor.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -73,6 +85,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             save_project(updated, config.path)
             print(json.dumps({"name": args.name, "kind": kind, "path": str(spec.path)}, ensure_ascii=False))
             return 0
+        if args.command == "schema" and args.schema_command == "capture":
+            config = load_project(args.project)
+            candidate = capture_schema(open_source(config, args.source))
+            save_schema_baseline(candidate, args.output)
+            print(json.dumps(asdict(candidate), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "monitor":
+            config = load_project(args.project)
+            findings = monitor_source(open_source(config, args.source), load_schema_baseline(args.baseline))
+            print(json.dumps([asdict(finding) for finding in findings], ensure_ascii=False, indent=2))
+            return 1 if any(finding.severity == "error" for finding in findings) else 0
         raise ValueError("Unsupported command.")
     except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, sqlite3.Error) as exc:
         print("finlabel: {}".format(exc), file=sys.stderr)
