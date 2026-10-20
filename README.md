@@ -40,6 +40,7 @@ O núcleo continua sem dependências de interface ou modelos. Instale os extras 
 finlabel project init ./meu-projeto
 finlabel source add-csv vendas ./dados/vendas.csv --project ./meu-projeto
 finlabel source add-sqlite carteira ./dados/carteira.db --table contratos --id-column contrato_id --project ./meu-projeto
+finlabel source set-type vendas valor decimal --project ./meu-projeto
 ```
 
 CSV identifica registros pela posição lógica no arquivo e calcula um digest dos campos selecionados. SQLite abre a base com `mode=ro`; a análise agregada não exige ID, mas revisão persistente de linhas exige uma coluna configurada com valores únicos e não nulos. Nenhum conector grava na fonte.

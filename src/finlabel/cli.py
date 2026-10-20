@@ -4,7 +4,7 @@ import argparse
 import json
 import sqlite3
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -36,6 +36,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     add_sqlite.add_argument("--table", required=True)
     add_sqlite.add_argument("--id-column")
     add_sqlite.add_argument("--project", default=".")
+    set_type = source_commands.add_parser("set-type", help="explicitly map a source column type")
+    set_type.add_argument("name")
+    set_type.add_argument("column")
+    set_type.add_argument("type", choices=("string", "integer", "decimal", "date", "datetime", "boolean"))
+    set_type.add_argument("--project", default=".")
     schema = commands.add_parser("schema", help="capture an editable source schema")
     schema_commands = schema.add_subparsers(dest="schema_command", required=True)
     capture = schema_commands.add_parser("capture", help="write a candidate schema file")
@@ -58,6 +63,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         if args.command == "source":
             config = load_project(args.project)
+            if args.source_command == "set-type":
+                try:
+                    existing = config.sources[args.name]
+                except KeyError as exc:
+                    raise ValueError("Unknown source: {}".format(args.name)) from exc
+                available = {column.name for column in open_source(config, args.name).columns()}
+                if args.column not in available:
+                    raise ValueError("Unknown source column: {}".format(args.column))
+                updated_spec = replace(existing, schema={**existing.schema, args.column: args.type})
+                updated = ProjectConfig(
+                    config.path,
+                    {**config.sources, args.name: updated_spec},
+                    config.model_roles,
+                    config.workspace_dir,
+                )
+                save_project(updated, config.path)
+                print(json.dumps({"source": args.name, "column": args.column, "type": args.type}))
+                return 0
             if args.name in config.sources:
                 raise ValueError("Source name already exists: {}".format(args.name))
             kind = "csv" if args.source_command == "add-csv" else "sqlite"

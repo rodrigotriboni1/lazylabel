@@ -113,7 +113,7 @@ class SourceCliTests(unittest.TestCase):
             self.assertEqual(main(["project", "init", str(root)]), 0)
             config_path = root / ".finlabel" / "project.json"
             csv_path = root / "ledger.csv"
-            csv_path.write_text("id\na\n", encoding="utf-8")
+            csv_path.write_text("id,amount\na,10.50\n", encoding="utf-8")
             db_path = root / "ledger.db"
             connection = sqlite3.connect(db_path)
             connection.execute("CREATE TABLE ledger (id TEXT)")
@@ -121,10 +121,12 @@ class SourceCliTests(unittest.TestCase):
             connection.close()
 
             self.assertEqual(main(["source", "add-csv", "csv-ledger", str(csv_path), "--project", str(root)]), 0)
+            self.assertEqual(main(["source", "set-type", "csv-ledger", "amount", "decimal", "--project", str(root)]), 0)
             self.assertEqual(main(["source", "add-sqlite", "db-ledger", str(db_path), "--table", "ledger", "--project", str(root)]), 0)
 
             loaded = importlib.import_module("finlabel.project").load_project(config_path)
             self.assertEqual(loaded.sources["csv-ledger"].kind, "csv")
+            self.assertEqual(loaded.sources["csv-ledger"].schema["amount"], "decimal")
             self.assertEqual(loaded.sources["db-ledger"].table, "ledger")
 
 
