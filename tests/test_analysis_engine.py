@@ -108,6 +108,19 @@ class AnalysisEngineTests(unittest.TestCase):
                     self.schema.AnalysisPlan(1, self.schema.MetricSpec("sum", "unknown"), [], None, [], "bar"), schema
                 )
 
+    def test_share_denominator_must_exclude_at_least_one_group_dimension(self):
+        schema = [
+            self.schema.ColumnProfile("date", "date", 0, 1),
+            self.schema.ColumnProfile("product", "string", 0, 1),
+            self.schema.ColumnProfile("amount", "decimal", 0, 1),
+        ]
+        for dimensions, scope in ((["product"], ["product"]), ([], [])):
+            plan = self.schema.AnalysisPlan(
+                1, self.schema.MetricSpec("share_of_total", "amount", scope), dimensions, None, [], "bar",
+            )
+            with self.subTest(dimensions=dimensions, scope=scope), self.assertRaisesRegex(ValueError, "exclude"):
+                self.schema.validate_analysis_plan(plan, schema)
+
 
 if __name__ == "__main__":
     unittest.main()

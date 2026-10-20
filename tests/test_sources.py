@@ -2,8 +2,10 @@ import csv
 import importlib
 import sqlite3
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 class CsvSourceTests(unittest.TestCase):
     def setUp(self):
@@ -38,6 +40,26 @@ class CsvSourceTests(unittest.TestCase):
             path.write_text("id,value\n1,2,3\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "more fields"):
                 list(source.iter_records(["id"]))
+
+    def test_column_validation_does_not_materialize_all_records(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "ledger.csv"
+            path.write_text("id,value\n1,2\n", encoding="utf-8")
+            source = self.csv_source.CsvSource(self.base.SourceSpec("ledger", "csv", path))
+
+            def many_records(columns):
+                for _ in range(100_000):
+                    yield b"x" * 100
+
+            tracemalloc.start()
+            try:
+                with patch.object(source, "iter_records", side_effect=many_records):
+                    source.columns()
+                _, peak = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            self.assertLess(peak, 1_000_000)
 
 
 class SqliteSourceTests(unittest.TestCase):

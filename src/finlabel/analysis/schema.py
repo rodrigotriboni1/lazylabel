@@ -90,6 +90,8 @@ def validate_analysis_plan(plan: AnalysisPlan, schema: Sequence[ColumnProfile]) 
             raise ValueError("share_of_total requires an explicit denominator scope (use [] for the full group).")
         if not set(plan.metric.denominator_scope).issubset(set(plan.dimensions)):
             raise ValueError("Share denominator scope must be a subset of the plan dimensions.")
+        if not set(plan.dimensions) - set(plan.metric.denominator_scope):
+            raise ValueError("Share denominator scope must exclude at least one grouping dimension.")
     elif plan.metric.denominator_scope not in (None, (), []):
         raise ValueError("A denominator scope is only valid for share_of_total.")
     return plan

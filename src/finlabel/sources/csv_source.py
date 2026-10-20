@@ -28,7 +28,8 @@ class CsvSource:
     def columns(self) -> Sequence[ColumnProfile]:
         columns = inspect_csv(self.path).columns
         # Validate short rows too; DictReader represents absent cells as None.
-        list(self.iter_records([column.name for column in columns]))
+        for _record in self.iter_records([column.name for column in columns]):
+            pass
         return columns
 
     def iter_records(self, columns: Sequence[str], *, batch_size: int = 1000) -> Iterator[SourceRecord]:
