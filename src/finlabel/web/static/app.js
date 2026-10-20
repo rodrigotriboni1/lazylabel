@@ -217,4 +217,46 @@
       showNotice(datasetStatus, `Dataset salvo (${payload.rows} linhas): ${payload.path}`, "success");
     } catch (error) { showNotice(datasetStatus, error.message, "error"); }
   });
+
+  const trainingDataset = document.querySelector("#training-dataset");
+  const trainingStatus = document.querySelector("#training-status");
+  function updateTrainingSummary() {
+    const option = trainingDataset?.selectedOptions?.[0];
+    if (!option) return;
+    document.querySelector("#training-model").textContent = option.dataset.model || "";
+    document.querySelector("#training-task").textContent = option.dataset.task || "";
+    document.querySelector("#training-rows").textContent = option.dataset.rows || "";
+    document.querySelector("#training-hash").textContent = option.dataset.hash || "";
+  }
+  trainingDataset?.addEventListener("change", updateTrainingSummary);
+  updateTrainingSummary();
+  document.querySelector("#submit-training")?.addEventListener("click", async () => {
+    try {
+      const option = trainingDataset.selectedOptions[0];
+      const confirmed = document.querySelector("#training-confirm").checked;
+      const modelRef = option.dataset.model || "";
+      const separator = modelRef.indexOf("@");
+      showNotice(trainingStatus, "Validando gate, manifesto e dataset local…");
+      const payload = await request("/api/train/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          confirmed, dataset_name: option.value,
+          model_id: separator < 0 ? modelRef : modelRef.slice(0, separator),
+          revision: separator < 0 ? null : modelRef.slice(separator + 1),
+          epochs: Number(document.querySelector("#training-epochs").value),
+          batch_size: Number(document.querySelector("#training-batch").value),
+          learning_rate: Number(document.querySelector("#training-rate").value),
+          lora_rank: Number(document.querySelector("#training-rank").value),
+        }),
+      });
+      showNotice(trainingStatus, `Trabalho ${payload.job_id}: ${payload.state}. ${payload.progress}`, "success");
+      const poll = async () => {
+        const status = await request(`/api/train/jobs/${encodeURIComponent(payload.job_id)}`, { method: "GET", headers: {} });
+        showNotice(trainingStatus, `Trabalho ${status.job_id}: ${status.state}. ${status.progress}${status.error ? ` ${status.error}` : ""}`,
+          status.state === "failed" ? "error" : status.state === "succeeded" ? "success" : "");
+        if (status.state === "queued" || status.state === "running") window.setTimeout(poll, 1500);
+      };
+      window.setTimeout(poll, 800);
+    } catch (error) { showNotice(trainingStatus, error.message, "error"); }
+  });
 })();

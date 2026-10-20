@@ -205,6 +205,19 @@ class WebPanelTests(unittest.TestCase):
         )
         self.assertEqual(dataset.status_code, 200, dataset.text)
         self.assertEqual(dataset.json()["rows"], 1)
+        training_page = self.client.get("/training")
+        self.assertEqual(training_page.status_code, 200)
+        self.assertIn("reviewed.jsonl", training_page.text)
+        unconfirmed = self.client.post("/api/train/submit", json={
+            "confirmed": False, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
+        }, headers=headers)
+        self.assertEqual(unconfirmed.status_code, 400)
+        gate_rejected = self.client.post("/api/train/submit", json={
+            "confirmed": True, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
+        }, headers=headers)
+        self.assertEqual(gate_rejected.status_code, 400)
+        self.assertIn("training gate", gate_rejected.json()["error"])
+        self.assertFalse((config.workspace_dir / "training" / "jobs").exists())
 
 
 if __name__ == "__main__":

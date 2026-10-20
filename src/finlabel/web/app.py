@@ -135,6 +135,15 @@ def create_app(
     templates = Jinja2Templates(env=template_environment)
     app = FastAPI(title="FinLabel local", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
+    training_jobs = None
+
+    def get_training_jobs(workspace):
+        nonlocal training_jobs
+        if training_jobs is None:
+            from finlabel.training.jobs import TrainingJobManager
+
+            training_jobs = TrainingJobManager(workspace)
+        return training_jobs
 
     @app.middleware("http")
     async def local_security(request: Request, call_next):
@@ -212,6 +221,32 @@ def create_app(
         response = templates.TemplateResponse(
             request=request, name="labeling.html",
             context={"sources": sources, "tasks": tasks, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
+        )
+        if not request.cookies.get(CSRF_COOKIE):
+            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
+        return response
+
+    @app.get("/training", response_class=HTMLResponse)
+    async def training_page(request: Request):
+        config = load_project(project_path)
+        datasets = []
+        training_dir = config.workspace_dir / "training"
+        for path in sorted(training_dir.glob("*.jsonl")):
+            manifest_path = path.with_suffix(path.suffix + ".manifest.json")
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(manifest, dict) and isinstance(manifest.get("model_ref"), str):
+                    datasets.append({
+                        "name": path.name, "model_ref": manifest["model_ref"],
+                        "task_id": manifest.get("task_id", ""), "row_count": manifest.get("row_count", 0),
+                        "dataset_sha256": manifest.get("dataset_sha256", ""),
+                    })
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
+        response = templates.TemplateResponse(
+            request=request, name="training.html",
+            context={"datasets": datasets, "csrf_token": token},
         )
         if not request.cookies.get(CSRF_COOKIE):
             response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
@@ -522,6 +557,56 @@ def create_app(
                                  "dataset_sha256": manifest.dataset_sha256})
         except (OSError, ValueError, KeyError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/train/submit")
+    async def train_submit(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if payload.get("confirmed") is not True:
+            return JSONResponse({"error": "Review the model, dataset, and output summary, then confirm explicitly."}, status_code=400)
+        dataset_name = payload.get("dataset_name")
+        model_id = payload.get("model_id")
+        if not isinstance(dataset_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.jsonl", dataset_name):
+            return JSONResponse({"error": "Select a valid local training dataset."}, status_code=400)
+        if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 512:
+            return JSONResponse({"error": "model_id must be a non-empty value from the dataset summary."}, status_code=400)
+        if "@" in model_id and payload.get("revision") is None:
+            model_id, inferred_revision = model_id.split("@", 1)
+        else:
+            inferred_revision = None
+        try:
+            from finlabel.training.backend import TrainingConfig
+
+            config = load_project(project_path)
+            dataset_path = (config.workspace_dir / "training" / dataset_name).resolve()
+            if dataset_path.parent != (config.workspace_dir / "training").resolve():
+                return JSONResponse({"error": "Dataset path must remain inside the project training directory."}, status_code=400)
+            output_dir = config.workspace_dir / "models" / "adapters" / secrets.token_hex(16)
+            training_config = TrainingConfig(
+                model_id, payload.get("revision") or inferred_revision, output_dir,
+                payload.get("epochs", 1), payload.get("batch_size", 1),
+                payload.get("learning_rate", 0.0002), payload.get("lora_rank", 8), payload.get("seed", 42),
+            )
+            manager = get_training_jobs(config.workspace_dir)
+            job_id = manager.submit(dataset_path, training_config)
+            status = manager.get(job_id)
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({"job_id": job_id, "state": status.state, "progress": status.progress}, status_code=202)
+
+    @app.get("/api/train/jobs/{job_id}")
+    async def train_job_status(job_id: str):
+        try:
+            config = load_project(project_path)
+            status = get_training_jobs(config.workspace_dir).get(job_id)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        return JSONResponse({
+            "job_id": status.job_id, "state": status.state, "progress": status.progress,
+            "error": status.error, "model_id": status.model_id,
+            "dataset_sha256": status.dataset_sha256, "final_metrics": dict(status.final_metrics),
+        })
 
     @app.get("/analysis/{run_id}", response_class=HTMLResponse)
     async def analysis_page(request: Request, run_id: str):
