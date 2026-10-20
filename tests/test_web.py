@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from finlabel.analysis.schema import AnalysisPlan, MetricSpec
 from finlabel.project import init_project, load_project, save_project
 from finlabel.sources.base import SourceSpec
+from finlabel.labeling.task import LabelTask, save_task
+from finlabel.review import ReviewLog
 
 
 class QueueBackend:
@@ -164,6 +166,66 @@ class WebPanelTests(unittest.TestCase):
         self.assertEqual(chart.status_code, 200)
         self.assertIn("sandbox allow-scripts", chart.headers.get("content-security-policy", ""))
         self.assertFalse(any((self.root / ".finlabel" / "analyses").glob("*/source.csv")))
+
+    def test_web_label_review_and_dataset_prepare_use_shared_local_state(self):
+        config = load_project(self.root)
+        save_task(
+            LabelTask("risk", "Classify financial risk", ("amount",), ("low", "high"), "test-local-model"),
+            config.workspace_dir / "tasks" / "risk.json",
+        )
+        self.backend.responses = ['{"label":"low"}', '{"label":"high"}']
+        token = self.csrf()
+        headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": token}
+
+        page = self.client.get("/labeling")
+        self.assertEqual(page.status_code, 200)
+        started = self.client.post("/api/label/start", json={"source": "sales", "task": "risk"}, headers=headers)
+        self.assertEqual(started.status_code, 200, started.text)
+        run_id = started.json()["run_id"]
+        suggestions = self.client.get("/api/label/suggestions", params={"run_id": run_id})
+        self.assertEqual(suggestions.status_code, 200)
+        first = suggestions.json()["suggestions"][0]
+        self.assertEqual(first["fields"], {"amount": "10"})
+        self.assertNotIn("SECRET_ROW_VALUE", suggestions.text)
+        self.assertEqual(first["stale"], False)
+
+        review_payload = {
+            "run_id": run_id, "suggestion_id": first["suggestion_id"], "record_id": first["record_id"],
+            "input_digest": first["input_digest"], "idempotency_key": "a" * 32, "action": "accepted",
+        }
+        review = self.client.post("/api/label/review", json=review_payload, headers=headers)
+        self.assertEqual(review.status_code, 200, review.text)
+        duplicate = self.client.post("/api/label/review", json=review_payload, headers=headers)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertTrue(duplicate.json()["duplicate"])
+        reused_key = dict(review_payload)
+        reused_key.update({key: second_value for key, second_value in {
+            "suggestion_id": suggestions.json()["suggestions"][1]["suggestion_id"],
+            "record_id": suggestions.json()["suggestions"][1]["record_id"],
+            "input_digest": suggestions.json()["suggestions"][1]["input_digest"],
+        }.items()})
+        key_conflict = self.client.post("/api/label/review", json=reused_key, headers=headers)
+        self.assertEqual(key_conflict.status_code, 409)
+        self.assertEqual(len(ReviewLog(config.workspace_dir / "review.jsonl").read()), 1)
+
+        dataset = self.client.post(
+            "/api/dataset/prepare", json={"run_id": run_id, "output_name": "reviewed.jsonl"}, headers=headers,
+        )
+        self.assertEqual(dataset.status_code, 200, dataset.text)
+        self.assertEqual(dataset.json()["rows"], 1)
+        training_page = self.client.get("/training")
+        self.assertEqual(training_page.status_code, 200)
+        self.assertIn("reviewed.jsonl", training_page.text)
+        unconfirmed = self.client.post("/api/train/submit", json={
+            "confirmed": False, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
+        }, headers=headers)
+        self.assertEqual(unconfirmed.status_code, 400)
+        gate_rejected = self.client.post("/api/train/submit", json={
+            "confirmed": True, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
+        }, headers=headers)
+        self.assertEqual(gate_rejected.status_code, 400)
+        self.assertIn("training gate", gate_rejected.json()["error"])
+        self.assertFalse((config.workspace_dir / "training" / "jobs").exists())
 
 
 if __name__ == "__main__":

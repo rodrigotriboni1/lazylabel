@@ -66,6 +66,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     serve.add_argument("--project", default=".")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
+    task = commands.add_parser("task", help="manage configurable label tasks")
+    task_commands = task.add_subparsers(dest="task_command", required=True)
+    task_add = task_commands.add_parser("add", help="add a declarative task JSON file")
+    task_add.add_argument("file")
+    task_add.add_argument("--project", default=".")
+    label = commands.add_parser("label", help="generate local suggestions for a configured task")
+    label.add_argument("source")
+    label.add_argument("--task", required=True)
+    label.add_argument("--project", default=".")
+    label.add_argument("--device", default="auto")
+    review = commands.add_parser("review", help="interactively review suggestions in a local run")
+    review.add_argument("run_id")
+    review.add_argument("--project", default=".")
+    dataset = commands.add_parser("dataset", help="prepare an explicit local training dataset")
+    dataset_commands = dataset.add_subparsers(dest="dataset_command", required=True)
+    dataset_prepare = dataset_commands.add_parser("prepare", help="export reviewed examples as JSONL")
+    dataset_prepare.add_argument("run_id")
+    dataset_prepare.add_argument("--output", required=True)
+    dataset_prepare.add_argument("--project", default=".")
+    train = commands.add_parser("train", help="explicitly fine-tune a local PEFT/LoRA adapter")
+    train.add_argument("dataset")
+    train.add_argument("--model-id", required=True)
+    train.add_argument("--revision")
+    train.add_argument("--output", required=True)
+    train.add_argument("--epochs", type=int, default=1)
+    train.add_argument("--batch-size", type=int, default=1)
+    train.add_argument("--learning-rate", type=float, default=0.0002)
+    train.add_argument("--lora-rank", type=int, default=8)
+    train.add_argument("--seed", type=int, default=42)
+    train.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -173,6 +203,99 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except ImportError as exc:
                 raise RuntimeError("Install finlabel-local[web] to run the local panel.") from exc
             uvicorn.run(app, host=args.host, port=args.port, access_log=False)
+            return 0
+        if args.command == "task" and args.task_command == "add":
+            from finlabel.labeling.task import load_task, save_task
+
+            config = load_project(args.project)
+            task = load_task(args.file)
+            destination = config.workspace_dir / "tasks" / (task.task_id + ".json")
+            save_task(task, destination)
+            print(str(destination))
+            return 0
+        if args.command == "label":
+            from finlabel.labeling.service import suggest_labels
+            from finlabel.labeling.task import load_task
+            from finlabel.models.text_generation import TransformersTextGenerationBackend
+
+            config = load_project(args.project)
+            source = open_source(config, args.source)
+            task_path = config.workspace_dir / "tasks" / (args.task + ".json")
+            task = load_task(task_path, available_columns=tuple(column.name for column in source.columns()))
+            backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
+            run = suggest_labels(source, task, backend, workspace_dir=config.workspace_dir)
+            print(json.dumps({
+                "run_id": run.run_id, "source": run.source_name, "task": run.task_id,
+                "model_ref": run.model_ref, "suggestions": run.row_count, "invalid": run.invalid_count,
+                "suggestion_file": str(run.suggestion_path),
+            }, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "review":
+            from finlabel.labeling.task import load_task, validate_label
+            from finlabel.review import ReviewAction, ReviewLog
+
+            config = load_project(args.project)
+            run_dir = config.workspace_dir / "runs" / args.run_id
+            metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+            source = open_source(config, metadata["source_name"])
+            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+                             available_columns=tuple(column.name for column in source.columns()))
+            suggestions = [json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+            source_records = iter(source.iter_records(task.input_columns))
+            log = ReviewLog(config.workspace_dir / "review.jsonl")
+            for suggestion in suggestions:
+                record = next(source_records, None)
+                while record is not None and record.record_id != suggestion["record_id"]:
+                    record = next(source_records, None)
+                print(json.dumps({"suggested_label": suggestion["label"], "fields": dict(record.values) if record else None,
+                                  "stale": record is None or record.input_digest != suggestion["input_digest"]}, ensure_ascii=False))
+                action_text = input("accept / edit LABEL / reject / skip> ").strip()
+                if action_text == "skip":
+                    continue
+                if not record or record.input_digest != suggestion["input_digest"]:
+                    print("Source row changed; this suggestion cannot be reviewed.", file=sys.stderr)
+                    continue
+                parts = action_text.split(maxsplit=1)
+                if parts == ["accept"]:
+                    action, final_label = ReviewAction.ACCEPTED, suggestion["label"]
+                elif len(parts) == 2 and parts[0] == "edit":
+                    action, final_label = ReviewAction.CORRECTED, validate_label(task, parts[1])
+                elif parts == ["reject"]:
+                    action, final_label = ReviewAction.REJECTED, None
+                else:
+                    raise ValueError("Review action must be accept, edit LABEL, reject, or skip.")
+                log.record(
+                    suggestion["record_id"], suggestion["label"], action, final_label, suggestion["model_ref"],
+                    run_id=args.run_id, source_name=metadata["source_name"], task_id=task.task_id,
+                    input_digest=suggestion["input_digest"], suggestion_id=suggestion["suggestion_id"],
+                )
+            return 0
+        if args.command == "dataset" and args.dataset_command == "prepare":
+            from finlabel.training.dataset import prepare_training_dataset
+
+            config = load_project(args.project)
+            manifest = prepare_training_dataset(config, args.run_id, args.output)
+            print(json.dumps({
+                "path": str(manifest.path), "rows": manifest.row_count,
+                "manifest": str(manifest.path.with_suffix(manifest.path.suffix + ".manifest.json")),
+                "dataset_sha256": manifest.dataset_sha256,
+                "excluded_counts": manifest.excluded_counts,
+            }, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "train":
+            from finlabel.training.backend import TrainingConfig, train_adapter
+
+            config = TrainingConfig(
+                args.model_id, args.revision, Path(args.output), args.epochs, args.batch_size,
+                args.learning_rate, args.lora_rank, args.seed,
+            )
+            project_config = load_project(args.project)
+            result = train_adapter(args.dataset, config, gate_path=project_config.workspace_dir / "training-gate.json")
+            print(json.dumps({
+                "output_dir": str(result.output_dir), "base_model_ref": result.base_model_ref,
+                "dataset_sha256": result.dataset_sha256, "adapter_files": [str(path) for path in result.adapter_files],
+                "final_metrics": dict(result.final_metrics),
+            }, ensure_ascii=False, indent=2))
             return 0
         raise ValueError("Unsupported command.")
     except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:

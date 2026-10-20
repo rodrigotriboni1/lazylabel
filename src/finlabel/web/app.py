@@ -135,6 +135,15 @@ def create_app(
     templates = Jinja2Templates(env=template_environment)
     app = FastAPI(title="FinLabel local", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
+    training_jobs = None
+
+    def get_training_jobs(workspace):
+        nonlocal training_jobs
+        if training_jobs is None:
+            from finlabel.training.jobs import TrainingJobManager
+
+            training_jobs = TrainingJobManager(workspace)
+        return training_jobs
 
     @app.middleware("http")
     async def local_security(request: Request, call_next):
@@ -173,15 +182,75 @@ def create_app(
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    def get_backend(config):
+    def get_backend(config, *, role="analytics", model_id=None, revision=None):
         if backend_factory is not None:
             return backend_factory(config)
-        model_id = config.model_roles.get("analytics")
+        model_id = model_id or config.model_roles.get(role)
         if not model_id:
             return None
         from finlabel.models.text_generation import TransformersTextGenerationBackend
 
-        return TransformersTextGenerationBackend(model_id)
+        return TransformersTextGenerationBackend(model_id, revision)
+
+    def read_label_run(config, run_id):
+        if not isinstance(run_id, str) or not RUN_ID_PATTERN.fullmatch(run_id):
+            raise ValueError("Invalid suggestion run ID.")
+        run_dir = config.workspace_dir / "runs" / run_id
+        metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        if metadata.get("run_id") != run_id:
+            raise ValueError("Suggestion run metadata does not match the requested run.")
+        suggestions = [
+            json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        return run_dir, metadata, suggestions
+
+    @app.get("/labeling", response_class=HTMLResponse)
+    async def labeling_page(request: Request):
+        config = load_project(project_path)
+        sources = sorted(config.sources)
+        tasks = []
+        for task_path in sorted((config.workspace_dir / "tasks").glob("*.json")):
+            try:
+                raw = json.loads(task_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict) and isinstance(raw.get("task_id"), str):
+                    tasks.append({"task_id": raw["task_id"], "labels": raw.get("labels", [])})
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
+        response = templates.TemplateResponse(
+            request=request, name="labeling.html",
+            context={"sources": sources, "tasks": tasks, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
+        )
+        if not request.cookies.get(CSRF_COOKIE):
+            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
+        return response
+
+    @app.get("/training", response_class=HTMLResponse)
+    async def training_page(request: Request):
+        config = load_project(project_path)
+        datasets = []
+        training_dir = config.workspace_dir / "training"
+        for path in sorted(training_dir.glob("*.jsonl")):
+            manifest_path = path.with_suffix(path.suffix + ".manifest.json")
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(manifest, dict) and isinstance(manifest.get("model_ref"), str):
+                    datasets.append({
+                        "name": path.name, "model_ref": manifest["model_ref"],
+                        "task_id": manifest.get("task_id", ""), "row_count": manifest.get("row_count", 0),
+                        "dataset_sha256": manifest.get("dataset_sha256", ""),
+                    })
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
+        response = templates.TemplateResponse(
+            request=request, name="training.html",
+            context={"datasets": datasets, "csrf_token": token},
+        )
+        if not request.cookies.get(CSRF_COOKIE):
+            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
+        return response
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
@@ -352,6 +421,194 @@ def create_app(
         if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
             return JSONResponse({"error": "The result exceeds the local web response limit; use the CLI artifact."}, status_code=422)
         return JSONResponse(response_payload)
+
+    @app.post("/api/label/start")
+    async def label_start(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        source_name, task_id = payload.get("source"), payload.get("task")
+        if not isinstance(source_name, str) or not isinstance(task_id, str):
+            return JSONResponse({"error": "source and task are required"}, status_code=400)
+        try:
+            from finlabel.labeling.service import suggest_labels
+            from finlabel.labeling.task import load_task
+
+            config = load_project(project_path)
+            source = open_source(config, source_name)
+            task = load_task(config.workspace_dir / "tasks" / (task_id + ".json"),
+                             available_columns=tuple(column.name for column in source.columns()))
+            backend = get_backend(config, role="labeling", model_id=task.model_id, revision=task.model_revision)
+            if backend is None:
+                return JSONResponse({"error": "No local model backend is available for this task."}, status_code=400)
+            run = suggest_labels(source, task, backend, workspace_dir=config.workspace_dir)
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({
+            "run_id": run.run_id, "source": run.source_name, "task": run.task_id,
+            "suggestions": run.row_count, "invalid": run.invalid_count,
+        })
+
+    @app.get("/api/label/suggestions")
+    async def label_suggestions(run_id: str):
+        try:
+            from finlabel.labeling.task import load_task
+            from finlabel.review import ReviewAction, ReviewLog
+
+            config = load_project(project_path)
+            run_dir, metadata, suggestions = read_label_run(config, run_id)
+            source = open_source(config, metadata["source_name"])
+            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+                             available_columns=tuple(column.name for column in source.columns()))
+            events = [event for event in ReviewLog(config.workspace_dir / "review.jsonl").read()
+                      if event.run_id == run_id and event.suggestion_id]
+            latest = {event.suggestion_id: event for event in events}
+            page = suggestions[:MAX_PAGE_ROWS]
+            wanted = {item["record_id"] for item in page}
+            records = {record.record_id: record for record in source.iter_records(task.input_columns)
+                       if record.record_id in wanted}
+            result = []
+            for item in page:
+                record = records.get(item["record_id"])
+                event = latest.get(item["suggestion_id"])
+                result.append({
+                    "suggestion_id": item["suggestion_id"], "record_id": item["record_id"],
+                    "input_digest": item["input_digest"], "suggested_label": item["label"],
+                    "rationale": item.get("rationale"), "labels": list(task.labels),
+                    "fields": dict(record.values) if record else None,
+                    "stale": record is None or record.input_digest != item["input_digest"],
+                    "review_action": event.action.value if event else None,
+                    "final_label": event.final_label if event else None,
+                })
+            response_payload = {"run_id": run_id, "task_id": task.task_id, "suggestions": result,
+                                "total": len(suggestions), "truncated": len(suggestions) > len(result)}
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Suggestion page exceeds the local response limit."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/label/review")
+    async def label_review(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        required = ("run_id", "suggestion_id", "record_id", "input_digest", "idempotency_key", "action")
+        if any(not isinstance(payload.get(key), str) for key in required):
+            return JSONResponse({"error": "review provenance and action are required"}, status_code=400)
+        if not re.fullmatch(r"[0-9a-f]{32}", payload["idempotency_key"]):
+            return JSONResponse({"error": "Invalid review idempotency key."}, status_code=400)
+        try:
+            from finlabel.labeling.task import load_task, validate_label
+            from finlabel.review import ReviewAction, ReviewLog
+
+            config = load_project(project_path)
+            _, metadata, suggestions = read_label_run(config, payload["run_id"])
+            item = next((row for row in suggestions if row["suggestion_id"] == payload["suggestion_id"]), None)
+            if item is None or item["record_id"] != payload["record_id"] or item["input_digest"] != payload["input_digest"]:
+                return JSONResponse({"error": "Suggestion provenance does not match this review."}, status_code=409)
+            source = open_source(config, metadata["source_name"])
+            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+                             available_columns=tuple(column.name for column in source.columns()))
+            record = next((row for row in source.iter_records(task.input_columns)
+                           if row.record_id == item["record_id"]), None)
+            if record is None or record.input_digest != item["input_digest"]:
+                return JSONResponse({"error": "Source row changed; this suggestion is stale."}, status_code=409)
+            log = ReviewLog(config.workspace_dir / "review.jsonl")
+            prior = log.read()
+            duplicate = next((event for event in prior if event.idempotency_key == payload["idempotency_key"]), None)
+            if duplicate:
+                if duplicate.run_id != payload["run_id"] or duplicate.suggestion_id != payload["suggestion_id"]:
+                    return JSONResponse({"error": "Idempotency key was already used for another review."}, status_code=409)
+                return JSONResponse({"event_id": duplicate.event_id, "duplicate": True})
+            action_name = payload["action"]
+            if action_name == "accepted":
+                action, final_label = ReviewAction.ACCEPTED, item["label"]
+            elif action_name == "corrected":
+                action, final_label = ReviewAction.CORRECTED, validate_label(task, payload.get("final_label"))
+            elif action_name == "rejected":
+                action, final_label = ReviewAction.REJECTED, None
+            else:
+                return JSONResponse({"error": "action must be accepted, corrected, or rejected"}, status_code=400)
+            event = log.record(
+                item["record_id"], item["label"], action, final_label, item["model_ref"],
+                run_id=payload["run_id"], source_name=metadata["source_name"], task_id=task.task_id,
+                input_digest=item["input_digest"], suggestion_id=item["suggestion_id"],
+                idempotency_key=payload["idempotency_key"],
+            )
+            return JSONResponse({"event_id": event.event_id, "duplicate": False})
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/dataset/prepare")
+    async def dataset_prepare(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        run_id, output_name = payload.get("run_id"), payload.get("output_name")
+        if not isinstance(run_id, str) or not isinstance(output_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.jsonl", output_name):
+            return JSONResponse({"error": "run_id and a safe .jsonl output_name are required"}, status_code=400)
+        try:
+            from finlabel.training.dataset import prepare_training_dataset
+
+            config = load_project(project_path)
+            output = config.workspace_dir / "training" / output_name
+            manifest = prepare_training_dataset(config, run_id, output)
+            return JSONResponse({"path": str(manifest.path), "rows": manifest.row_count,
+                                 "manifest": str(manifest.path.with_suffix(manifest.path.suffix + ".manifest.json")),
+                                 "dataset_sha256": manifest.dataset_sha256})
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/train/submit")
+    async def train_submit(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if payload.get("confirmed") is not True:
+            return JSONResponse({"error": "Review the model, dataset, and output summary, then confirm explicitly."}, status_code=400)
+        dataset_name = payload.get("dataset_name")
+        model_id = payload.get("model_id")
+        if not isinstance(dataset_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.jsonl", dataset_name):
+            return JSONResponse({"error": "Select a valid local training dataset."}, status_code=400)
+        if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 512:
+            return JSONResponse({"error": "model_id must be a non-empty value from the dataset summary."}, status_code=400)
+        if "@" in model_id and payload.get("revision") is None:
+            model_id, inferred_revision = model_id.split("@", 1)
+        else:
+            inferred_revision = None
+        try:
+            from finlabel.training.backend import TrainingConfig
+
+            config = load_project(project_path)
+            dataset_path = (config.workspace_dir / "training" / dataset_name).resolve()
+            if dataset_path.parent != (config.workspace_dir / "training").resolve():
+                return JSONResponse({"error": "Dataset path must remain inside the project training directory."}, status_code=400)
+            output_dir = config.workspace_dir / "models" / "adapters" / secrets.token_hex(16)
+            training_config = TrainingConfig(
+                model_id, payload.get("revision") or inferred_revision, output_dir,
+                payload.get("epochs", 1), payload.get("batch_size", 1),
+                payload.get("learning_rate", 0.0002), payload.get("lora_rank", 8), payload.get("seed", 42),
+            )
+            manager = get_training_jobs(config.workspace_dir)
+            job_id = manager.submit(dataset_path, training_config)
+            status = manager.get(job_id)
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({"job_id": job_id, "state": status.state, "progress": status.progress}, status_code=202)
+
+    @app.get("/api/train/jobs/{job_id}")
+    async def train_job_status(job_id: str):
+        try:
+            config = load_project(project_path)
+            status = get_training_jobs(config.workspace_dir).get(job_id)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        return JSONResponse({
+            "job_id": status.job_id, "state": status.state, "progress": status.progress,
+            "error": status.error, "model_id": status.model_id,
+            "dataset_sha256": status.dataset_sha256, "final_metrics": dict(status.final_metrics),
+        })
 
     @app.get("/analysis/{run_id}", response_class=HTMLResponse)
     async def analysis_page(request: Request, run_id: str):
