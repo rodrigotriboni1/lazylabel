@@ -232,11 +232,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         if args.command == "review":
             from finlabel.labeling.task import load_task, task_file_path, validate_label
+            from finlabel.labeling.suggestions import verify_suggestions_file
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(args.project)
             run_dir = config.workspace_dir / "runs" / args.run_id
             metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+            verify_suggestions_file(run_dir / "suggestions.jsonl", metadata.get("suggestions_sha256"))
             source = open_source(config, metadata["source_name"])
             task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
                              available_columns=tuple(column.name for column in source.columns()))

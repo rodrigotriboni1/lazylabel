@@ -199,6 +199,9 @@ def create_app(
         metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         if metadata.get("run_id") != run_id:
             raise ValueError("Suggestion run metadata does not match the requested run.")
+        from finlabel.labeling.suggestions import verify_suggestions_file
+
+        verify_suggestions_file(run_dir / "suggestions.jsonl", metadata.get("suggestions_sha256"))
         from finlabel.labeling.task import task_file_path
 
         task_file_path(config.workspace_dir, metadata.get("task_id"))

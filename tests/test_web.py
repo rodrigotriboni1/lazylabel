@@ -227,6 +227,31 @@ class WebPanelTests(unittest.TestCase):
         self.assertIn("training gate", gate_rejected.json()["error"])
         self.assertFalse((config.workspace_dir / "training" / "jobs").exists())
 
+    def test_web_rejects_tampered_suggestions_before_review(self):
+        config = load_project(self.root)
+        save_task(
+            LabelTask("risk", "Classify financial risk", ("amount",), ("low", "high"), "test-local-model"),
+            config.workspace_dir / "tasks" / "risk.json",
+        )
+        self.backend.responses = ['{"label":"low"}', '{"label":"high"}']
+        self.backend.prompts = []
+        headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": self.csrf()}
+        started = self.client.post("/api/label/start", json={"source": "sales", "task": "risk"}, headers=headers)
+        self.assertEqual(started.status_code, 200, started.text)
+        run_id = started.json()["run_id"]
+        run_dir = config.workspace_dir / "runs" / run_id
+        suggestion_path = run_dir / "suggestions.jsonl"
+        suggestion_path.write_text(suggestion_path.read_text(encoding="utf-8").replace('"low"', '"high"'), encoding="utf-8")
+
+        listed = self.client.get("/api/label/suggestions", params={"run_id": run_id})
+        self.assertEqual(listed.status_code, 400)
+        review = self.client.post("/api/label/review", json={
+            "run_id": run_id, "suggestion_id": "a" * 32, "record_id": "row-1",
+            "input_digest": "b" * 64, "idempotency_key": "c" * 32, "action": "accepted",
+        }, headers=headers)
+        self.assertEqual(review.status_code, 400)
+        self.assertEqual(ReviewLog(config.workspace_dir / "review.jsonl").read(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
