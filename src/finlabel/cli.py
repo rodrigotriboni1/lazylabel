@@ -85,6 +85,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     dataset_prepare.add_argument("run_id")
     dataset_prepare.add_argument("--output", required=True)
     dataset_prepare.add_argument("--project", default=".")
+    train = commands.add_parser("train", help="explicitly fine-tune a local PEFT/LoRA adapter")
+    train.add_argument("dataset")
+    train.add_argument("--model-id", required=True)
+    train.add_argument("--revision")
+    train.add_argument("--output", required=True)
+    train.add_argument("--epochs", type=int, default=1)
+    train.add_argument("--batch-size", type=int, default=1)
+    train.add_argument("--learning-rate", type=float, default=0.0002)
+    train.add_argument("--lora-rank", type=int, default=8)
+    train.add_argument("--seed", type=int, default=42)
+    train.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -271,6 +282,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "manifest": str(manifest.path.with_suffix(manifest.path.suffix + ".manifest.json")),
                 "dataset_sha256": manifest.dataset_sha256,
                 "excluded_counts": manifest.excluded_counts,
+            }, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "train":
+            from finlabel.training.backend import TrainingConfig, train_adapter
+
+            config = TrainingConfig(
+                args.model_id, args.revision, Path(args.output), args.epochs, args.batch_size,
+                args.learning_rate, args.lora_rank, args.seed,
+            )
+            project_config = load_project(args.project)
+            result = train_adapter(args.dataset, config, gate_path=project_config.workspace_dir / "training-gate.json")
+            print(json.dumps({
+                "output_dir": str(result.output_dir), "base_model_ref": result.base_model_ref,
+                "dataset_sha256": result.dataset_sha256, "adapter_files": [str(path) for path in result.adapter_files],
+                "final_metrics": dict(result.final_metrics),
             }, ensure_ascii=False, indent=2))
             return 0
         raise ValueError("Unsupported command.")
