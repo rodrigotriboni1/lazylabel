@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from finlabel.labeling.service import suggest_labels
+from finlabel.labeling.suggestions import verify_suggestions_file
 from finlabel.labeling.task import LabelTask
 from finlabel.sources.base import SourceSpec
 from finlabel.sources.csv_source import CsvSource
@@ -54,6 +55,20 @@ class LabelSuggestionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "stable"):
             suggest_labels(AggregateOnly(), task, backend, workspace_dir=Path(temporary))
         self.assertEqual(backend.prompts, [])
+
+    def test_detects_suggestion_file_tampering_before_review(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_path = root / "ledger.csv"
+            source_path.write_text("amount\n10\n", encoding="utf-8")
+            source = CsvSource(SourceSpec("ledger", "csv", source_path))
+            task = LabelTask("risk", "Classify risk", ("amount",), ("low", "high"), "mock-local")
+            run = suggest_labels(source, task, MockBackend(), workspace_dir=root / ".finlabel")
+            metadata = json.loads((run.suggestion_path.parent / "run.json").read_text())
+            run.suggestion_path.write_text(run.suggestion_path.read_text().replace('"low"', '"high"'), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "changed"):
+                verify_suggestions_file(run.suggestion_path, metadata["suggestions_sha256"])
 
 
 if __name__ == "__main__":

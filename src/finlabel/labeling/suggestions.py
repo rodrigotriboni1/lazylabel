@@ -1,6 +1,7 @@
 """Immutable JSONL records for label suggestion runs."""
 
 import json
+import hashlib
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -10,6 +11,21 @@ from uuid import uuid4
 
 
 _RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def verify_suggestions_file(path: Path, expected_sha256: str) -> None:
+    """Fail closed if the immutable suggestion artifact differs from its run metadata."""
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("Suggestion run has no valid integrity hash.")
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError as exc:
+        raise ValueError("Suggestion file is missing or unreadable.") from exc
+    if digest.hexdigest() != expected_sha256:
+        raise ValueError("Suggestion file changed after the run was created.")
 
 
 @dataclass(frozen=True)

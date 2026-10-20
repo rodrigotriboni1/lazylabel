@@ -43,6 +43,26 @@ class TrainingGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "prompt and completion"):
                 validate_training_request(dataset, config, gate_path=root / "gate.json")
 
+    def test_training_revision_must_match_reviewed_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = root / "examples.jsonl"
+            dataset.write_text('{"prompt":"Classify amount 10","completion":"low"}\n', encoding="utf-8")
+            dataset.with_suffix(".jsonl.manifest.json").write_text(json.dumps({
+                "dataset_sha256": __import__("hashlib").sha256(dataset.read_bytes()).hexdigest(),
+                "row_count": 1, "model_ref": "local/model@revision-a", "task_id": "risk",
+            }), encoding="utf-8")
+            gate = {"model_id": "local/model", "license": "approved", "hardware": "CPU",
+                    "data_policy": "synthetic", "evaluation_protocol": "held-out", "authorized": True}
+            gate_path = root / "training-gate.json"
+            gate_path.write_text(json.dumps(gate), encoding="utf-8")
+            wrong_revision = TrainingConfig("local/model", "revision-b", root / "wrong", 1, 1, 0.0001, 8, 42)
+            with self.assertRaisesRegex(ValueError, "revision"):
+                validate_training_request(dataset, wrong_revision, gate_path=gate_path)
+
+            matching_revision = TrainingConfig("local/model", "revision-a", root / "matching", 1, 1, 0.0001, 8, 42)
+            validate_training_request(dataset, matching_revision, gate_path=gate_path)
+
 
 if __name__ == "__main__":
     unittest.main()

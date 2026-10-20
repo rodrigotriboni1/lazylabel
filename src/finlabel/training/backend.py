@@ -92,8 +92,13 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
     if manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != row_count:
         raise ValueError("Training dataset does not match its manifest hash or row count.")
     manifest_model = manifest.get("model_ref")
-    if manifest_model and manifest_model.split("@", 1)[0] != config.model_id:
-        raise ValueError("Training model must match the model recorded in the reviewed dataset manifest.")
+    if manifest_model:
+        manifest_model_id, separator, manifest_revision = manifest_model.partition("@")
+        expected_revision = manifest_revision if separator else None
+        if manifest_model_id != config.model_id:
+            raise ValueError("Training model must match the model recorded in the reviewed dataset manifest.")
+        if config.model_revision != expected_revision:
+            raise ValueError("Training model revision must match the revision recorded in the reviewed dataset manifest.")
     gate_file = Path(gate_path).expanduser()
     try:
         gate = json.loads(gate_file.read_text(encoding="utf-8"))
