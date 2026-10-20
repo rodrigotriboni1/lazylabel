@@ -2,27 +2,81 @@
 
 import argparse
 import json
+import sqlite3
 import sys
+from pathlib import Path
+from typing import Optional, Sequence
 
 from finlabel.profile import inspect_csv
+from finlabel.project import init_project, load_project, save_project
+from finlabel.sources.base import ProjectConfig, SourceSpec
 
 
-def main() -> int:
+def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="finlabel")
     commands = parser.add_subparsers(dest="command", required=True)
     inspect = commands.add_parser("inspect", help="inspect a local CSV without printing rows")
     inspect.add_argument("csv_path", help="path to a UTF-8 CSV file")
     inspect.add_argument("--target", help="optional target column for class counts")
-    args = parser.parse_args()
+    project = commands.add_parser("project", help="manage a local FinLabel project")
+    project_commands = project.add_subparsers(dest="project_command", required=True)
+    project_init = project_commands.add_parser("init", help="initialize a local project workspace")
+    project_init.add_argument("path", help="project directory")
+    source = commands.add_parser("source", help="configure read-only local data sources")
+    source_commands = source.add_subparsers(dest="source_command", required=True)
+    add_csv = source_commands.add_parser("add-csv", help="add a CSV source to a project")
+    add_csv.add_argument("name")
+    add_csv.add_argument("path")
+    add_csv.add_argument("--project", default=".")
+    add_sqlite = source_commands.add_parser("add-sqlite", help="add a read-only SQLite table")
+    add_sqlite.add_argument("name")
+    add_sqlite.add_argument("path")
+    add_sqlite.add_argument("--table", required=True)
+    add_sqlite.add_argument("--id-column")
+    add_sqlite.add_argument("--project", default=".")
+    args = parser.parse_args(argv)
 
     try:
-        profile = inspect_csv(args.csv_path, target=args.target)
-    except (FileNotFoundError, PermissionError, ValueError, OSError) as exc:
+        if args.command == "inspect":
+            profile = inspect_csv(args.csv_path, target=args.target)
+            print(json.dumps(profile.to_dict(), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "project" and args.project_command == "init":
+            print(str(init_project(args.path)))
+            return 0
+        if args.command == "source":
+            config = load_project(args.project)
+            if args.name in config.sources:
+                raise ValueError("Source name already exists: {}".format(args.name))
+            kind = "csv" if args.source_command == "add-csv" else "sqlite"
+            spec = SourceSpec(
+                name=args.name,
+                kind=kind,
+                path=Path(args.path).expanduser().resolve(),
+                table=getattr(args, "table", None),
+                id_column=getattr(args, "id_column", None),
+            )
+            if kind == "csv":
+                from finlabel.sources.csv_source import CsvSource
+
+                CsvSource(spec).columns()
+            else:
+                from finlabel.sources.sqlite_source import SqliteSource
+
+                SqliteSource(spec).columns()
+            updated = ProjectConfig(
+                config.path,
+                {**config.sources, args.name: spec},
+                config.model_roles,
+                config.workspace_dir,
+            )
+            save_project(updated, config.path)
+            print(json.dumps({"name": args.name, "kind": kind, "path": str(spec.path)}, ensure_ascii=False))
+            return 0
+        raise ValueError("Unsupported command.")
+    except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, sqlite3.Error) as exc:
         print("finlabel: {}".format(exc), file=sys.stderr)
         return 2
-
-    print(json.dumps(profile.to_dict(), ensure_ascii=False, indent=2))
-    return 0
 
 
 if __name__ == "__main__":
