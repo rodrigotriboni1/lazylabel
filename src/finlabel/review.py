@@ -134,7 +134,7 @@ class ReviewLog:
 
 
 def _validate(event: ReviewDecision) -> None:
-    if event.schema_version not in _SUPPORTED_SCHEMA_VERSIONS:
+    if isinstance(event.schema_version, bool) or not isinstance(event.schema_version, int) or event.schema_version not in _SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError("Unsupported review-log schema version.")
     for field_name, value in (("event_id", event.event_id), ("created_at", event.created_at)):
         if not isinstance(value, str) or not value.strip():

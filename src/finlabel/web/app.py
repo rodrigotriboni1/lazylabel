@@ -518,6 +518,8 @@ def create_app(
             prior = log.read()
             duplicate = next((event for event in prior if event.idempotency_key == payload["idempotency_key"]), None)
             if duplicate:
+                if duplicate.run_id != payload["run_id"] or duplicate.suggestion_id != payload["suggestion_id"]:
+                    return JSONResponse({"error": "Idempotency key was already used for another review."}, status_code=409)
                 return JSONResponse({"event_id": duplicate.event_id, "duplicate": True})
             action_name = payload["action"]
             if action_name == "accepted":

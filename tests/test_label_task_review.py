@@ -54,6 +54,18 @@ class LabelTaskReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "line 2"):
                 ReviewLog(path).read()
 
+    def test_boolean_schema_version_is_not_treated_as_legacy_version_one(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "review.jsonl"
+            event = {
+                "event_id": "event-1", "schema_version": True, "record_id": "row-1",
+                "suggested_label": "low", "action": "accepted", "final_label": "low",
+                "model_ref": None, "created_at": "2026-10-19T00:00:00Z",
+            }
+            path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unsupported"):
+                ReviewLog(path).read()
+
 
 if __name__ == "__main__":
     unittest.main()

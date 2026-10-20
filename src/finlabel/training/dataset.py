@@ -98,7 +98,7 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
         if event.suggestion_id and event.run_id == run_id:
             latest[event.suggestion_id] = event
     eligible = []
-    excluded = {"unreviewed": 0, "rejected": 0, "stale": 0, "invalid": 0}
+    excluded = {"unreviewed": 0, "rejected": 0, "stale": 0, "invalid": int(metadata.get("invalid_count", 0))}
     for suggestion in suggestions:
         event = latest.get(suggestion["suggestion_id"])
         if event is None:
@@ -119,54 +119,54 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
         else:
             eligible.append((suggestion, event))
 
-    source_file_hash = _sha256(source.path) if getattr(source, "spec", None).kind == "csv" else None
-    records = {}
+    source_file_hash = _sha256(source.path) if source.spec.kind == "csv" else None
     wanted = {item[0]["record_id"]: item for item in eligible}
-    snapshot_hash = hashlib.sha256()
-    for record in source.iter_records(task.input_columns):
-        if record.record_id is None:
-            raise ValueError("Dataset preparation requires stable source record IDs.")
-        snapshot_hash.update(record.record_id.encode("utf-8"))
-        snapshot_hash.update(record.input_digest.encode("ascii"))
-        if record.record_id in wanted:
-            records[record.record_id] = record
-    source_snapshot_ref = (
-        "csv:" + str(source_file_hash) if source_file_hash is not None
-        else "sqlite:" + hashlib.sha256((str(source.spec.path.resolve()) + snapshot_hash.hexdigest()).encode("utf-8")).hexdigest()
-    )
-    if source_file_hash is not None and _sha256(source.path) != source_file_hash:
-        raise ValueError("CSV source changed during dataset preparation; no dataset was published.")
-
-    rows = []
     included_events = []
     included_suggestions = []
-    for suggestion, event in eligible:
-        record = records.get(suggestion["record_id"])
-        if record is None or record.input_digest != suggestion["input_digest"]:
-            excluded["stale"] += 1
-            continue
-        selected = {name: record.values[name] for name in task.input_columns}
-        rows.append({"prompt": _prompt(task, selected), "completion": event.final_label})
-        included_events.append(event.event_id)
-        included_suggestions.append(suggestion["suggestion_id"])
-
     destination = Path(output).expanduser().resolve()
     manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
     if destination.exists() or manifest_path.exists():
         raise FileExistsError("Refusing to overwrite an existing dataset or manifest.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     data_fd, data_tmp = tempfile.mkstemp(prefix=".finlabel-dataset-", dir=str(destination.parent))
-    manifest_fd, manifest_tmp = tempfile.mkstemp(prefix=".finlabel-manifest-", dir=str(destination.parent))
+    manifest_tmp = None
+    snapshot_hash = hashlib.sha256()
     try:
         with os.fdopen(data_fd, "w", encoding="utf-8", newline="\n") as handle:
-            for row in rows:
-                handle.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
+            for record in source.iter_records(task.input_columns):
+                if record.record_id is None:
+                    raise ValueError("Dataset preparation requires stable source record IDs.")
+                snapshot_hash.update(record.record_id.encode("utf-8"))
+                snapshot_hash.update(record.input_digest.encode("ascii"))
+                item = wanted.pop(record.record_id, None)
+                if item is None:
+                    continue
+                suggestion, event = item
+                if record.input_digest != suggestion["input_digest"]:
+                    excluded["stale"] += 1
+                    continue
+                selected = {name: record.values[name] for name in task.input_columns}
+                completion = json.dumps({"label": event.final_label}, ensure_ascii=False, separators=(",", ":"))
+                handle.write(json.dumps({"prompt": _prompt(task, selected), "completion": completion},
+                                        ensure_ascii=False, separators=(",", ":")) + "\n")
+                included_events.append(event.event_id)
+                included_suggestions.append(suggestion["suggestion_id"])
             handle.flush()
             os.fsync(handle.fileno())
+        excluded["stale"] += len(wanted)
+        if not included_events:
+            raise ValueError("No current accepted or corrected examples are available for export.")
+        source_snapshot_ref = (
+            "csv:" + str(source_file_hash) if source_file_hash is not None
+            else "sqlite:" + hashlib.sha256((str(source.spec.path.resolve()) + snapshot_hash.hexdigest()).encode("utf-8")).hexdigest()
+        )
+        if source_file_hash is not None and _sha256(source.path) != source_file_hash:
+            raise ValueError("CSV source changed during dataset preparation; no dataset was published.")
         dataset_sha256 = _sha256(Path(data_tmp))
+        manifest_fd, manifest_tmp = tempfile.mkstemp(prefix=".finlabel-manifest-", dir=str(destination.parent))
         manifest_data = {
             "run_id": run_id, "task_id": task_id, "source_name": source_name,
-            "model_ref": metadata.get("model_ref"), "path": str(destination), "row_count": len(rows),
+            "model_ref": metadata.get("model_ref"), "path": str(destination), "row_count": len(included_events),
             "selected_columns": list(task.input_columns), "included_event_ids": included_events,
             "included_suggestion_ids": included_suggestions, "source_snapshot_ref": source_snapshot_ref,
             "excluded_counts": excluded, "dataset_sha256": dataset_sha256,
@@ -179,6 +179,8 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
         os.replace(manifest_tmp, manifest_path)
     except BaseException:
         for temporary_path in (data_tmp, manifest_tmp):
+            if temporary_path is None:
+                continue
             try:
                 os.unlink(temporary_path)
             except FileNotFoundError:
@@ -189,6 +191,6 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
             pass
         raise
     return DatasetManifest(
-        destination, len(rows), tuple(task.input_columns), tuple(included_events),
+        destination, len(included_events), tuple(task.input_columns), tuple(included_events),
         tuple(included_suggestions), source_snapshot_ref, excluded, dataset_sha256,
     )

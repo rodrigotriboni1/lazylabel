@@ -1,7 +1,10 @@
 import json
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from finlabel.labeling.service import suggest_labels
 from finlabel.labeling.task import LabelTask, save_task
@@ -23,6 +26,38 @@ class FixedBackend:
 
 
 class LabelDatasetTests(unittest.TestCase):
+    def test_cli_label_review_and_dataset_commands_share_project_artifacts(self):
+        from finlabel.cli import main
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            init_project(root)
+            source_path = root / "ledger.csv"
+            source_path.write_text("id,amount,private\na,10,SECRET\nb,20,SECRET\n", encoding="utf-8")
+            config = load_project(root)
+            config.sources["ledger"] = SourceSpec("ledger", "csv", source_path, schema={"id": "string"})
+            save_project(config, config.path)
+            task_path = root / "risk.json"
+            task_path.write_text(json.dumps({
+                "task_id": "risk", "instructions": "Classify risk", "input_columns": ["amount"],
+                "labels": ["low", "high"], "model_id": "mock-local", "model_revision": None,
+            }), encoding="utf-8")
+            self.assertEqual(main(["task", "add", str(task_path), "--project", str(root)]), 0)
+            backend = FixedBackend()
+            label_output = io.StringIO()
+            with patch("finlabel.models.text_generation.TransformersTextGenerationBackend", return_value=backend), redirect_stdout(label_output):
+                self.assertEqual(main(["label", "ledger", "--task", "risk", "--project", str(root)]), 0)
+            run_id = json.loads(label_output.getvalue())["run_id"]
+            with patch("builtins.input", side_effect=["accept", "reject"]), redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["review", run_id, "--project", str(root)]), 0)
+            output = root / ".finlabel" / "training" / "cli.jsonl"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["dataset", "prepare", run_id, "--output", str(output), "--project", str(root)]), 0)
+            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(json.loads(rows[0]["completion"])["label"], "low")
+            self.assertNotIn("SECRET", output.read_text())
+
     def test_export_includes_only_latest_accepted_or_corrected_review_and_selected_fields(self):
         from finlabel.training.dataset import prepare_training_dataset
 
@@ -55,7 +90,7 @@ class LabelDatasetTests(unittest.TestCase):
             manifest = prepare_training_dataset(config, run.run_id, output)
 
             rows = [json.loads(line) for line in output.read_text().splitlines()]
-            self.assertEqual([row["completion"] for row in rows], ["low", "low"])
+            self.assertEqual([json.loads(row["completion"])["label"] for row in rows], ["low", "low"])
             self.assertEqual(manifest.row_count, 2)
             self.assertEqual(manifest.selected_columns, ("amount",))
             self.assertNotIn("SECRET", output.read_text())

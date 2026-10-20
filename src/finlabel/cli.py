@@ -241,11 +241,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
                              available_columns=tuple(column.name for column in source.columns()))
             suggestions = [json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-            selected_records = {record.record_id: record for record in source.iter_records(task.input_columns)}
+            source_records = iter(source.iter_records(task.input_columns))
             log = ReviewLog(config.workspace_dir / "review.jsonl")
-            current = {event.suggestion_id: event for event in log.read() if event.run_id == args.run_id and event.suggestion_id}
             for suggestion in suggestions:
-                record = selected_records.get(suggestion["record_id"])
+                record = next(source_records, None)
+                while record is not None and record.record_id != suggestion["record_id"]:
+                    record = next(source_records, None)
                 print(json.dumps({"suggested_label": suggestion["label"], "fields": dict(record.values) if record else None,
                                   "stale": record is None or record.input_digest != suggestion["input_digest"]}, ensure_ascii=False))
                 action_text = input("accept / edit LABEL / reject / skip> ").strip()
@@ -253,9 +254,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     continue
                 if not record or record.input_digest != suggestion["input_digest"]:
                     print("Source row changed; this suggestion cannot be reviewed.", file=sys.stderr)
-                    continue
-                if suggestion["suggestion_id"] in current:
-                    print("This suggestion already has a review event; use the web panel to inspect history.", file=sys.stderr)
                     continue
                 parts = action_text.split(maxsplit=1)
                 if parts == ["accept"]:

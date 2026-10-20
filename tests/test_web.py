@@ -198,6 +198,14 @@ class WebPanelTests(unittest.TestCase):
         duplicate = self.client.post("/api/label/review", json=review_payload, headers=headers)
         self.assertEqual(duplicate.status_code, 200)
         self.assertTrue(duplicate.json()["duplicate"])
+        reused_key = dict(review_payload)
+        reused_key.update({key: second_value for key, second_value in {
+            "suggestion_id": suggestions.json()["suggestions"][1]["suggestion_id"],
+            "record_id": suggestions.json()["suggestions"][1]["record_id"],
+            "input_digest": suggestions.json()["suggestions"][1]["input_digest"],
+        }.items()})
+        key_conflict = self.client.post("/api/label/review", json=reused_key, headers=headers)
+        self.assertEqual(key_conflict.status_code, 409)
         self.assertEqual(len(ReviewLog(config.workspace_dir / "review.jsonl").read()), 1)
 
         dataset = self.client.post(

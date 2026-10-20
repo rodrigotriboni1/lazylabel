@@ -73,7 +73,7 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
             raise ValueError("Dataset manifest must be a JSON object.")
-        rows = []
+        row_count = 0
         with dataset.open("r", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
                 if not line.strip():
@@ -83,13 +83,13 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
                     raise ValueError("Training rows must contain exactly prompt and completion fields.")
                 if not isinstance(row["prompt"], str) or not row["prompt"].strip() or not isinstance(row["completion"], str) or not row["completion"].strip():
                     raise ValueError("Training prompt and completion must be non-empty strings (line {}).".format(line_number))
-                rows.append(row)
+                row_count += 1
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Could not validate training dataset: {}".format(exc)) from exc
-    if not rows:
+    if not row_count:
         raise ValueError("Training dataset must contain at least one example.")
     dataset_hash = _sha256(dataset)
-    if manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != len(rows):
+    if manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != row_count:
         raise ValueError("Training dataset does not match its manifest hash or row count.")
     manifest_model = manifest.get("model_ref")
     if manifest_model and manifest_model.split("@", 1)[0] != config.model_id:
@@ -106,27 +106,27 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
         raise ValueError("Training gate is missing: {}".format(", ".join(missing)))
     if gate["model_id"] != config.model_id:
         raise ValueError("Training model does not match the project gate model_id.")
-    return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": len(rows), "rows": rows, "gate": gate}
+    return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": row_count, "dataset_path": dataset, "gate": gate}
 
 
 def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike) -> TrainingResult:
     validated = validate_training_request(dataset_path, config, gate_path=gate_path)
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     try:
-        from datasets import Dataset
+        from datasets import load_dataset
         from peft import LoraConfig
         from transformers import AutoModelForCausalLM, AutoTokenizer
         from trl import SFTConfig, SFTTrainer
     except ImportError as exc:
         raise RuntimeError("Install finlabel-local[train] to use PEFT/LoRA training.") from exc
 
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     output_parent = config.output_dir.parent
     output_parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".finlabel-adapter-", dir=str(output_parent)))
     try:
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
         model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
-        examples = Dataset.from_list(validated["rows"])
+        examples = load_dataset("json", data_files={"train": str(validated["dataset_path"])}, split="train")
         trainer = SFTTrainer(
             model=model,
             args=SFTConfig(
@@ -149,15 +149,19 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
             trl_version = version("trl")
             peft_version = version("peft")
             transformers_version = version("transformers")
+            datasets_version = version("datasets")
+            accelerate_version = version("accelerate")
+            torch_version = version("torch")
         except PackageNotFoundError:
-            trl_version = peft_version = transformers_version = "unknown"
+            trl_version = peft_version = transformers_version = datasets_version = accelerate_version = torch_version = "unknown"
         metadata = {
             "base_model_ref": config.model_id + ("@" + config.model_revision if config.model_revision else ""),
             "task_id": validated["manifest"].get("task_id"),
             "dataset_sha256": validated["dataset_sha256"],
             "parameters": {"epochs": config.epochs, "batch_size": config.batch_size,
                            "learning_rate": config.learning_rate, "lora_rank": config.lora_rank, "seed": config.seed},
-            "packages": {"trl": trl_version, "peft": peft_version, "transformers": transformers_version},
+            "packages": {"trl": trl_version, "peft": peft_version, "transformers": transformers_version,
+                         "datasets": datasets_version, "accelerate": accelerate_version, "torch": torch_version},
             "final_metrics": metrics,
             "telemetry": "disabled",
             "hub_upload": False,
