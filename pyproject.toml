@@ -7,10 +7,14 @@ name = "finlabel-local"
 version = "0.1.0"
 description = "Local-first tools for assisted labeling of financial data."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "FinLabel contributors" }]
 dependencies = []
+
+[project.optional-dependencies]
+web = ["fastapi>=0.115", "uvicorn>=0.30", "jinja2>=3.1", "plotly>=5.24"]
+models = ["torch>=2.2", "transformers>=4.45", "accelerate>=1.0"]
 
 [project.scripts]
 finlabel = "finlabel.cli:main"

@@ -21,6 +21,19 @@ O comando calcula a contagem de linhas, nomes de colunas, tipos aproximados, val
 
 O perfilamento não valida o significado da variável-alvo, não detecta PII e não substitui uma avaliação de qualidade ou compliance.
 
+## Projeto local
+
+```python
+from finlabel import init_project, load_project
+
+config_path = init_project("./meu-projeto")
+project = load_project(config_path)
+```
+
+A configuração fica em `.finlabel/project.json`; os diretórios locais para esquemas, análises, execuções e tarefas são criados sem copiar os arquivos de origem. Caminhos relativos das fontes são resolvidos a partir da pasta do projeto. `DataSource` declara se oferece IDs estáveis, leitura somente, streaming e seleção de colunas. Fontes sem IDs estáveis servem para agregações; revisão persistente de linhas exige um identificador único e digest dos campos selecionados.
+
+O núcleo continua sem dependências de interface ou modelos. Instale os extras `finlabel-local[web]` ou `finlabel-local[models]` somente quando precisar desses recursos.
+
 ## Registrar revisão humana
 
 ```python
