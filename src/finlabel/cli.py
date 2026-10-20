@@ -205,22 +205,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             uvicorn.run(app, host=args.host, port=args.port, access_log=False)
             return 0
         if args.command == "task" and args.task_command == "add":
-            from finlabel.labeling.task import load_task, save_task
+            from finlabel.labeling.task import load_task, save_task, task_file_path
 
             config = load_project(args.project)
             task = load_task(args.file)
-            destination = config.workspace_dir / "tasks" / (task.task_id + ".json")
+            destination = task_file_path(config.workspace_dir, task.task_id)
             save_task(task, destination)
             print(str(destination))
             return 0
         if args.command == "label":
             from finlabel.labeling.service import suggest_labels
-            from finlabel.labeling.task import load_task
+            from finlabel.labeling.task import load_task, task_file_path
             from finlabel.models.text_generation import TransformersTextGenerationBackend
 
             config = load_project(args.project)
             source = open_source(config, args.source)
-            task_path = config.workspace_dir / "tasks" / (args.task + ".json")
+            task_path = task_file_path(config.workspace_dir, args.task)
             task = load_task(task_path, available_columns=tuple(column.name for column in source.columns()))
             backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
             run = suggest_labels(source, task, backend, workspace_dir=config.workspace_dir)
@@ -231,14 +231,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "review":
-            from finlabel.labeling.task import load_task, validate_label
+            from finlabel.labeling.task import load_task, task_file_path, validate_label
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(args.project)
             run_dir = config.workspace_dir / "runs" / args.run_id
             metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
             source = open_source(config, metadata["source_name"])
-            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
                              available_columns=tuple(column.name for column in source.columns()))
             suggestions = [json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
             source_records = iter(source.iter_records(task.input_columns))

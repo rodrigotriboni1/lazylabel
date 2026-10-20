@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping, Sequence, Union
 
 from finlabel.labeling.suggestions import parse_suggestion
-from finlabel.labeling.task import load_task
+from finlabel.labeling.task import load_task, task_file_path
 from finlabel.project import open_source
 from finlabel.review import ReviewAction, ReviewLog
 
@@ -68,7 +68,7 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
     source_name, task_id = metadata.get("source_name"), metadata.get("task_id")
     if not isinstance(source_name, str) or not isinstance(task_id, str):
         raise ValueError("Suggestion run is missing its source or task reference.")
-    task_path = workspace / "tasks" / (task_id + ".json")
+    task_path = task_file_path(workspace, task_id)
     source = open_source(project, source_name)
     task = load_task(task_path, available_columns=tuple(column.name for column in source.columns()))
     suggestions_path = run_dir / "suggestions.jsonl"
