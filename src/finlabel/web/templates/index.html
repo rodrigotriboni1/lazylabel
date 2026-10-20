@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>FinLabel — análise local</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="page-header">
+      <p class="eyebrow">FINLABEL · EXECUÇÃO LOCAL</p>
+      <h1>Explore e analise seus dados</h1>
+      <p>As fontes permanecem somente leitura. Planos são revisados antes de executar; gráficos e resultados ficam neste projeto.</p>
+    </header>
+
+    <section class="panel" aria-labelledby="source-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">01 · FONTE</p><h2 id="source-title">Fontes conectadas</h2></div>
+        <span class="badge">Somente leitura</span>
+      </div>
+      {% if sources %}
+        <label for="source-select">Fonte para análise</label>
+        <select id="source-select">
+          {% for source in sources %}<option value="{{ source.name }}">{{ source.name }}</option>{% endfor %}
+        </select>
+        <div id="source-schemas" class="source-schemas">
+          {% for source in sources %}
+            <article class="source-schema" data-source="{{ source.name }}">
+              <h3>{{ source.name }}</h3>
+              {% if source.error %}<p class="error-text">{{ source.error }}</p>
+              {% else %}
+                <ul>{% for column in source.columns %}<li><code>{{ column.name }}</code><span>{{ column.inferred_type }}</span></li>{% endfor %}</ul>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+        <div class="button-row">
+          <button id="capture-schema" class="button secondary" type="button">Capturar esquema candidato</button>
+          <button id="confirm-schema" class="button secondary" type="button">Confirmar esquema abaixo</button>
+          <button id="monitor-source" class="button ghost" type="button">Monitorar fonte</button>
+        </div>
+        <label for="schema-json">Esquema candidato (edite antes de confirmar)</label>
+        <textarea id="schema-json" rows="8" spellcheck="false" aria-describedby="schema-help"></textarea>
+        <p id="schema-help" class="helper">A captura não salva um baseline. Revise colunas obrigatórias e defina manualmente os limites de valores ausentes.</p>
+        <div id="monitor-findings" class="notice" role="status" aria-live="polite"></div>
+      {% else %}
+        <p>Nenhuma fonte configurada. Use <code>finlabel source add-csv</code> ou <code>finlabel source add-sqlite</code> pela CLI.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="analysis-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">02 · ANÁLISE</p><h2 id="analysis-title">Pergunte aos seus dados</h2></div>
+        <span class="badge">Máx. {{ max_page_rows }} linhas por visualização</span>
+      </div>
+      <label for="question">Pergunta</label>
+      <input id="question" maxlength="2000" placeholder="Como a participação de cada produto mudou por mês?">
+      <div class="button-row">
+        <button id="propose-plan" class="button secondary" type="button">Propor plano com IA local</button>
+        <button id="run-analysis" class="button primary" type="button">Executar plano revisado</button>
+      </div>
+      <label for="plan-json">Plano JSON (inspecione ou edite antes de executar)</label>
+      <textarea id="plan-json" rows="12" spellcheck="false"></textarea>
+      <p class="helper">A execução usa apenas operações permitidas. Datas e valores numéricos exigem mapeamento explícito.</p>
+      <div id="analysis-status" class="notice" role="status" aria-live="polite"></div>
+      <section id="analysis-result" class="result-section" hidden aria-live="polite">
+        <div class="section-heading"><h3>Resultado calculado</h3><a id="open-analysis" target="_blank" rel="noopener">Abrir execução</a></div>
+        <div id="highlights" class="highlights"></div>
+        <div class="table-scroll"><table id="result-table"></table></div>
+        <p id="result-count" class="helper"></p>
+        <iframe id="chart-frame" title="Gráfico de análise" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+      </section>
+    </section>
+    <footer><p>FinLabel mantém a origem intacta. A pessoa desenvolvedora define campos, filtros, denominadores e critérios de qualidade.</p></footer>
+  </main>
+</body>
+</html>

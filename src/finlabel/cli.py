@@ -62,6 +62,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     analyze.add_argument("--plan", help="explicit JSON analysis plan; skips model planning")
     analyze.add_argument("--output", help="new output directory; existing paths are never overwritten")
     analyze.add_argument("--project", default=".")
+    serve = commands.add_parser("serve", help="start the local web panel")
+    serve.add_argument("--project", default=".")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
 
     try:
@@ -159,6 +163,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "valid_row_count": run.result.valid_row_count,
                 "highlights": list(run.rendered_highlights),
             }, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "serve":
+            from finlabel.web.app import create_app
+
+            app = create_app(args.project, host=args.host, port=args.port)
+            try:
+                import uvicorn
+            except ImportError as exc:
+                raise RuntimeError("Install finlabel-local[web] to run the local panel.") from exc
+            uvicorn.run(app, host=args.host, port=args.port, access_log=False)
             return 0
         raise ValueError("Unsupported command.")
     except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:
