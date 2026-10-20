@@ -3,11 +3,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from finlabel.labeling.task import LabelTask, load_task, save_task
+from finlabel.labeling.task import LabelTask, load_task, save_task, task_file_path
 from finlabel.review import ReviewAction, ReviewLog
 
 
 class LabelTaskReviewTests(unittest.TestCase):
+    def test_task_storage_path_rejects_traversal_ids(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, "safe filename"):
+                task_file_path(temporary, "../../outside")
+
     def test_task_round_trip_validates_selected_columns_and_labels(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "tasks" / "risk.json"

@@ -199,6 +199,9 @@ def create_app(
         metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         if metadata.get("run_id") != run_id:
             raise ValueError("Suggestion run metadata does not match the requested run.")
+        from finlabel.labeling.task import task_file_path
+
+        task_file_path(config.workspace_dir, metadata.get("task_id"))
         suggestions = [
             json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()
@@ -432,11 +435,11 @@ def create_app(
             return JSONResponse({"error": "source and task are required"}, status_code=400)
         try:
             from finlabel.labeling.service import suggest_labels
-            from finlabel.labeling.task import load_task
+            from finlabel.labeling.task import load_task, task_file_path
 
             config = load_project(project_path)
             source = open_source(config, source_name)
-            task = load_task(config.workspace_dir / "tasks" / (task_id + ".json"),
+            task = load_task(task_file_path(config.workspace_dir, task_id),
                              available_columns=tuple(column.name for column in source.columns()))
             backend = get_backend(config, role="labeling", model_id=task.model_id, revision=task.model_revision)
             if backend is None:
@@ -452,13 +455,13 @@ def create_app(
     @app.get("/api/label/suggestions")
     async def label_suggestions(run_id: str):
         try:
-            from finlabel.labeling.task import load_task
+            from finlabel.labeling.task import load_task, task_file_path
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(project_path)
             run_dir, metadata, suggestions = read_label_run(config, run_id)
             source = open_source(config, metadata["source_name"])
-            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
                              available_columns=tuple(column.name for column in source.columns()))
             events = [event for event in ReviewLog(config.workspace_dir / "review.jsonl").read()
                       if event.run_id == run_id and event.suggestion_id]
@@ -499,7 +502,7 @@ def create_app(
         if not re.fullmatch(r"[0-9a-f]{32}", payload["idempotency_key"]):
             return JSONResponse({"error": "Invalid review idempotency key."}, status_code=400)
         try:
-            from finlabel.labeling.task import load_task, validate_label
+            from finlabel.labeling.task import load_task, task_file_path, validate_label
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(project_path)
@@ -508,7 +511,7 @@ def create_app(
             if item is None or item["record_id"] != payload["record_id"] or item["input_digest"] != payload["input_digest"]:
                 return JSONResponse({"error": "Suggestion provenance does not match this review."}, status_code=409)
             source = open_source(config, metadata["source_name"])
-            task = load_task(config.workspace_dir / "tasks" / (metadata["task_id"] + ".json"),
+            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
                              available_columns=tuple(column.name for column in source.columns()))
             record = next((row for row in source.iter_records(task.input_columns)
                            if row.record_id == item["record_id"]), None)

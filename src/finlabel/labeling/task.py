@@ -11,6 +11,12 @@ PathLike = Union[str, Path]
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
+def task_file_path(workspace_dir: PathLike, task_id: str) -> Path:
+    if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
+        raise ValueError("task_id must use 1-64 safe filename characters.")
+    return Path(workspace_dir).expanduser() / "tasks" / (task_id + ".json")
+
+
 @dataclass(frozen=True)
 class LabelTask:
     task_id: str
