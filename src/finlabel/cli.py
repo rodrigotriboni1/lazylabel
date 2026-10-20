@@ -12,6 +12,8 @@ from finlabel.profile import inspect_csv
 from finlabel.project import init_project, load_project, open_source, save_project
 from finlabel.sources.base import ProjectConfig, SourceSpec
 from finlabel.monitor import capture_schema, load_schema_baseline, monitor_source, save_schema_baseline
+from finlabel.analysis.schema import plan_from_dict
+from finlabel.analysis.service import analyze_source
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -51,6 +53,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     monitor.add_argument("source")
     monitor.add_argument("--baseline", required=True)
     monitor.add_argument("--project", default=".")
+    analyze = commands.add_parser("analyze", help="run a validated local analysis and save a chart")
+    analyze.add_argument("source")
+    analyze.add_argument("--question", required=True)
+    analyze.add_argument("--model-id")
+    analyze.add_argument("--revision")
+    analyze.add_argument("--device", default="auto")
+    analyze.add_argument("--plan", help="explicit JSON analysis plan; skips model planning")
+    analyze.add_argument("--output", help="new output directory; existing paths are never overwritten")
+    analyze.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -119,8 +130,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             findings = monitor_source(open_source(config, args.source), load_schema_baseline(args.baseline))
             print(json.dumps([asdict(finding) for finding in findings], ensure_ascii=False, indent=2))
             return 1 if any(finding.severity == "error" for finding in findings) else 0
+        if args.command == "analyze":
+            if not args.plan and not args.model_id:
+                raise ValueError("Provide --plan or explicitly select a local --model-id.")
+            config = load_project(args.project)
+            source = open_source(config, args.source)
+            plan_override = None
+            if args.plan:
+                plan_path = Path(args.plan).expanduser()
+                plan_override = plan_from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
+            backend = None
+            if args.model_id:
+                from finlabel.models.text_generation import TransformersTextGenerationBackend
+
+                backend = TransformersTextGenerationBackend(args.model_id, args.revision, args.device)
+            run = analyze_source(
+                source,
+                args.question,
+                backend,
+                plan_override,
+                output_path=args.output,
+                output_parent=config.workspace_dir / "analyses",
+            )
+            print(json.dumps({
+                "run_id": run.run_id,
+                "artifact_dir": str(run.artifact_dir),
+                "rows": len(run.result.rows),
+                "valid_row_count": run.result.valid_row_count,
+                "highlights": list(run.rendered_highlights),
+            }, ensure_ascii=False, indent=2))
+            return 0
         raise ValueError("Unsupported command.")
-    except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, sqlite3.Error) as exc:
+    except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:
         print("finlabel: {}".format(exc), file=sys.stderr)
         return 2
 

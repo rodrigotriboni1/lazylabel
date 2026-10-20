@@ -54,6 +54,18 @@ finlabel monitor vendas --baseline ./candidate-schema.json --project ./meu-proje
 
 O primeiro comando grava um candidato editável. Tipos capturados são inferências iniciais; confirme ou ajuste colunas obrigatórias e limites de valores ausentes antes de usar o arquivo como baseline. Nenhum limite de qualidade é presumido.
 
+## Análise e gráficos offline
+
+Um plano revisável pode ser salvo em JSON e executado sem carregar um modelo:
+
+```bash
+finlabel analyze vendas --question "Como as vendas mudaram por mês?" --plan ./analysis-plan.json --project ./meu-projeto
+```
+
+Sem `--plan`, informe `--model-id` para usar um modelo Transformers local; os pesos só são carregados quando esse comando é executado. O planejador recebe a pergunta e nomes/tipos de colunas, sem linhas da fonte. Market share exige uma medida, dimensão, período e denominador definidos. As operações numéricas são determinísticas e usam `Decimal`; datas e números precisam de mapeamento explícito por `finlabel source set-type`.
+
+Cada execução cria uma nova pasta `.finlabel/analyses/<run_id>/` com `plan.json`, `result.json`, `chart.html` independente de CDN e `run.json` com hashes. O hover do gráfico preserva o valor decimal exato; os dados tabulados em `result.json` são a referência numérica.
+
 ## Registrar revisão humana
 
 ```python

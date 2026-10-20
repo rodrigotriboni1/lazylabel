@@ -18,10 +18,12 @@ from finlabel.analysis.schema import (
     plan_to_dict,
     validate_analysis_plan,
 )
+from finlabel.analysis.service import AnalysisRun, analyze_source, result_to_dict
 
 __all__ = [
     "AnalysisPlan",
     "AnalysisResult",
+    "AnalysisRun",
     "AnalysisClarificationError",
     "FilterSpec",
     "HighlightRef",
@@ -31,6 +33,8 @@ __all__ = [
     "plan_analysis",
     "plan_highlights",
     "plan_to_dict",
+    "analyze_source",
+    "result_to_dict",
     "render_highlight",
     "run_analysis",
     "validate_analysis_plan",
