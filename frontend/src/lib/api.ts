@@ -27,6 +27,63 @@ export interface LabelTask {
   min_examples_per_label: Record<string, number>
 }
 
+export interface TrainingGate { authorized: boolean; missing: string[]; model_id: string | null }
+export interface TrainingDataset { name: string; rows: number | null; task_id: string | null; source: string | null; sha256: string | null }
+export interface TrainingTask { task_id: string; labels: string[]; model_ref: string }
+export interface TrainingQuality {
+  total: number; label_counts: Record<string, number>; duplicate_suggestion_ids: number
+  duplicate_event_ids: number; duplicate_examples: number; excluded_counts: Record<string, number>
+  source_snapshot_matches: boolean; warnings: string[]; blockers: string[]; ready: boolean
+}
+export interface TrainingVersion {
+  version_id: string; base_model_ref: string; dataset_sha256: string; split_sha256: string
+  created_at: string; state: string; has_evaluation: boolean; is_active: boolean
+  evaluation?: TrainingEvaluation
+}
+export interface TrainingEvaluation {
+  overall: Record<string, Record<string, number | null>>
+  per_label: { label: string; model: string; support: number; precision: number | null; recall: number | null; f1: number | null }[]
+  confusion: Record<string, Record<string, Record<string, number>>>
+  error_count: number; warnings: string[]
+}
+export interface TrainingOverview {
+  datasets: TrainingDataset[]; tasks: TrainingTask[]; gate: TrainingGate
+  active_version: string | null; versions: TrainingVersion[]; jobs: TrainingJob[]
+}
+export interface TrainingJob {
+  job_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed'; progress: string
+  error: string | null; model_id: string; dataset_sha256: string; final_metrics: Record<string, number>
+  bundle_id: string | null; version_id: string | null; created_at?: string
+}
+
+export function getTrainingOverview() { return request<TrainingOverview>('/api/train/overview') }
+export function checkTrainingDataset(dataset_name: string) {
+  return postJson<TrainingQuality, { dataset_name: string }>('/api/train/check', { dataset_name })
+}
+export function splitTrainingDataset(body: {
+  dataset_name: string; strategy: string; holdout_fraction: number; seed: number
+  group_column?: string; time_column?: string
+}) {
+  return postJson<{ bundle_id: string; task_id: string; train_count: number; holdout_count: number
+    strategy: string; holdout_fraction: number; seed: number; label_counts: Record<string, Record<string, number>>
+    warnings: string[]; quality: TrainingQuality }, typeof body>('/api/train/split', body)
+}
+export function submitTraining(body: {
+  bundle_id: string; model_id: string; confirmed: boolean; exploratory_confirmed: boolean
+  revision?: string | null; epochs?: number; batch_size?: number; learning_rate?: number; lora_rank?: number; seed?: number
+}) { return postJson<{ job_id: string; state: string; progress: string }, typeof body>('/api/train/submit', body) }
+export function getTrainingJob(jobId: string) { return request<TrainingJob>(`/api/train/jobs/${encodeURIComponent(jobId)}`) }
+export function getTrainingVersions() {
+  return request<{ versions: TrainingVersion[]; active_version: string | null }>('/api/train/versions')
+}
+export function evaluateTrainingCandidate(version_id: string) {
+  return postJson<{ version: TrainingVersion; report: TrainingEvaluation }, { version_id: string; confirmed: true }>(
+    '/api/train/evaluate', { version_id, confirmed: true })
+}
+export function transitionTrainingVersion(body: { action: 'activate' | 'reject' | 'rollback'; version_id: string; confirmed: true; reason?: string }) {
+  return postJson<{ version: TrainingVersion; active_version: string | null }, typeof body>('/api/train/transition', body)
+}
+
 export interface LabelSuggestion {
   suggestion_id: string
   record_id: string

@@ -600,6 +600,143 @@ def create_app(
         except (OSError, ValueError, KeyError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
+    def training_dataset_path(config, name):
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.jsonl", name):
+            raise ValueError("Select a valid local reviewed dataset.")
+        directory = (config.workspace_dir / "training").resolve()
+        candidate = directory / name
+        if candidate.is_symlink():
+            raise ValueError("Symbolic links are not accepted for training datasets.")
+        path = candidate.resolve()
+        if path.parent != directory or not path.is_file():
+            raise ValueError("Dataset must be a regular file inside the project training directory.")
+        return path
+
+    def version_payload(version, active_id=None):
+        return {
+            "version_id": version.version_id, "base_model_ref": version.base_model_ref,
+            "dataset_sha256": version.dataset_sha256, "split_sha256": version.split_sha256,
+            "created_at": version.created_at, "state": version.state,
+            "has_evaluation": version.evaluation_path is not None,
+            "is_active": version.version_id == active_id,
+        }
+
+    @app.get("/api/train/overview")
+    async def train_overview():
+        try:
+            from finlabel.training.dataset import dataset_manifest_path
+            from finlabel.training.registry import ModelRegistry
+
+            config = load_project(project_path)
+            datasets = []
+            directory = config.workspace_dir / "training"
+            if directory.is_dir():
+                for path in sorted(directory.glob("*.jsonl")):
+                    if "." in path.name and path.name.endswith(".jsonl"):
+                        try:
+                            manifest = json.loads(dataset_manifest_path(path).read_text(encoding="utf-8"))
+                            datasets.append({"name": path.name, "rows": manifest.get("row_count", 0),
+                                             "task_id": manifest.get("task_id"), "source": manifest.get("source_name"),
+                                             "sha256": manifest.get("dataset_sha256")})
+                        except (OSError, ValueError, json.JSONDecodeError):
+                            datasets.append({"name": path.name, "rows": None, "task_id": None,
+                                             "source": None, "sha256": None})
+            tasks = []
+            task_dir = config.workspace_dir / "tasks"
+            if task_dir.is_dir():
+                from finlabel.labeling.task import load_task
+                tasks = [{"task_id": task.task_id, "labels": list(task.labels),
+                          "model_ref": task.model_id + ("@" + task.model_revision if task.model_revision else "")}
+                         for task in (load_task(item) for item in sorted(task_dir.glob("*.json")))]
+            gate_path = config.workspace_dir / "training-gate.json"
+            gate = {"authorized": False,
+                    "missing": ["model_id", "license", "hardware", "data_policy", "evaluation_protocol"],
+                    "model_id": None}
+            if gate_path.is_file() and not gate_path.is_symlink():
+                try:
+                    raw_gate = json.loads(gate_path.read_text(encoding="utf-8"))
+                    gate = {"authorized": raw_gate.get("authorized") is True,
+                            "missing": [name for name in ("model_id", "license", "hardware", "data_policy", "evaluation_protocol")
+                                        if not isinstance(raw_gate.get(name), str) or not raw_gate[name].strip()],
+                            "model_id": raw_gate.get("model_id") if isinstance(raw_gate.get("model_id"), str) else None}
+                except (OSError, ValueError, json.JSONDecodeError):
+                    gate = {"authorized": False, "missing": ["gate inválido"], "model_id": None}
+            registry = ModelRegistry(config.workspace_dir)
+            active = registry.active()
+            versions = registry.list_versions()
+            version_items = []
+            for item in versions:
+                summary = version_payload(item, active.version_id if active else None)
+                if item.evaluation_path:
+                    evaluation = json.loads(item.evaluation_path.read_text(encoding="utf-8"))
+                    summary["evaluation"] = {"overall": evaluation.get("overall", {}),
+                        "per_label": evaluation.get("per_label", []), "confusion": evaluation.get("confusion", {}),
+                        "error_count": len(evaluation.get("error_ids", [])), "warnings": evaluation.get("warnings", [])}
+                version_items.append(summary)
+            jobs = get_training_jobs(config.workspace_dir).recent()
+            job_items = [{"job_id": job.job_id, "state": job.state, "progress": job.progress,
+                          "error": job.error, "model_id": job.model_id, "dataset_sha256": job.dataset_sha256,
+                          "final_metrics": dict(job.final_metrics), "bundle_id": Path(job.bundle_dir).name if job.bundle_dir else None,
+                          "version_id": job.version_id, "created_at": job.created_at} for job in jobs]
+            response_payload = {"datasets": datasets, "tasks": tasks, "gate": gate,
+                                "active_version": active.version_id if active else None,
+                                "versions": version_items, "jobs": job_items}
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Training metadata exceeds the local response limit; use the CLI."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/train/check")
+    async def train_check(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        try:
+            from dataclasses import asdict
+            from finlabel.training.quality import inspect_training_dataset
+            config = load_project(project_path)
+            report = inspect_training_dataset(config, training_dataset_path(config, payload.get("dataset_name")))
+            response_payload = asdict(report)
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Quality report exceeds the local response limit; use the CLI."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/train/split")
+    async def train_split(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        try:
+            from dataclasses import asdict
+            from finlabel.training.dataset import load_dataset_manifest
+            from finlabel.training.split import SplitConfig, create_training_bundle
+            from finlabel.labeling.task import load_task, task_file_path
+            config = load_project(project_path)
+            dataset = training_dataset_path(config, payload.get("dataset_name"))
+            manifest = load_dataset_manifest(dataset)
+            task = load_task(task_file_path(config.workspace_dir, manifest["task_id"]))
+            strategy = payload.get("strategy", "stratified_random")
+            opts = {"strategy": strategy, "holdout_fraction": payload.get("holdout_fraction", 0.2),
+                    "seed": payload.get("seed", 42), "group_column": payload.get("group_column"),
+                    "time_column": payload.get("time_column")}
+            split_config = SplitConfig(**opts)
+            output = config.workspace_dir / "training" / "bundles" / secrets.token_hex(16)
+            bundle = create_training_bundle(config, dataset, task, split_config, output)
+            summary = json.loads(bundle.manifest_path.read_text(encoding="utf-8"))
+            response_payload = {"bundle_id": bundle.manifest_path.parent.name, "task_id": task.task_id,
+                "train_count": bundle.train_count, "holdout_count": bundle.holdout_count,
+                "strategy": summary["strategy"], "holdout_fraction": summary["holdout_fraction"],
+                "seed": summary["seed"], "label_counts": summary["label_distributions"],
+                "warnings": list(bundle.warnings), "quality": asdict(bundle.quality_report)}
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Split summary exceeds the local response limit; use the CLI."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
     @app.post("/api/train/submit")
     async def train_submit(request: Request):
         payload, error = await _read_json(request)
@@ -607,10 +744,10 @@ def create_app(
             return JSONResponse({"error": error}, status_code=400)
         if payload.get("confirmed") is not True:
             return JSONResponse({"error": "Review the model, dataset, and output summary, then confirm explicitly."}, status_code=400)
-        dataset_name = payload.get("dataset_name")
+        bundle_id = payload.get("bundle_id")
         model_id = payload.get("model_id")
-        if not isinstance(dataset_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.jsonl", dataset_name):
-            return JSONResponse({"error": "Select a valid local training dataset."}, status_code=400)
+        if not isinstance(bundle_id, str) or not re.fullmatch(r"[0-9a-f]{32}", bundle_id):
+            return JSONResponse({"error": "Select a valid local training bundle."}, status_code=400)
         if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 512:
             return JSONResponse({"error": "model_id must be a non-empty value from the dataset summary."}, status_code=400)
         if "@" in model_id and payload.get("revision") is None:
@@ -618,12 +755,14 @@ def create_app(
         else:
             inferred_revision = None
         try:
-            from finlabel.training.backend import TrainingConfig
+            from finlabel.training.backend import TrainingConfig, load_training_bundle
 
             config = load_project(project_path)
-            dataset_path = (config.workspace_dir / "training" / dataset_name).resolve()
-            if dataset_path.parent != (config.workspace_dir / "training").resolve():
-                return JSONResponse({"error": "Dataset path must remain inside the project training directory."}, status_code=400)
+            bundle_candidate = config.workspace_dir / "training" / "bundles" / bundle_id
+            bundle_dir = bundle_candidate.resolve()
+            if bundle_candidate.is_symlink() or bundle_dir.parent != (config.workspace_dir / "training" / "bundles").resolve():
+                return JSONResponse({"error": "Training bundle must remain inside the project workspace."}, status_code=400)
+            bundle = load_training_bundle(bundle_dir)
             output_dir = config.workspace_dir / "models" / "adapters" / secrets.token_hex(16)
             training_config = TrainingConfig(
                 model_id, payload.get("revision") or inferred_revision, output_dir,
@@ -631,7 +770,8 @@ def create_app(
                 payload.get("learning_rate", 0.0002), payload.get("lora_rank", 8), payload.get("seed", 42),
             )
             manager = get_training_jobs(config.workspace_dir)
-            job_id = manager.submit(dataset_path, training_config)
+            job_id = manager.submit(bundle, training_config,
+                                    exploratory_confirmed=payload.get("exploratory_confirmed") is True)
             status = manager.get(job_id)
         except (OSError, ValueError, KeyError, RuntimeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
@@ -648,7 +788,94 @@ def create_app(
             "job_id": status.job_id, "state": status.state, "progress": status.progress,
             "error": status.error, "model_id": status.model_id,
             "dataset_sha256": status.dataset_sha256, "final_metrics": dict(status.final_metrics),
+            "bundle_id": Path(status.bundle_dir).name if status.bundle_dir else None,
+            "version_id": status.version_id,
         })
+
+    @app.post("/api/train/evaluate")
+    async def train_evaluate(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if payload.get("confirmed") is not True:
+            return JSONResponse({"error": "Confirme a avaliação local no holdout."}, status_code=400)
+        version_id = payload.get("version_id")
+        try:
+            from dataclasses import asdict
+            from finlabel.training.backend import load_training_bundle
+            from finlabel.training.evaluation import evaluate_candidate
+            from finlabel.training.registry import ModelRegistry
+            from finlabel.labeling.task import load_task, task_file_path
+            config = load_project(project_path)
+            registry = ModelRegistry(config.workspace_dir)
+            version = next((item for item in registry.list_versions() if item.version_id == version_id), None)
+            if version is None:
+                return JSONResponse({"error": "Model candidate was not found."}, status_code=404)
+            if version.state != "awaiting_evaluation":
+                return JSONResponse({"error": "Only a candidate awaiting evaluation can be evaluated."}, status_code=409)
+            bundle = load_training_bundle(version.bundle_manifest_path.parent)
+            manifest = json.loads(version.bundle_manifest_path.read_text(encoding="utf-8"))
+            task = load_task(task_file_path(config.workspace_dir, manifest["task_id"]))
+            output = config.workspace_dir / "training" / "evaluations" / (version.version_id + "-" + secrets.token_hex(8) + ".json")
+            report = evaluate_candidate(bundle, task, version.adapter_path, output_path=output)
+            report_payload = {"overall": report.overall, "per_label": [asdict(item) for item in report.per_label],
+                "confusion": report.confusion, "error_count": len(report.error_ids), "warnings": list(report.warnings)}
+            if len(json.dumps(report_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Evaluation report exceeds the local response limit; inspect its local artifact."}, status_code=422)
+            updated = registry.record_evaluation(version.version_id, output)
+            return JSONResponse({"version": version_payload(updated), "report": report_payload})
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/train/versions")
+    async def train_versions():
+        try:
+            from finlabel.training.registry import ModelRegistry
+            config = load_project(project_path)
+            registry = ModelRegistry(config.workspace_dir)
+            active = registry.active()
+            versions = registry.list_versions()
+            result = []
+            for version in versions:
+                item = version_payload(version, active.version_id if active else None)
+                if version.evaluation_path:
+                    evaluation = json.loads(version.evaluation_path.read_text(encoding="utf-8"))
+                    item["evaluation"] = {"overall": evaluation.get("overall", {}),
+                        "per_label": evaluation.get("per_label", []), "confusion": evaluation.get("confusion", {}),
+                        "error_count": len(evaluation.get("error_ids", [])), "warnings": evaluation.get("warnings", [])}
+                result.append(item)
+            response_payload = {"versions": result, "active_version": active.version_id if active else None}
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Version history exceeds the local response limit; use the CLI."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/train/transition")
+    async def train_transition(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if payload.get("confirmed") is not True:
+            return JSONResponse({"error": "A confirmação explícita da transição é necessária."}, status_code=400)
+        action, version_id = payload.get("action"), payload.get("version_id")
+        try:
+            from finlabel.training.registry import ModelRegistry
+            config = load_project(project_path)
+            registry = ModelRegistry(config.workspace_dir)
+            if action == "activate":
+                updated = registry.activate(version_id)
+            elif action == "reject":
+                updated = registry.reject_candidate(version_id, payload.get("reason", "Rejeitado pelo usuário no painel local."))
+            elif action == "rollback":
+                updated = registry.rollback(version_id)
+            else:
+                return JSONResponse({"error": "action must be activate, reject, or rollback."}, status_code=400)
+            active = registry.active()
+            return JSONResponse({"version": version_payload(updated, active.version_id if active else None),
+                                 "active_version": active.version_id if active else None})
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=409)
 
     @app.get("/analysis/{run_id}", response_class=HTMLResponse)
     async def analysis_page(request: Request, run_id: str):
