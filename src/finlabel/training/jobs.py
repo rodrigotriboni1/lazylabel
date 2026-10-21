@@ -189,6 +189,9 @@ class TrainingJobManager:
             raise KeyError("Model candidate was not found.")
         if candidate.state != "awaiting_evaluation":
             raise ValueError("Only a candidate awaiting evaluation can be evaluated.")
+        # Pin the queue decision to the registry's immutable artifact hashes.
+        # The worker repeats this after dequeue to catch changes made while queued.
+        registry._validate_intact(candidate)
         with self._lock:
             if ((self._worker is not None and self._worker.is_alive())
                     or (self._evaluation_worker is not None and self._evaluation_worker.is_alive())):
@@ -239,6 +242,12 @@ class TrainingJobManager:
             manifest = json.loads(candidate.bundle_manifest_path.read_text(encoding="utf-8"))
             task = load_task(task_file_path(self.workspace_dir, manifest["task_id"]))
             output = self.workspace_dir / "training" / "evaluations" / (candidate.version_id + "-" + secrets.token_hex(8) + ".json")
+            # Recheck immediately before entering the evaluator: it is the first
+            # point that may load adapter weights or consume holdout rows.
+            candidate = registry.version(queued.version_id)
+            if candidate.state != "awaiting_evaluation":
+                raise ValueError("Candidate is no longer awaiting evaluation.")
+            registry._validate_intact(candidate)
             evaluate_candidate(bundle, task, candidate.adapter_path, output_path=output)
             registry.record_evaluation(candidate.version_id, output)
             self._set_evaluation_status(EvaluationJobStatus(

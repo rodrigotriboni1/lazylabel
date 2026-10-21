@@ -403,7 +403,14 @@ class ModelRegistry:
         if adapter_digest(version.adapter_path) != version.adapter_sha256:
             raise ValueError("Candidate adapter is missing or its hash has changed.")
         bundle, _ = self._read_json(version.bundle_manifest_path, "bundle manifest")
-        if bundle.get("dataset_sha256") != version.dataset_sha256 or bundle.get("split_sha256") != version.split_sha256:
+        stable = {key: value for key, value in bundle.items()
+                  if key not in {"dataset_path", "dataset_manifest_path", "split_sha256"}}
+        split_digest = hashlib.sha256(json.dumps(
+            stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
+        if (bundle.get("dataset_sha256") != version.dataset_sha256
+                or bundle.get("split_sha256") != version.split_sha256
+                or split_digest != version.split_sha256):
             raise ValueError("Candidate bundle hashes no longer match the version.")
         for part, field in (("train.jsonl", "train_sha256"), ("holdout.jsonl", "holdout_sha256")):
             part_path = self._contained(version.bundle_manifest_path.parent / part, "Bundle partition path")
