@@ -220,16 +220,17 @@ class TrainingJobManager:
             self._persist_evaluation(status)
 
     def _run_evaluation(self, job_id: str) -> None:
-        from finlabel.training.backend import load_training_bundle
-        from finlabel.training.evaluation import evaluate_candidate
-        from finlabel.training.registry import ModelRegistry
-        from finlabel.labeling.task import load_task, task_file_path
         queued = self._evaluation_jobs[job_id]
-        self._set_evaluation_status(EvaluationJobStatus(
-            queued.job_id, "running", "Evaluating base and adapter on the reserved local holdout.", None,
-            queued.version_id, queued.created_at,
-        ))
         try:
+            self._set_evaluation_status(EvaluationJobStatus(
+                queued.job_id, "running", "Evaluating base and adapter on the reserved local holdout.", None,
+                queued.version_id, queued.created_at,
+            ))
+            from finlabel.training.backend import load_training_bundle
+            from finlabel.training.evaluation import evaluate_candidate
+            from finlabel.training.registry import ModelRegistry
+            from finlabel.labeling.task import load_task, task_file_path
+
             registry = ModelRegistry(self.workspace_dir)
             candidate = registry.version(queued.version_id)
             if candidate.state != "awaiting_evaluation":
