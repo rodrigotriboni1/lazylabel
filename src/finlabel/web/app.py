@@ -460,7 +460,7 @@ def create_app(
     @app.get("/api/label/suggestions")
     async def label_suggestions(run_id: str):
         try:
-            from finlabel.labeling.task import load_task
+            from finlabel.labeling.task import load_task, task_file_path
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(project_path)
@@ -511,10 +511,15 @@ def create_app(
                              available_columns=tuple(column.name for column in source.columns()))
             record = next((row for row in source.iter_records(task.input_columns)
                            if row.record_id == item["record_id"]), None)
-            return JSONResponse({
+            response_payload = {
                 "fields": dict(record.values) if record else None,
                 "stale": record is None or record.input_digest != item["input_digest"],
-            })
+            }
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse(
+                    {"error": "Selected record detail exceeds the local web response limit."}, status_code=422
+                )
+            return JSONResponse(response_payload)
         except (OSError, ValueError, KeyError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 

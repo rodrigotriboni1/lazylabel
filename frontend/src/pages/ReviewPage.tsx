@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-function actionKey(runId: string, item: LabelSuggestion, action: ReviewAction) {
-  const bytes = new TextEncoder().encode(`${runId}:${item.suggestion_id}:${action}`)
+function actionKey(runId: string, item: LabelSuggestion, action: ReviewAction, finalLabel?: string) {
+  // The selected task label is already canonical; preserve it exactly so a different correction gets a new key.
+  const bytes = new TextEncoder().encode(JSON.stringify([runId, item.suggestion_id, action, finalLabel ?? null]))
   return crypto.subtle.digest('SHA-256', bytes).then((digest) =>
     Array.from(new Uint8Array(digest).slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join(''))
 }
@@ -47,11 +48,12 @@ export default function ReviewPage() {
     if (item.stale || item.review_action || busy) return
     setBusy(item.suggestion_id); setError(null); setMessage(null)
     try {
-      const idempotency_key = await actionKey(runId, item, action)
+      const finalLabel = action === 'corrected' ? editLabels[item.suggestion_id] : undefined
+      const idempotency_key = await actionKey(runId, item, action, finalLabel)
       await submitLabelReview({
         run_id: runId, suggestion_id: item.suggestion_id, record_id: item.record_id,
         input_digest: item.input_digest, idempotency_key, action,
-        ...(action === 'corrected' ? { final_label: editLabels[item.suggestion_id] } : {}),
+        ...(finalLabel ? { final_label: finalLabel } : {}),
       })
       await refresh()
       setMessage('Estado atualizado a partir do servidor.')
