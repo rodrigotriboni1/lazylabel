@@ -109,6 +109,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--confirm-exploratory", action="store_true", help="explicitly accept the bundle's quality and split warnings")
     train.add_argument("--project", default=".")
+    model = commands.add_parser("model", help="inspect and manage local model versions")
+    model_commands = model.add_subparsers(dest="model_command", required=True)
+    model_commands.add_parser("versions", help="list locally registered model versions")
+    model_commands.add_parser("active", help="show the active local model version")
+    model_register = model_commands.add_parser("register", help="register a completed local adapter candidate")
+    model_register.add_argument("adapter_dir")
+    model_register.add_argument("--bundle-manifest", required=True)
+    model_register.add_argument("--version-id")
+    model_register.add_argument("--project", default=".")
+    model_evaluate = model_commands.add_parser("evaluate", help="evaluate a registered candidate on its holdout")
+    model_evaluate.add_argument("version_id")
+    model_evaluate.add_argument("--output", required=True)
+    model_evaluate.add_argument("--project", default=".")
+    model_activate = model_commands.add_parser("activate", help="explicitly activate an evaluated candidate")
+    model_activate.add_argument("version_id")
+    model_activate.add_argument("--confirm", action="store_true", required=True)
+    model_activate.add_argument("--project", default=".")
+    model_reject = model_commands.add_parser("reject", help="reject an inactive candidate")
+    model_reject.add_argument("version_id")
+    model_reject.add_argument("--reason", required=True)
+    model_reject.add_argument("--confirm", action="store_true", required=True)
+    model_reject.add_argument("--project", default=".")
+    model_rollback = model_commands.add_parser("rollback", help="explicitly restore a superseded version")
+    model_rollback.add_argument("version_id")
+    model_rollback.add_argument("--confirm", action="store_true", required=True)
+    model_rollback.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -352,6 +378,51 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "final_metrics": dict(result.final_metrics),
             }, ensure_ascii=False, indent=2))
             return 0
+        if args.command == "model":
+            from dataclasses import asdict
+            from finlabel.training.registry import ModelRegistry
+
+            project_config = load_project(args.project)
+            registry = ModelRegistry(project_config.workspace_dir)
+            if args.model_command == "versions":
+                print(json.dumps([asdict(item) for item in registry.list_versions()], ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "active":
+                current = registry.active()
+                print(json.dumps(asdict(current) if current else None, ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "register":
+                version = registry.register_candidate(args.adapter_dir, args.bundle_manifest, args.version_id)
+                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "evaluate":
+                from finlabel.labeling.task import load_task, task_file_path
+                from finlabel.training.backend import load_training_bundle
+                from finlabel.training.evaluation import evaluate_candidate
+
+                version = next((item for item in registry.list_versions() if item.version_id == args.version_id), None)
+                if version is None:
+                    raise KeyError("Model version was not found: {}".format(args.version_id))
+                output_path = registry._contained(args.output, "Evaluation report path")
+                bundle = load_training_bundle(version.bundle_manifest_path.parent)
+                manifest = json.loads(version.bundle_manifest_path.read_text(encoding="utf-8"))
+                task = load_task(task_file_path(project_config.workspace_dir, manifest["task_id"]))
+                report = evaluate_candidate(bundle, task, version.adapter_path, output_path=output_path)
+                updated = registry.record_evaluation(args.version_id, output_path)
+                print(json.dumps({"version": asdict(updated), "report": asdict(report)}, ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "activate":
+                version = registry.activate(args.version_id)
+                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "reject":
+                version = registry.reject_candidate(args.version_id, args.reason)
+                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                return 0
+            if args.model_command == "rollback":
+                version = registry.rollback(args.version_id)
+                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                return 0
         raise ValueError("Unsupported command.")
     except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:
         print("finlabel: {}".format(exc), file=sys.stderr)
