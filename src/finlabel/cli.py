@@ -81,6 +81,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     review.add_argument("--project", default=".")
     dataset = commands.add_parser("dataset", help="prepare an explicit local training dataset")
     dataset_commands = dataset.add_subparsers(dest="dataset_command", required=True)
+    dataset_check = dataset_commands.add_parser("check", help="check integrity and coverage of a training dataset")
+    dataset_check.add_argument("dataset", help="JSONL dataset path")
+    dataset_check.add_argument("--project", default=".")
     dataset_prepare = dataset_commands.add_parser("prepare", help="export reviewed examples as JSONL")
     dataset_prepare.add_argument("run_id")
     dataset_prepare.add_argument("--output", required=True)
@@ -284,6 +287,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "excluded_counts": manifest.excluded_counts,
             }, ensure_ascii=False, indent=2))
             return 0
+        if args.command == "dataset" and args.dataset_command == "check":
+            from finlabel.training.quality import inspect_training_dataset
+
+            report = inspect_training_dataset(load_project(args.project), args.dataset)
+            print(json.dumps({
+                "ready": report.ready,
+                "total": report.total,
+                "label_counts": report.label_counts,
+                "duplicate_suggestion_ids": report.duplicate_suggestion_ids,
+                "duplicate_event_ids": report.duplicate_event_ids,
+                "duplicate_examples": report.duplicate_examples,
+                "excluded_counts": report.excluded_counts,
+                "source_snapshot_matches": report.source_snapshot_matches,
+                "blockers": list(report.blockers),
+                "warnings": list(report.warnings),
+                "next_action": "Use the explicit train command only after reviewing this report and confirming warnings." if report.ready
+                    else "Resolve every blocker, then check the dataset again.",
+            }, ensure_ascii=False, indent=2))
+            return 0 if report.ready else 1
         if args.command == "train":
             from finlabel.training.backend import TrainingConfig, train_adapter
 

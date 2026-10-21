@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Mapping, Optional, Sequence, Union
 
 
 PathLike = Union[str, Path]
@@ -25,6 +25,7 @@ class LabelTask:
     labels: Sequence[str]
     model_id: str
     model_revision: Optional[str] = None
+    min_examples_per_label: Mapping[str, int] = None
 
     def __post_init__(self):
         if not isinstance(self.task_id, str) or not _TASK_ID.fullmatch(self.task_id):
@@ -43,6 +44,16 @@ class LabelTask:
             raise ValueError("Task labels must be non-empty strings.")
         if len(set(self.labels)) != len(self.labels):
             raise ValueError("Task labels must be unique.")
+        minima = {} if self.min_examples_per_label is None else self.min_examples_per_label
+        if not isinstance(minima, Mapping):
+            raise ValueError("min_examples_per_label must be an object mapping task labels to positive integers.")
+        unknown_minima = set(minima) - set(self.labels)
+        if unknown_minima:
+            raise ValueError("min_examples_per_label contains unknown label(s): {}".format(", ".join(map(str, sorted(unknown_minima)))))
+        for label, minimum in minima.items():
+            if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum <= 0:
+                raise ValueError("Minimum examples for {!r} must be a positive integer.".format(label))
+        object.__setattr__(self, "min_examples_per_label", dict(minima))
         if not isinstance(self.model_id, str) or not self.model_id.strip():
             raise ValueError("A task requires a model_id.")
         if self.model_revision is not None and not isinstance(self.model_revision, str):
@@ -56,7 +67,7 @@ def task_to_dict(task: LabelTask) -> dict:
 def task_from_dict(raw: dict, *, available_columns: Optional[Sequence[str]] = None) -> LabelTask:
     if not isinstance(raw, dict):
         raise ValueError("Task document must be a JSON object.")
-    allowed = {"task_id", "instructions", "input_columns", "labels", "model_id", "model_revision"}
+    allowed = {"task_id", "instructions", "input_columns", "labels", "model_id", "model_revision", "min_examples_per_label"}
     unknown = set(raw) - allowed
     if unknown:
         raise ValueError("Unknown task field(s): {}".format(", ".join(sorted(unknown))))
@@ -64,6 +75,8 @@ def task_from_dict(raw: dict, *, available_columns: Optional[Sequence[str]] = No
         normalized = dict(raw)
         normalized["input_columns"] = tuple(normalized.get("input_columns", ()))
         normalized["labels"] = tuple(normalized.get("labels", ()))
+        if "min_examples_per_label" in normalized and isinstance(normalized["min_examples_per_label"], dict):
+            normalized["min_examples_per_label"] = dict(normalized["min_examples_per_label"])
         task = LabelTask(**normalized)
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid label task: {}".format(exc)) from exc
