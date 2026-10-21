@@ -5,10 +5,14 @@ import json
 import math
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Union
+
+from finlabel.project import load_project
+from finlabel.training.quality import inspect_training_dataset
+from finlabel.training.split import TrainingBundle
 
 
 PathLike = Union[str, Path]
@@ -49,6 +53,8 @@ class TrainingResult:
     output_dir: Path
     base_model_ref: str
     dataset_sha256: str
+    adapter_sha256: str
+    split_sha256: str
     adapter_files: Sequence[Path]
     final_metrics: Mapping[str, float]
 
@@ -61,49 +67,116 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike) -> dict:
-    """Validate dataset and project authorization without importing ML libraries."""
-    dataset = Path(dataset_path).expanduser().resolve()
-    if config.output_dir.exists():
-        raise FileExistsError("Refusing to overwrite training output: {}".format(config.output_dir))
-    if not dataset.is_file():
-        raise FileNotFoundError("Training dataset does not exist: {}".format(dataset))
-    manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+def _json_object(path: Path, description: str) -> dict:
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict):
-            raise ValueError("Dataset manifest must be a JSON object.")
-        row_count = 0
-        with dataset.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                if not isinstance(row, dict) or set(row) != {"prompt", "completion"}:
-                    raise ValueError("Training rows must contain exactly prompt and completion fields.")
-                if not isinstance(row["prompt"], str) or not row["prompt"].strip() or not isinstance(row["completion"], str) or not row["completion"].strip():
-                    raise ValueError("Training prompt and completion must be non-empty strings (line {}).".format(line_number))
-                row_count += 1
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("Could not validate training dataset: {}".format(exc)) from exc
-    if not row_count:
-        raise ValueError("Training dataset must contain at least one example.")
-    dataset_hash = _sha256(dataset)
-    if manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != row_count:
-        raise ValueError("Training dataset does not match its manifest hash or row count.")
-    manifest_model = manifest.get("model_ref")
+        raise ValueError("Could not read {}: {}".format(description, exc)) from exc
+    if not isinstance(value, dict):
+        raise ValueError("{} must be a JSON object.".format(description))
+    return value
+
+
+def load_training_bundle(bundle_dir: PathLike) -> TrainingBundle:
+    """Load the bundle identity from its local manifest, without reading holdout rows."""
+    from finlabel.training.quality import DatasetQualityReport
+
+    directory = Path(bundle_dir).expanduser().resolve()
+    manifest_path = directory / "manifest.json"
+    manifest = _json_object(manifest_path, "bundle manifest")
+    report = manifest.get("quality_report")
+    if not isinstance(report, dict):
+        raise ValueError("Bundle manifest is missing its quality report.")
+    try:
+        quality = DatasetQualityReport(**report)
+        return TrainingBundle(directory / "train.jsonl", directory / "holdout.jsonl", manifest_path,
+                              quality, manifest["train_count"], manifest["holdout_count"],
+                              manifest["split_sha256"], manifest["warnings"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError("Bundle manifest has invalid bundle fields.") from exc
+
+
+def _validate_train_rows(path: Path, expected_count: int) -> None:
+    if isinstance(expected_count, bool) or not isinstance(expected_count, int) or expected_count < 1:
+        raise ValueError("Training partition count must be positive.")
+    count = 0
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, 1):
+                row = json.loads(line)
+                if not isinstance(row, dict) or set(row) != {"prompt", "completion"} or any(
+                    not isinstance(row[key], str) or not row[key].strip() for key in ("prompt", "completion")
+                ):
+                    raise ValueError("Invalid training row at line {}.".format(line_number))
+                count += 1
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Could not validate training partition: {}".format(exc)) from exc
+    if count != expected_count:
+        raise ValueError("Training partition row count does not match bundle manifest.")
+
+
+def validate_training_request(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: PathLike,
+                              exploratory_confirmed: bool = False) -> dict:
+    """Recheck source, split, quality and authorization before optional ML imports."""
+    if not isinstance(bundle, TrainingBundle):
+        raise TypeError("Training requires a TrainingBundle, never a raw dataset path.")
+    if config.output_dir.exists() or config.output_dir.is_symlink():
+        raise FileExistsError("Refusing to overwrite training output: {}".format(config.output_dir))
+    manifest_path = Path(bundle.manifest_path).expanduser().resolve()
+    directory = manifest_path.parent
+    train_path, holdout_path = directory / "train.jsonl", directory / "holdout.jsonl"
+    if manifest_path.name != "manifest.json" or Path(bundle.train_path).expanduser().resolve() != train_path or Path(bundle.holdout_path).expanduser().resolve() != holdout_path:
+        raise ValueError("Bundle paths do not match the bundle manifest location.")
+    manifest = _json_object(manifest_path, "bundle manifest")
+    stable = {key: value for key, value in manifest.items() if key not in {"dataset_path", "dataset_manifest_path", "split_sha256"}}
+    split_hash = hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    if manifest.get("split_sha256") != split_hash or bundle.split_sha256 != split_hash:
+        raise ValueError("Bundle manifest split hash does not match its contents.")
+    if bundle.train_count != manifest.get("train_count") or bundle.holdout_count != manifest.get("holdout_count"):
+        raise ValueError("Bundle partition counts do not match its manifest.")
+    if isinstance(bundle.holdout_count, bool) or not isinstance(bundle.holdout_count, int) or bundle.holdout_count < 1:
+        raise ValueError("Holdout partition count must be positive.")
+    if not train_path.is_file() or not holdout_path.is_file():
+        raise FileNotFoundError("Bundle train or holdout partition is missing.")
+    if _sha256(train_path) != manifest.get("train_sha256") or _sha256(holdout_path) != manifest.get("holdout_sha256"):
+        raise ValueError("Bundle partition hash does not match its manifest.")
+    _validate_train_rows(train_path, bundle.train_count)
+    dataset = Path(manifest.get("dataset_path", "")).expanduser().resolve()
+    if not dataset.is_file() or _sha256(dataset) != manifest.get("dataset_sha256"):
+        raise ValueError("Reviewed dataset hash does not match the bundle manifest.")
+    dataset_manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+    if Path(manifest.get("dataset_manifest_path", "")).expanduser().resolve() != dataset_manifest_path:
+        raise ValueError("Dataset manifest path does not match the bundle manifest.")
+    dataset_manifest = _json_object(dataset_manifest_path, "dataset manifest")
+    if dataset_manifest.get("dataset_sha256") != manifest.get("dataset_sha256") or dataset_manifest.get("task_id") != manifest.get("task_id") or dataset_manifest.get("run_id") != manifest.get("run_id"):
+        raise ValueError("Reviewed dataset manifest does not match the bundle.")
+    gate_file = Path(gate_path).expanduser().resolve()
+    project = load_project(gate_file.parent / "project.json")
+    report = inspect_training_dataset(project, dataset)
+    if not report.ready or report.blockers:
+        raise ValueError("Dataset quality gate blocked training: {}".format("; ".join(report.blockers)))
+    report_json = json.loads(json.dumps(asdict(report), ensure_ascii=False))
+    bundle_report_json = json.loads(json.dumps(asdict(bundle.quality_report), ensure_ascii=False))
+    if report_json != manifest.get("quality_report") or report_json != bundle_report_json:
+        raise ValueError("Stored quality report no longer matches the current dataset and source.")
+    warnings = manifest.get("warnings")
+    if not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings) or list(bundle.warnings) != warnings:
+        raise ValueError("Bundle warnings do not match its manifest.")
+    if not set(report.warnings).issubset(warnings):
+        raise ValueError("Bundle omitted quality warnings.")
+    if warnings and exploratory_confirmed is not True:
+        raise ValueError("Bundle has quality/split warnings; pass --confirm-exploratory after reviewing them.")
+    manifest_model = dataset_manifest.get("model_ref")
     if manifest_model:
+        if not isinstance(manifest_model, str):
+            raise ValueError("Reviewed dataset model reference is invalid.")
         manifest_model_id, separator, manifest_revision = manifest_model.partition("@")
         expected_revision = manifest_revision if separator else None
         if manifest_model_id != config.model_id:
             raise ValueError("Training model must match the model recorded in the reviewed dataset manifest.")
         if config.model_revision != expected_revision:
             raise ValueError("Training model revision must match the revision recorded in the reviewed dataset manifest.")
-    gate_file = Path(gate_path).expanduser()
-    try:
-        gate = json.loads(gate_file.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("training gate is not configured at {}: {}".format(gate_file, exc)) from exc
+    gate = _json_object(gate_file, "training gate")
     if not isinstance(gate, dict) or gate.get("authorized") is not True:
         raise ValueError("Training gate requires explicit project authorization.")
     missing = [name for name in GATE_FIELDS if not isinstance(gate.get(name), str) or not gate[name].strip()]
@@ -111,12 +184,17 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
         raise ValueError("Training gate is missing: {}".format(", ".join(missing)))
     if gate["model_id"] != config.model_id:
         raise ValueError("Training model does not match the project gate model_id.")
-    return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": row_count, "dataset_path": dataset, "gate": gate}
+    return {"manifest": manifest, "dataset_sha256": manifest["dataset_sha256"], "split_sha256": split_hash,
+            "train_path": train_path, "gate": gate}
 
 
-def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike) -> TrainingResult:
-    validated = validate_training_request(dataset_path, config, gate_path=gate_path)
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: PathLike,
+                  exploratory_confirmed: bool = False) -> TrainingResult:
+    validated = validate_training_request(bundle, config, gate_path=gate_path,
+                                          exploratory_confirmed=exploratory_confirmed)
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
     try:
         from datasets import load_dataset
         from peft import LoraConfig
@@ -127,11 +205,14 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
 
     output_parent = config.output_dir.parent
     output_parent.mkdir(parents=True, exist_ok=True)
+    config.output_dir.mkdir(exist_ok=False)
     staging = Path(tempfile.mkdtemp(prefix=".finlabel-adapter-", dir=str(output_parent)))
     try:
-        tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
-        model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
-        examples = load_dataset("json", data_files={"train": str(validated["dataset_path"])}, split="train")
+        if _sha256(bundle.train_path) != validated["manifest"]["train_sha256"]:
+            raise ValueError("Training partition changed before model loading.")
+        tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
+        model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
+        examples = load_dataset("json", data_files={"train": str(bundle.train_path)}, split="train")
         trainer = SFTTrainer(
             model=model,
             args=SFTConfig(
@@ -150,34 +231,43 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
         trainer_state = getattr(getattr(trainer, "state", None), "log_history", []) or []
         metrics = {key: float(value) for item in trainer_state[-1:] for key, value in item.items()
                    if isinstance(value, (int, float)) and not isinstance(value, bool)}
-        try:
-            trl_version = version("trl")
-            peft_version = version("peft")
-            transformers_version = version("transformers")
-            datasets_version = version("datasets")
-            accelerate_version = version("accelerate")
-            torch_version = version("torch")
-        except PackageNotFoundError:
-            trl_version = peft_version = transformers_version = datasets_version = accelerate_version = torch_version = "unknown"
+        def package_version(package: str) -> str:
+            try:
+                return version(package)
+            except PackageNotFoundError:
+                return "unknown"
+        adapter_weights = sorted(path for path in staging.rglob("*") if path.is_file() and path.name.endswith((".safetensors", ".bin")))
+        if not adapter_weights:
+            raise ValueError("Trainer did not save adapter weights.")
+        adapter_digest = hashlib.sha256()
+        for path in adapter_weights:
+            adapter_digest.update(path.relative_to(staging).as_posix().encode("utf-8"))
+            adapter_digest.update(bytes.fromhex(_sha256(path)))
+        adapter_sha256 = adapter_digest.hexdigest()
         metadata = {
             "base_model_ref": config.model_id + ("@" + config.model_revision if config.model_revision else ""),
             "task_id": validated["manifest"].get("task_id"),
             "dataset_sha256": validated["dataset_sha256"],
+            "split_sha256": validated["split_sha256"],
+            "train_sha256": validated["manifest"]["train_sha256"],
+            "adapter_sha256": adapter_sha256,
             "parameters": {"epochs": config.epochs, "batch_size": config.batch_size,
                            "learning_rate": config.learning_rate, "lora_rank": config.lora_rank, "seed": config.seed},
-            "packages": {"trl": trl_version, "peft": peft_version, "transformers": transformers_version,
-                         "datasets": datasets_version, "accelerate": accelerate_version, "torch": torch_version},
+            "packages": {name: package_version(name) for name in ("trl", "peft", "transformers", "datasets", "accelerate", "torch")},
             "final_metrics": metrics,
             "telemetry": "disabled",
             "hub_upload": False,
         }
         (staging / "finlabel-training.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if config.output_dir.exists():
-            raise FileExistsError("Refusing to overwrite training output: {}".format(config.output_dir))
-        os.replace(staging, config.output_dir)
+        for path in staging.iterdir():
+            os.replace(path, config.output_dir / path.name)
     except BaseException:
         import shutil
         shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(config.output_dir, ignore_errors=True)
         raise
+    import shutil
+    shutil.rmtree(staging)
     adapter_files = tuple(path for path in config.output_dir.rglob("*") if path.is_file())
-    return TrainingResult(config.output_dir, metadata["base_model_ref"], validated["dataset_sha256"], adapter_files, metrics)
+    return TrainingResult(config.output_dir, metadata["base_model_ref"], validated["dataset_sha256"],
+                          adapter_sha256, validated["split_sha256"], adapter_files, metrics)

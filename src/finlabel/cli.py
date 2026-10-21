@@ -98,7 +98,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     dataset_split.add_argument("--group-column")
     dataset_split.add_argument("--project", default=".")
     train = commands.add_parser("train", help="explicitly fine-tune a local PEFT/LoRA adapter")
-    train.add_argument("dataset")
+    train.add_argument("bundle_dir", help="directory containing train.jsonl, holdout.jsonl and manifest.json")
     train.add_argument("--model-id", required=True)
     train.add_argument("--revision")
     train.add_argument("--output", required=True)
@@ -107,6 +107,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     train.add_argument("--learning-rate", type=float, default=0.0002)
     train.add_argument("--lora-rank", type=int, default=8)
     train.add_argument("--seed", type=int, default=42)
+    train.add_argument("--confirm-exploratory", action="store_true", help="explicitly accept the bundle's quality and split warnings")
     train.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
@@ -334,17 +335,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "train":
-            from finlabel.training.backend import TrainingConfig, train_adapter
+            from finlabel.training.backend import TrainingConfig, load_training_bundle, train_adapter
 
             config = TrainingConfig(
                 args.model_id, args.revision, Path(args.output), args.epochs, args.batch_size,
                 args.learning_rate, args.lora_rank, args.seed,
             )
             project_config = load_project(args.project)
-            result = train_adapter(args.dataset, config, gate_path=project_config.workspace_dir / "training-gate.json")
+            bundle = load_training_bundle(args.bundle_dir)
+            result = train_adapter(bundle, config, gate_path=project_config.workspace_dir / "training-gate.json",
+                                   exploratory_confirmed=args.confirm_exploratory)
             print(json.dumps({
                 "output_dir": str(result.output_dir), "base_model_ref": result.base_model_ref,
                 "dataset_sha256": result.dataset_sha256, "adapter_files": [str(path) for path in result.adapter_files],
+                "split_sha256": result.split_sha256, "adapter_sha256": result.adapter_sha256,
                 "final_metrics": dict(result.final_metrics),
             }, ensure_ascii=False, indent=2))
             return 0
