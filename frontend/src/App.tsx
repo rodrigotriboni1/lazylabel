@@ -7,6 +7,8 @@ import { getHealth, type Health } from '@/lib/api'
 import OverviewPage from '@/pages/OverviewPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import MonitorPage from '@/pages/MonitorPage'
+import LabelingPage from '@/pages/LabelingPage'
+import ReviewPage from '@/pages/ReviewPage'
 
 const navigation = [
   { label: 'Visão geral', mobileLabel: 'Início', path: '/', icon: LayoutDashboard },
@@ -17,6 +19,7 @@ const navigation = [
 ]
 
 function pageName(path: string) {
+  if (path === '/review') return 'Revisão humana'
   return navigation.find((item) => item.path === path)?.label ?? 'Visão geral'
 }
 
@@ -63,7 +66,7 @@ export default function App() {
         </header>
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
-          {path === '/analysis' ? <AnalysisPage /> : path === '/monitor' ? <MonitorPage /> : <>
+          {path === '/analysis' ? <AnalysisPage /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' ? <LabelingPage /> : path === '/review' ? <ReviewPage /> : <>
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div><p className="mb-2 text-sm font-medium text-[#47805f]">FINLABEL / LOCAL</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Seu espaço de trabalho</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#718077]">Análise, revisão humana e preparação de dados em um único ambiente privado.</p></div>
             <Button variant="outline" className="gap-2 border-[#dce5de] bg-white text-[#34493a]"><CircleHelp size={16} />Ajuda</Button>

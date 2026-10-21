@@ -126,13 +126,15 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
         if event.suggestion_id and event.run_id == run_id:
             latest[event.suggestion_id] = event
     eligible = []
-    excluded = {"unreviewed": 0, "rejected": 0, "stale": 0, "invalid": int(metadata.get("invalid_count", 0))}
+    excluded = {"unreviewed": 0, "skipped": 0, "rejected": 0, "stale": 0, "invalid": int(metadata.get("invalid_count", 0))}
     for suggestion in suggestions:
         event = latest.get(suggestion["suggestion_id"])
         if event is None:
             excluded["unreviewed"] += 1
         elif event.action is ReviewAction.REJECTED:
             excluded["rejected"] += 1
+        elif event.action is ReviewAction.SKIPPED:
+            excluded["skipped"] += 1
         elif event.action not in (ReviewAction.ACCEPTED, ReviewAction.CORRECTED):
             excluded["invalid"] += 1
         elif (

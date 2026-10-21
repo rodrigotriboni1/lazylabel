@@ -18,6 +18,7 @@ class ReviewAction(str, Enum):
     ACCEPTED = "accepted"
     CORRECTED = "corrected"
     REJECTED = "rejected"
+    SKIPPED = "skipped"
 
 
 @dataclass(frozen=True)
@@ -162,5 +163,7 @@ def _validate(event: ReviewDecision) -> None:
             raise ValueError("A corrected label must differ from the suggestion.")
     if event.action is ReviewAction.REJECTED and event.final_label is not None:
         raise ValueError("A rejected suggestion must not define a final label.")
+    if event.action is ReviewAction.SKIPPED and event.final_label is not None:
+        raise ValueError("A skipped suggestion must not define a final label.")
     if event.model_ref is not None and not isinstance(event.model_ref, str):
         raise ValueError("model_ref must be a string when provided.")

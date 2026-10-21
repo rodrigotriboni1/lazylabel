@@ -433,10 +433,34 @@ def create_app(
             "suggestions": run.row_count, "invalid": run.invalid_count,
         })
 
+    @app.get("/api/label/tasks")
+    async def label_tasks():
+        """List task configuration only; never include source-row values."""
+        try:
+            from finlabel.labeling.task import load_task
+
+            config = load_project(project_path)
+            tasks = []
+            task_dir = config.workspace_dir / "tasks"
+            if task_dir.is_dir():
+                for path in sorted(task_dir.glob("*.json")):
+                    task = load_task(path)
+                    tasks.append({
+                        "task_id": task.task_id,
+                        "instructions": task.instructions,
+                        "input_columns": list(task.input_columns),
+                        "labels": list(task.labels),
+                        "model_ref": "{}@{}".format(task.model_id, task.model_revision) if task.model_revision else task.model_id,
+                        "min_examples_per_label": dict(task.min_examples_per_label),
+                    })
+            return JSONResponse({"tasks": tasks, "sources": sorted(config.sources)})
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
     @app.get("/api/label/suggestions")
     async def label_suggestions(run_id: str):
         try:
-            from finlabel.labeling.task import load_task, task_file_path
+            from finlabel.labeling.task import load_task
             from finlabel.review import ReviewAction, ReviewLog
 
             config = load_project(project_path)
@@ -459,7 +483,6 @@ def create_app(
                     "suggestion_id": item["suggestion_id"], "record_id": item["record_id"],
                     "input_digest": item["input_digest"], "suggested_label": item["label"],
                     "rationale": item.get("rationale"), "labels": list(task.labels),
-                    "fields": dict(record.values) if record else None,
                     "stale": record is None or record.input_digest != item["input_digest"],
                     "review_action": event.action.value if event else None,
                     "final_label": event.final_label if event else None,
@@ -469,6 +492,29 @@ def create_app(
             if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
                 return JSONResponse({"error": "Suggestion page exceeds the local response limit."}, status_code=422)
             return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/label/suggestion")
+    async def label_suggestion_detail(run_id: str, suggestion_id: str):
+        """Return task-selected values only after an explicit detail request."""
+        try:
+            from finlabel.labeling.task import load_task, task_file_path
+
+            config = load_project(project_path)
+            _, metadata, suggestions = read_label_run(config, run_id)
+            item = next((row for row in suggestions if row["suggestion_id"] == suggestion_id), None)
+            if item is None:
+                return JSONResponse({"error": "Suggestion not found."}, status_code=404)
+            source = open_source(config, metadata["source_name"])
+            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
+                             available_columns=tuple(column.name for column in source.columns()))
+            record = next((row for row in source.iter_records(task.input_columns)
+                           if row.record_id == item["record_id"]), None)
+            return JSONResponse({
+                "fields": dict(record.values) if record else None,
+                "stale": record is None or record.input_digest != item["input_digest"],
+            })
         except (OSError, ValueError, KeyError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -494,17 +540,20 @@ def create_app(
             source = open_source(config, metadata["source_name"])
             task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
                              available_columns=tuple(column.name for column in source.columns()))
-            record = next((row for row in source.iter_records(task.input_columns)
-                           if row.record_id == item["record_id"]), None)
-            if record is None or record.input_digest != item["input_digest"]:
-                return JSONResponse({"error": "Source row changed; this suggestion is stale."}, status_code=409)
             log = ReviewLog(config.workspace_dir / "review.jsonl")
             prior = log.read()
             duplicate = next((event for event in prior if event.idempotency_key == payload["idempotency_key"]), None)
             if duplicate:
                 if duplicate.run_id != payload["run_id"] or duplicate.suggestion_id != payload["suggestion_id"]:
                     return JSONResponse({"error": "Idempotency key was already used for another review."}, status_code=409)
+                expected_action = {"accepted": "accepted", "corrected": "corrected", "rejected": "rejected", "skipped": "skipped"}.get(payload["action"])
+                if duplicate.action.value != expected_action:
+                    return JSONResponse({"error": "Idempotency key was already used for another action."}, status_code=409)
                 return JSONResponse({"event_id": duplicate.event_id, "duplicate": True})
+            record = next((row for row in source.iter_records(task.input_columns)
+                           if row.record_id == item["record_id"]), None)
+            if record is None or record.input_digest != item["input_digest"]:
+                return JSONResponse({"error": "Source row changed; this suggestion is stale."}, status_code=409)
             action_name = payload["action"]
             if action_name == "accepted":
                 action, final_label = ReviewAction.ACCEPTED, item["label"]
@@ -512,8 +561,10 @@ def create_app(
                 action, final_label = ReviewAction.CORRECTED, validate_label(task, payload.get("final_label"))
             elif action_name == "rejected":
                 action, final_label = ReviewAction.REJECTED, None
+            elif action_name == "skipped":
+                action, final_label = ReviewAction.SKIPPED, None
             else:
-                return JSONResponse({"error": "action must be accepted, corrected, or rejected"}, status_code=400)
+                return JSONResponse({"error": "action must be accepted, corrected, rejected, or skipped"}, status_code=400)
             event = log.record(
                 item["record_id"], item["label"], action, final_label, item["model_ref"],
                 run_id=payload["run_id"], source_name=metadata["source_name"], task_id=task.task_id,
