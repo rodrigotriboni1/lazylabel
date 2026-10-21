@@ -28,6 +28,8 @@ PathLike = Union[str, Path]
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_PAGE_ROWS = 100
 MAX_API_RESPONSE_BYTES = 1024 * 1024
+MAX_ANALYSIS_ARTIFACT_BYTES = MAX_API_RESPONSE_BYTES
+MAX_ANALYSIS_MANIFEST_BYTES = 64 * 1024
 CSRF_COOKIE = "finlabel_csrf"
 RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
@@ -240,8 +242,27 @@ def create_app(
             manifest_path = run_dir / "run.json"
             if result_path.is_symlink() or manifest_path.is_symlink() or not result_path.is_file() or not manifest_path.is_file():
                 return JSONResponse({"error": "Analysis run not found."}, status_code=404)
-            result_bytes = result_path.read_bytes()
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if result_path.stat().st_size > MAX_ANALYSIS_ARTIFACT_BYTES:
+                return JSONResponse(
+                    {"error": "The saved analysis artifact exceeds the local read limit; use the CLI."},
+                    status_code=422,
+                )
+            if manifest_path.stat().st_size > MAX_ANALYSIS_MANIFEST_BYTES:
+                return JSONResponse({"error": "Analysis artifact manifest exceeds the local read limit."}, status_code=409)
+            # Recheck actual bytes read as well as file metadata so a concurrently growing
+            # local artifact cannot bypass the cap between stat() and open().
+            with result_path.open("rb") as result_file:
+                result_bytes = result_file.read(MAX_ANALYSIS_ARTIFACT_BYTES + 1)
+            if len(result_bytes) > MAX_ANALYSIS_ARTIFACT_BYTES:
+                return JSONResponse(
+                    {"error": "The saved analysis artifact exceeds the local read limit; use the CLI."},
+                    status_code=422,
+                )
+            with manifest_path.open("rb") as manifest_file:
+                manifest_bytes = manifest_file.read(MAX_ANALYSIS_MANIFEST_BYTES + 1)
+            if len(manifest_bytes) > MAX_ANALYSIS_MANIFEST_BYTES:
+                return JSONResponse({"error": "Analysis artifact manifest exceeds the local read limit."}, status_code=409)
+            manifest = json.loads(manifest_bytes)
             if manifest.get("run_id") != run_id or not hmac.compare_digest(
                 hashlib.sha256(result_bytes).hexdigest(), str(manifest.get("result_sha256", ""))
             ):
