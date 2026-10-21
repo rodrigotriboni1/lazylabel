@@ -58,6 +58,23 @@ def load_dataset_manifest(dataset_path: PathLike) -> dict:
     return _read_json(dataset_manifest_path(dataset_path))
 
 
+def read_training_rows(dataset_path: PathLike, manifest: Mapping[str, object]) -> list[dict]:
+    """Read exported examples in the provenance order recorded by the sidecar."""
+    dataset = Path(dataset_path).expanduser().resolve()
+    if _sha256(dataset) != manifest.get("dataset_sha256"):
+        raise ValueError("Dataset hash does not match its manifest.")
+    try:
+        rows = [json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines()]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Could not read training rows: {}".format(exc)) from exc
+    if len(rows) != manifest.get("row_count") or len(rows) != len(manifest.get("included_suggestion_ids", ())) or len(rows) != len(manifest.get("included_event_ids", ())):
+        raise ValueError("Dataset rows and provenance counts do not match.")
+    for index, row in enumerate(rows, 1):
+        if not isinstance(row, dict) or set(row) != {"prompt", "completion"} or not all(isinstance(row[key], str) for key in row):
+            raise ValueError("Invalid training row at line {}.".format(index))
+    return rows
+
+
 def _prompt(task, values):
     selected_json = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     labels_json = json.dumps(list(task.labels), ensure_ascii=False, separators=(",", ":"))

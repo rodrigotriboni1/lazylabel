@@ -88,6 +88,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     dataset_prepare.add_argument("run_id")
     dataset_prepare.add_argument("--output", required=True)
     dataset_prepare.add_argument("--project", default=".")
+    dataset_split = dataset_commands.add_parser("split", help="create deterministic train and holdout files")
+    dataset_split.add_argument("dataset", help="reviewed JSONL dataset path")
+    dataset_split.add_argument("--strategy", required=True, choices=("stratified_random", "temporal", "group"))
+    dataset_split.add_argument("--holdout-fraction", required=True, type=float)
+    dataset_split.add_argument("--seed", required=True, type=int)
+    dataset_split.add_argument("--output", required=True)
+    dataset_split.add_argument("--time-column")
+    dataset_split.add_argument("--group-column")
+    dataset_split.add_argument("--project", default=".")
     train = commands.add_parser("train", help="explicitly fine-tune a local PEFT/LoRA adapter")
     train.add_argument("dataset")
     train.add_argument("--model-id", required=True)
@@ -306,6 +315,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     else "Resolve every blocker, then check the dataset again.",
             }, ensure_ascii=False, indent=2))
             return 0 if report.ready else 1
+        if args.command == "dataset" and args.dataset_command == "split":
+            from finlabel.labeling.task import load_task, task_file_path
+            from finlabel.training.dataset import load_dataset_manifest
+            from finlabel.training.split import SplitConfig, create_training_bundle
+
+            project_config = load_project(args.project)
+            dataset_manifest = load_dataset_manifest(args.dataset)
+            selected_task = load_task(task_file_path(project_config.workspace_dir, dataset_manifest["task_id"]))
+            split_config = SplitConfig(args.strategy, args.holdout_fraction, args.seed,
+                                       group_column=args.group_column, time_column=args.time_column)
+            bundle = create_training_bundle(project_config, args.dataset, selected_task, split_config, args.output)
+            print(json.dumps({
+                "train_path": str(bundle.train_path), "holdout_path": str(bundle.holdout_path),
+                "manifest_path": str(bundle.manifest_path), "train_count": bundle.train_count,
+                "holdout_count": bundle.holdout_count, "split_sha256": bundle.split_sha256,
+                "warnings": list(bundle.warnings),
+            }, ensure_ascii=False, indent=2))
+            return 0
         if args.command == "train":
             from finlabel.training.backend import TrainingConfig, train_adapter
 
