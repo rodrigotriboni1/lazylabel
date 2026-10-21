@@ -25,4 +25,10 @@ finlabel = "finlabel.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-finlabel = ["web/templates/*.html", "web/static/*.css", "web/static/*.js"]
+finlabel = [
+  "web/templates/*.html",
+  "web/static/*.css",
+  "web/static/*.js",
+  "web/static/app/*",
+  "web/static/app/assets/*",
+]

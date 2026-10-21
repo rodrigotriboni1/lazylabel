@@ -42,6 +42,18 @@ Cada execução cria `.finlabel/analyses/<run_id>/` com plano, resultados, `char
 
 ## Painel web local
 
+O frontend React/Vite fica em `frontend/`. Para atualizar os arquivos estáticos empacotados, use Node.js e npm:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+python -m pip install -e '.[web]'
+```
+
+O build grava o shell e os assets locais em `src/finlabel/web/static/app/`; o pacote Python inclui esse diretório. Não é necessário executar um servidor Vite durante o uso do painel.
+
 ```bash
 python -m pip install -e '.[web]'
 finlabel serve --project ./meu-projeto --host 127.0.0.1 --port 8765

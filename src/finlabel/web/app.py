@@ -213,77 +213,32 @@ def create_app(
 
     @app.get("/labeling", response_class=HTMLResponse)
     async def labeling_page(request: Request):
-        config = load_project(project_path)
-        sources = sorted(config.sources)
-        tasks = []
-        for task_path in sorted((config.workspace_dir / "tasks").glob("*.json")):
-            try:
-                raw = json.loads(task_path.read_text(encoding="utf-8"))
-                if isinstance(raw, dict) and isinstance(raw.get("task_id"), str):
-                    tasks.append({"task_id": raw["task_id"], "labels": raw.get("labels", [])})
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                continue
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request, name="labeling.html",
-            context={"sources": sources, "tasks": tasks, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
-        )
-        if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
-        return response
+        return spa_shell(request)
 
     @app.get("/training", response_class=HTMLResponse)
     async def training_page(request: Request):
-        config = load_project(project_path)
-        datasets = []
-        training_dir = config.workspace_dir / "training"
-        for path in sorted(training_dir.glob("*.jsonl")):
-            manifest_path = path.with_suffix(path.suffix + ".manifest.json")
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                if isinstance(manifest, dict) and isinstance(manifest.get("model_ref"), str):
-                    datasets.append({
-                        "name": path.name, "model_ref": manifest["model_ref"],
-                        "task_id": manifest.get("task_id", ""), "row_count": manifest.get("row_count", 0),
-                        "dataset_sha256": manifest.get("dataset_sha256", ""),
-                    })
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                continue
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request, name="training.html",
-            context={"datasets": datasets, "csrf_token": token},
-        )
+        return spa_shell(request)
+
+    def spa_shell(request: Request):
+        shell_path = package_dir / "static" / "app" / "index.html"
+        if not shell_path.is_file():
+            return PlainTextResponse("FinLabel web assets are missing; rebuild the frontend.", status_code=503)
+        response = FileResponse(shell_path, media_type="text/html")
         if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
+            response.set_cookie(
+                CSRF_COOKIE, secrets.token_urlsafe(32), max_age=7200, httponly=False,
+                secure=False, samesite="strict", path="/",
+            )
         return response
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
+        return spa_shell(request)
+
+    @app.get("/api/health")
+    async def health():
         config = load_project(project_path)
-        sources = []
-        for name in config.sources:
-            try:
-                columns = open_source(config, name).columns()
-                sources.append({
-                    "name": name,
-                    "columns": [{"name": column.name, "inferred_type": column.inferred_type} for column in columns],
-                    "error": None,
-                })
-            except (OSError, ValueError, KeyError) as exc:
-                sources.append({"name": name, "columns": [], "error": str(exc)})
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={"sources": sources, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
-        )
-        if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(
-                CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False,
-                samesite="strict", path="/",
-            )
-        return response
+        return JSONResponse({"status": "ok", "project": Path(project_path).name, "sources": len(config.sources)})
 
     @app.post("/api/schema/capture")
     async def schema_capture(request: Request):
@@ -649,5 +604,15 @@ def create_app(
                 "form-action 'none'; frame-ancestors 'self'"
             )},
         )
+
+    @app.get("/analysis", response_class=HTMLResponse)
+    @app.get("/monitor", response_class=HTMLResponse)
+    @app.get("/review", response_class=HTMLResponse)
+    async def spa_page(request: Request):
+        return spa_shell(request)
+
+    @app.get("/api/{unmatched_path:path}")
+    async def unknown_api(unmatched_path: str):
+        return JSONResponse({"error": "API endpoint not found."}, status_code=404)
 
     return app
