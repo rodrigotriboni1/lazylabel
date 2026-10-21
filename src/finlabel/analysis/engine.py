@@ -232,6 +232,10 @@ def run_analysis(source, plan: AnalysisPlan) -> AnalysisResult:
         "operation": metric.operation,
         "column": metric.column,
         "denominator_scope": list(metric.denominator_scope) if metric.operation == "share_of_total" else None,
+        "denominator_group_fields": (
+            list(metric.denominator_scope) + ([plan.time_axis.column] if plan.time_axis else [])
+            if metric.operation == "share_of_total" else None
+        ),
         "filters": [asdict_filter(item) for item in plan.filters],
         "time_grain": plan.time_axis.grain if plan.time_axis else None,
         "valid_row_count": valid_row_count,
