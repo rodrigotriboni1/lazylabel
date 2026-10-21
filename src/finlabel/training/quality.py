@@ -10,6 +10,7 @@ from typing import Mapping, Sequence, Union
 from finlabel.labeling.task import load_task, task_file_path
 from finlabel.project import open_source
 from finlabel.sources.base import ProjectConfig
+from finlabel.training.dataset import dataset_manifest_path, load_dataset_manifest
 
 
 PathLike = Union[str, Path]
@@ -62,7 +63,7 @@ def _snapshot(source, task) -> str:
 def inspect_training_dataset(project: ProjectConfig, dataset_path: PathLike) -> DatasetQualityReport:
     """Inspect a dataset and its current source without importing ML packages."""
     dataset = Path(dataset_path).expanduser().resolve()
-    manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+    manifest_path = dataset_manifest_path(dataset)
     blockers, warnings = [], []
     counts: Counter = Counter()
     suggestion_ids, event_ids, examples = [], [], []
@@ -70,7 +71,7 @@ def inspect_training_dataset(project: ProjectConfig, dataset_path: PathLike) -> 
     snapshot_matches = False
     total = 0
     try:
-        manifest = _json_object(manifest_path, "dataset manifest")
+        manifest = load_dataset_manifest(dataset)
         required = {"run_id", "task_id", "source_name", "row_count", "selected_columns", "included_event_ids",
                     "included_suggestion_ids", "source_snapshot_ref", "excluded_counts", "dataset_sha256"}
         missing = required - set(manifest)
@@ -172,5 +173,6 @@ def inspect_training_dataset(project: ProjectConfig, dataset_path: PathLike) -> 
     duplicate_events = len(event_ids) - len(set(event_ids)) if event_ids else 0
     duplicate_examples = len(examples) - len(set(examples)) if examples else 0
     unique_blockers = tuple(dict.fromkeys(blockers))
-    return DatasetQualityReport(total, dict(counts), duplicate_suggestions, duplicate_events, duplicate_examples,
+    label_counts = {label: counts.get(label, 0) for label in task.labels} if "task" in locals() else dict(counts)
+    return DatasetQualityReport(total, label_counts, duplicate_suggestions, duplicate_events, duplicate_examples,
                                 dict(excluded), snapshot_matches, tuple(warnings), unique_blockers, not unique_blockers)

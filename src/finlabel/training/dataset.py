@@ -47,6 +47,17 @@ def _read_json(path: Path) -> dict:
     return value
 
 
+def dataset_manifest_path(dataset_path: PathLike) -> Path:
+    """Return the sidecar manifest path shared by export, check, and train."""
+    dataset = Path(dataset_path).expanduser()
+    return dataset.with_suffix(dataset.suffix + ".manifest.json")
+
+
+def load_dataset_manifest(dataset_path: PathLike) -> dict:
+    """Load the local JSON object manifest associated with a dataset."""
+    return _read_json(dataset_manifest_path(dataset_path))
+
+
 def _prompt(task, values):
     selected_json = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     labels_json = json.dumps(list(task.labels), ensure_ascii=False, separators=(",", ":"))
@@ -124,7 +135,7 @@ def prepare_training_dataset(project, run_id: str, output: PathLike) -> DatasetM
     included_events = []
     included_suggestions = []
     destination = Path(output).expanduser().resolve()
-    manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
+    manifest_path = dataset_manifest_path(destination)
     if destination.exists() or manifest_path.exists():
         raise FileExistsError("Refusing to overwrite an existing dataset or manifest.")
     destination.parent.mkdir(parents=True, exist_ok=True)

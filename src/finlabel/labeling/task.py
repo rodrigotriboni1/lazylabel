@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Union
 
@@ -25,7 +25,7 @@ class LabelTask:
     labels: Sequence[str]
     model_id: str
     model_revision: Optional[str] = None
-    min_examples_per_label: Mapping[str, int] = None
+    min_examples_per_label: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self):
         if not isinstance(self.task_id, str) or not _TASK_ID.fullmatch(self.task_id):
@@ -44,7 +44,7 @@ class LabelTask:
             raise ValueError("Task labels must be non-empty strings.")
         if len(set(self.labels)) != len(self.labels):
             raise ValueError("Task labels must be unique.")
-        minima = {} if self.min_examples_per_label is None else self.min_examples_per_label
+        minima = self.min_examples_per_label
         if not isinstance(minima, Mapping):
             raise ValueError("min_examples_per_label must be an object mapping task labels to positive integers.")
         unknown_minima = set(minima) - set(self.labels)
@@ -75,8 +75,6 @@ def task_from_dict(raw: dict, *, available_columns: Optional[Sequence[str]] = No
         normalized = dict(raw)
         normalized["input_columns"] = tuple(normalized.get("input_columns", ()))
         normalized["labels"] = tuple(normalized.get("labels", ()))
-        if "min_examples_per_label" in normalized and isinstance(normalized["min_examples_per_label"], dict):
-            normalized["min_examples_per_label"] = dict(normalized["min_examples_per_label"])
         task = LabelTask(**normalized)
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid label task: {}".format(exc)) from exc
