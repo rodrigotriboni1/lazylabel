@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import tempfile
 from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -207,12 +208,18 @@ def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: 
     output_parent.mkdir(parents=True, exist_ok=True)
     config.output_dir.mkdir(exist_ok=False)
     staging = Path(tempfile.mkdtemp(prefix=".finlabel-adapter-", dir=str(output_parent)))
+    snapshot_dir = None
     try:
-        if _sha256(bundle.train_path) != validated["manifest"]["train_sha256"]:
-            raise ValueError("Training partition changed before model loading.")
+        snapshot_dir = Path(tempfile.mkdtemp(prefix=".finlabel-train-snapshot-", dir=str(output_parent)))
+        snapshot_path = snapshot_dir / "train.jsonl"
+        shutil.copyfile(validated["train_path"], snapshot_path)
+        if _sha256(snapshot_path) != validated["manifest"]["train_sha256"]:
+            raise ValueError("Training partition changed while creating its private snapshot.")
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
         model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
-        examples = load_dataset("json", data_files={"train": str(bundle.train_path)}, split="train")
+        examples = load_dataset("json", data_files={"train": str(snapshot_path)}, split="train")
+        if _sha256(snapshot_path) != validated["manifest"]["train_sha256"]:
+            raise ValueError("Private training snapshot changed while loading examples.")
         trainer = SFTTrainer(
             model=model,
             args=SFTConfig(
@@ -262,11 +269,12 @@ def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: 
         for path in staging.iterdir():
             os.replace(path, config.output_dir / path.name)
     except BaseException:
-        import shutil
         shutil.rmtree(staging, ignore_errors=True)
         shutil.rmtree(config.output_dir, ignore_errors=True)
         raise
-    import shutil
+    finally:
+        if snapshot_dir is not None:
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
     shutil.rmtree(staging)
     adapter_files = tuple(path for path in config.output_dir.rglob("*") if path.is_file())
     return TrainingResult(config.output_dir, metadata["base_model_ref"], validated["dataset_sha256"],
