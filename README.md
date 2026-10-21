@@ -77,15 +77,21 @@ O modelo recebe somente `input_columns` serializadas como dados, nunca a linha c
 
 Na revisão CLI, use `accept`, `edit RÓTULO`, `reject` ou `skip`. O painel oferece as mesmas decisões e bloqueia linhas cuja fonte mudou. Eventos append-only ficam em `.finlabel/review.jsonl`; eventos antigos de esquema v1 continuam legíveis e os novos de v2 incluem proveniência.
 
-## Preparação do dataset e fine-tuning
+## Dataset supervisionado e ciclo local de modelos
 
 Só uma ação explícita prepara exemplos. O JSONL contém prompt com as colunas escolhidas e completion em JSON com o rótulo humano final (o mesmo contrato estruturado esperado na inferência):
 
 ```bash
 finlabel dataset prepare RUN_ID --output ./meu-projeto/.finlabel/training/reviewed.jsonl --project ./meu-projeto
+finlabel dataset check ./meu-projeto/.finlabel/training/reviewed.jsonl --project ./meu-projeto
+finlabel dataset split ./meu-projeto/.finlabel/training/reviewed.jsonl \
+  --strategy stratified_random --holdout-fraction 0.2 --seed 42 \
+  --output ./meu-projeto/.finlabel/training/risk-v1 --project ./meu-projeto
 ```
 
 Aceitos e corrigidos entram; rejeitados, sem revisão e linhas desatualizadas ficam de fora. O manifesto ao lado lista eventos/sugestões incluídos, colunas, contagens excluídas, snapshot e hashes. CSV é hasheado antes/depois da leitura; SQLite é percorrido por um cursor local de leitura.
+
+`dataset check` confere hashes, proveniência, snapshot atual e cobertura por rótulo sem imprimir prompts ou valores de linhas. Bloqueadores impedem o split/treino. Cobertura abaixo dos mínimos configurados é reportada como aviso; revise avisos e métricas antes de consentir com `--confirm-exploratory` no comando explícito de treino. O split é determinístico com semente explícita: `stratified_random` preserva proporções quando possível, `temporal` mantém os períodos mais recentes no holdout (informe `--time-column` com tipo de coluna declarado), e `group` mantém cada grupo em uma única partição (informe `--group-column`). Cada estratégia pode produzir avisos se o conjunto for pequeno ou a cobertura não puder ser preservada; inspecione contagens e cobertura antes de prosseguir.
 
 Antes de permitir treino, registre os cinco itens acordados em `.finlabel/training-gate.json`:
 
@@ -104,13 +110,36 @@ Antes de permitir treino, registre os cinco itens acordados em `.finlabel/traini
 
 ```bash
 python -m pip install -e '.[train]'
-finlabel train ./meu-projeto/.finlabel/training/reviewed.jsonl \
+finlabel train ./meu-projeto/.finlabel/training/risk-v1 \
   --model-id REFERENCIA-EXATA-APROVADA \
   --output ./meu-projeto/.finlabel/models/adapters/risk-v1 \
   --project ./meu-projeto
 ```
 
-O backend usa TRL `SFTTrainer` com PEFT `LoraConfig`, não publica adapters e desativa integrações de telemetria do trainer. FinLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, compatibilidade do modelo, memória disponível e protocolo de avaliação. Consulte a documentação oficial de [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). Esta branch validou configuração e manifestos com dados sintéticos, sem baixar pesos ou treinar.
+O comando aceita somente o diretório de bundle do split (com `train.jsonl`, `holdout.jsonl` e manifesto), nunca o JSONL revisado inteiro. Depois dos gates e consentimento explícito, `train` usa apenas a partição de treino e registra automaticamente o adapter como candidato inativo. Não use um caminho de dataset antigo: gere o bundle com `dataset check` e `dataset split`. O backend usa TRL `SFTTrainer` com PEFT `LoraConfig`, não publica adapters e desativa integrações de telemetria do trainer. FinLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, compatibilidade do modelo, memória disponível e protocolo de avaliação. Consulte a documentação oficial de [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora).
+
+Avalie o candidato explicitamente no mesmo holdout; avalia o modelo-base e o adapter e grava relatório local com hashes:
+
+```bash
+finlabel model evaluate VERSION_ID \
+  --output ./meu-projeto/.finlabel/evaluations/risk-v1.json \
+  --project ./meu-projeto
+finlabel model versions --project ./meu-projeto
+```
+
+O relatório inclui acurácia, contagem de previsões inválidas, precisão/recall/F1 por rótulo, macro-F1 (nulo quando indefinido), matriz de confusão e avisos. Valores ausentes/indefinidos não são convertidos em zero; previsões inválidas contam como incorretas. Revise a avaliação e só então escolha uma decisão humana:
+
+```bash
+finlabel model activate VERSION_ID --confirm --project ./meu-projeto
+# ou
+finlabel model reject VERSION_ID --reason "Justificativa da decisão" --confirm --project ./meu-projeto
+finlabel model active --project ./meu-projeto
+finlabel model rollback VERSION_ANTERIOR --confirm --project ./meu-projeto
+```
+
+Ativar exige candidato avaliado; rejeitar aceita apenas candidato inativo. Rollback exige uma versão anterior supersedida e íntegra. Versões, eventos append-only, relatórios e adapters ficam no workspace local; o ponteiro ativo só muda após decisão explícita. CSV/SQLite permanecem somente leitura e prompts/valores não aparecem na saída CLI padrão. Saída inclui caminhos, hashes, contagens, métricas e estado.
+
+Este fluxo não demonstra eficácia causal, lucro, adequação regulatória nem generalização fora do holdout. No TCC, reporte métricas preditivas separadamente de utilidade simulada de uma política de decisão; o holdout e as condições acadêmicas devem ser definidos antes de treino real. Compatibilidade com pesos/hardware e qualquer execução real continuam fora da validação sintética desta etapa.
 
 ## API Python de revisão
 

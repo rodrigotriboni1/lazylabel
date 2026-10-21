@@ -98,7 +98,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     dataset_split.add_argument("--group-column")
     dataset_split.add_argument("--project", default=".")
     train = commands.add_parser("train", help="explicitly fine-tune a local PEFT/LoRA adapter")
-    train.add_argument("bundle_dir", help="directory containing train.jsonl, holdout.jsonl and manifest.json")
+    train.add_argument("bundle_dir", help="directory containing train.jsonl, holdout.jsonl and manifest.json; raw dataset paths are not accepted")
     train.add_argument("--model-id", required=True)
     train.add_argument("--revision")
     train.add_argument("--output", required=True)
@@ -290,7 +290,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 record = next(source_records, None)
                 while record is not None and record.record_id != suggestion["record_id"]:
                     record = next(source_records, None)
-                print(json.dumps({"suggested_label": suggestion["label"], "fields": dict(record.values) if record else None,
+                print(json.dumps({"suggested_label": suggestion["label"],
                                   "stale": record is None or record.input_digest != suggestion["input_digest"]}, ensure_ascii=False))
                 action_text = input("accept / edit LABEL / reject / skip> ").strip()
                 if action_text == "skip":
@@ -364,20 +364,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         if args.command == "train":
             from finlabel.training.backend import TrainingConfig, load_training_bundle, train_adapter
+            from finlabel.training.registry import ModelRegistry
 
             config = TrainingConfig(
                 args.model_id, args.revision, Path(args.output), args.epochs, args.batch_size,
                 args.learning_rate, args.lora_rank, args.seed,
             )
             project_config = load_project(args.project)
-            bundle = load_training_bundle(args.bundle_dir)
+            bundle_path = Path(args.bundle_dir).expanduser()
+            if bundle_path.is_file() or bundle_path.suffix.lower() in {".jsonl", ".json", ".csv"}:
+                raise ValueError(
+                    "train requires a split bundle directory, not a raw dataset. Run "
+                    "finlabel dataset check DATASET, then finlabel dataset split DATASET "
+                    "--strategy STRATEGY --holdout-fraction FRACTION --seed SEED --output BUNDLE."
+                )
+            bundle = load_training_bundle(bundle_path)
             result = train_adapter(bundle, config, gate_path=project_config.workspace_dir / "training-gate.json",
                                    exploratory_confirmed=args.confirm_exploratory)
+            registry = ModelRegistry(project_config.workspace_dir)
+            version = registry.register_candidate(result.output_dir, bundle.manifest_path)
             print(json.dumps({
                 "output_dir": str(result.output_dir), "base_model_ref": result.base_model_ref,
-                "dataset_sha256": result.dataset_sha256, "adapter_files": [str(path) for path in result.adapter_files],
-                "split_sha256": result.split_sha256, "adapter_sha256": result.adapter_sha256,
-                "final_metrics": dict(result.final_metrics),
+                "dataset_sha256": result.dataset_sha256, "train_count": bundle.train_count,
+                "holdout_count": bundle.holdout_count, "split_sha256": result.split_sha256,
+                "adapter_sha256": result.adapter_sha256, "final_metrics": dict(result.final_metrics),
+                "registered_version": version.version_id, "state": version.state,
+                "next_action": "Run finlabel model evaluate VERSION --output REPORT after confirming local model availability.",
             }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "model":
@@ -387,7 +399,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             project_config = load_project(args.project)
             registry = ModelRegistry(project_config.workspace_dir)
             if args.model_command == "versions":
-                print(json.dumps([asdict(item) for item in registry.list_versions()], ensure_ascii=False, indent=2, default=str))
+                active = registry.active()
+                print(json.dumps({"versions": [asdict(item) for item in registry.list_versions()],
+                                  "active": asdict(active) if active else None},
+                                 ensure_ascii=False, indent=2, default=str))
                 return 0
             if args.model_command == "active":
                 current = registry.active()
@@ -411,11 +426,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 task = load_task(task_file_path(project_config.workspace_dir, manifest["task_id"]))
                 report = evaluate_candidate(bundle, task, version.adapter_path, output_path=output_path)
                 updated = registry.record_evaluation(args.version_id, output_path)
-                print(json.dumps({"version": asdict(updated), "report": asdict(report)}, ensure_ascii=False, indent=2, default=str))
+                active = registry.active()
+                print(json.dumps({"version": asdict(updated), "report_path": str(output_path),
+                                  "overall": report.overall, "per_label": [asdict(item) for item in report.per_label],
+                                  "warnings": list(report.warnings), "active_version": active.version_id if active else None,
+                                  "next_action": "Review metrics and warnings; activate only with --confirm, or reject with a reason."},
+                                 ensure_ascii=False, indent=2, default=str))
                 return 0
             if args.model_command == "activate":
                 version = registry.activate(args.version_id)
-                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                print(json.dumps({"version": asdict(version), "active_version": version.version_id},
+                                 ensure_ascii=False, indent=2, default=str))
                 return 0
             if args.model_command == "reject":
                 version = registry.reject_candidate(args.version_id, args.reason)
@@ -423,7 +444,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 return 0
             if args.model_command == "rollback":
                 version = registry.rollback(args.version_id)
-                print(json.dumps(asdict(version), ensure_ascii=False, indent=2, default=str))
+                print(json.dumps({"version": asdict(version), "active_version": version.version_id},
+                                 ensure_ascii=False, indent=2, default=str))
                 return 0
         raise ValueError("Unsupported command.")
     except (FileNotFoundError, PermissionError, ValueError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:
