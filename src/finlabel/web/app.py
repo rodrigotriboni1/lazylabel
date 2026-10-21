@@ -122,17 +122,10 @@ def create_app(
         from fastapi import FastAPI, Request
         from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
         from fastapi.staticfiles import StaticFiles
-        from fastapi.templating import Jinja2Templates
-        from jinja2 import Environment, FileSystemLoader, select_autoescape
     except ImportError as exc:
         raise RuntimeError("Install finlabel-local[web] to run the local panel.") from exc
 
     package_dir = Path(__file__).parent
-    template_environment = Environment(
-        loader=FileSystemLoader(str(package_dir / "templates")),
-        autoescape=select_autoescape(("html", "htm", "xml")),
-    )
-    templates = Jinja2Templates(env=template_environment)
     app = FastAPI(title="FinLabel local", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     training_jobs = None
@@ -211,14 +204,6 @@ def create_app(
         ]
         return run_dir, metadata, suggestions
 
-    @app.get("/labeling", response_class=HTMLResponse)
-    async def labeling_page(request: Request):
-        return spa_shell(request)
-
-    @app.get("/training", response_class=HTMLResponse)
-    async def training_page(request: Request):
-        return spa_shell(request)
-
     def spa_shell(request: Request):
         shell_path = package_dir / "static" / "app" / "index.html"
         if not shell_path.is_file():
@@ -239,6 +224,47 @@ def create_app(
     async def health():
         config = load_project(project_path)
         return JSONResponse({"status": "ok", "project": Path(project_path).name, "sources": len(config.sources)})
+
+    @app.get("/api/analyses/{run_id}")
+    async def analysis_result(run_id: str):
+        """Return a verified, bounded analysis artifact for React deep links."""
+        if not RUN_ID_PATTERN.fullmatch(run_id):
+            return JSONResponse({"error": "Analysis run not found."}, status_code=404)
+        try:
+            config = load_project(project_path)
+            analyses_dir = (config.workspace_dir / "analyses").resolve()
+            run_dir = analyses_dir / run_id
+            if run_dir.is_symlink() or run_dir.resolve().parent != analyses_dir:
+                return JSONResponse({"error": "Analysis run not found."}, status_code=404)
+            result_path = run_dir / "result.json"
+            manifest_path = run_dir / "run.json"
+            if result_path.is_symlink() or manifest_path.is_symlink() or not result_path.is_file() or not manifest_path.is_file():
+                return JSONResponse({"error": "Analysis run not found."}, status_code=404)
+            result_bytes = result_path.read_bytes()
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if manifest.get("run_id") != run_id or not hmac.compare_digest(
+                hashlib.sha256(result_bytes).hexdigest(), str(manifest.get("result_sha256", ""))
+            ):
+                return JSONResponse({"error": "Analysis artifact integrity check failed."}, status_code=409)
+            result = json.loads(result_bytes)
+            rows = result.get("rows")
+            if not isinstance(rows, list) or not isinstance(result.get("plan"), dict):
+                return JSONResponse({"error": "Analysis artifact is malformed."}, status_code=409)
+            highlights = result.get("highlights", [])
+            payload = {
+                "run_id": run_id,
+                "rows": rows[:MAX_PAGE_ROWS],
+                "total_rows": len(rows),
+                "highlights": [item.get("text", "") for item in highlights if isinstance(item, dict)],
+                "plan": result["plan"],
+                "formula_metadata": result.get("formula_metadata", {}),
+                "invalid_value_counts": result.get("invalid_value_counts", {}),
+            }
+            if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "The analysis result exceeds the local response limit; use the CLI artifact."}, status_code=422)
+            return JSONResponse(payload)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            return JSONResponse({"error": "Analysis artifact is unavailable: {}".format(exc)}, status_code=404)
 
     @app.get("/api/sources")
     async def sources():
@@ -889,14 +915,9 @@ def create_app(
             return PlainTextResponse("Analysis run not found.", status_code=404)
         config = load_project(project_path)
         run_dir = config.workspace_dir / "analyses" / run_id
-        if not (run_dir / "result.json").is_file():
+        if run_dir.is_symlink() or not (run_dir / "result.json").is_file():
             return PlainTextResponse("Analysis run not found.", status_code=404)
-        result = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
-        return templates.TemplateResponse(
-            request=request,
-            name="analysis.html",
-            context={"run_id": run_id, "result": result, "max_page_rows": MAX_PAGE_ROWS},
-        )
+        return spa_shell(request)
 
     @app.get("/analysis/{run_id}/chart")
     async def chart_file(run_id: str):
@@ -920,6 +941,8 @@ def create_app(
     @app.get("/analysis", response_class=HTMLResponse)
     @app.get("/monitor", response_class=HTMLResponse)
     @app.get("/review", response_class=HTMLResponse)
+    @app.get("/labeling", response_class=HTMLResponse)
+    @app.get("/training", response_class=HTMLResponse)
     async def spa_page(request: Request):
         return spa_shell(request)
 

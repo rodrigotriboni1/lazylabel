@@ -20,12 +20,15 @@ const navigation = [
 ]
 
 function pageName(path: string) {
+  if (path.startsWith('/analysis/')) return 'Análise salva'
   if (path === '/review') return 'Revisão humana'
   return navigation.find((item) => item.path === path)?.label ?? 'Visão geral'
 }
 
 export default function App() {
   const path = window.location.pathname
+  const analysisRunId = /^\/analysis\/([0-9a-f]{32})$/.exec(path)?.[1]
+  const activePath = analysisRunId ? '/analysis' : path
   const [health, setHealth] = useState<Health | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,8 +48,8 @@ export default function App() {
         <p className="mb-3 mt-10 px-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#87938a]">Workspace</p>
         <nav aria-label="Navegação principal" className="space-y-1">
           {navigation.map(({ label, path: itemPath, icon: Icon }) => (
-            <a key={itemPath} href={itemPath} aria-current={path === itemPath ? 'page' : undefined}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${path === itemPath ? 'bg-[#eaf5ed] font-semibold text-[#176c48]' : 'text-[#57645b] hover:bg-[#f3f6f3]'}`}>
+            <a key={itemPath} href={itemPath} aria-current={activePath === itemPath ? 'page' : undefined}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${activePath === itemPath ? 'bg-[#eaf5ed] font-semibold text-[#176c48]' : 'text-[#57645b] hover:bg-[#f3f6f3]'}`}>
               <Icon size={17} strokeWidth={1.8} />{label}
             </a>
           ))}
@@ -67,7 +70,7 @@ export default function App() {
         </header>
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
-          {path === '/analysis' ? <AnalysisPage /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' ? <LabelingPage /> : path === '/review' ? <ReviewPage /> : path === '/training' ? <TrainingPage /> : <>
+          {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' ? <LabelingPage /> : path === '/review' ? <ReviewPage /> : path === '/training' ? <TrainingPage /> : <>
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div><p className="mb-2 text-sm font-medium text-[#47805f]">FINLABEL / LOCAL</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Seu espaço de trabalho</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#718077]">Análise, revisão humana e preparação de dados em um único ambiente privado.</p></div>
             <Button variant="outline" className="gap-2 border-[#dce5de] bg-white text-[#34493a]"><CircleHelp size={16} />Ajuda</Button>
@@ -79,7 +82,7 @@ export default function App() {
         <footer className="px-5 pb-8 text-center text-xs text-[#94a097] md:px-10">FinLabel · ambiente de processamento local</footer>
       </main>
       <nav aria-label="Navegação móvel" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-[#e0e7e1] bg-white px-1 py-2 md:hidden">
-        {navigation.map(({ mobileLabel, path: itemPath, icon: Icon }) => <a key={itemPath} href={itemPath} aria-current={path === itemPath ? 'page' : undefined} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] leading-tight ${path === itemPath ? 'font-semibold text-[#176c48]' : 'text-[#718077]'}`}><Icon size={17} /><span className="whitespace-nowrap">{mobileLabel}</span></a>)}
+        {navigation.map(({ mobileLabel, path: itemPath, icon: Icon }) => <a key={itemPath} href={itemPath} aria-current={activePath === itemPath ? 'page' : undefined} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] leading-tight ${activePath === itemPath ? 'font-semibold text-[#176c48]' : 'text-[#718077]'}`}><Icon size={17} /><span className="whitespace-nowrap">{mobileLabel}</span></a>)}
       </nav>
     </div>
   )

@@ -52,14 +52,19 @@ cd ..
 python -m pip install -e '.[web]'
 ```
 
-O build grava o shell e os assets locais em `src/finlabel/web/static/app/`; o pacote Python inclui esse diretório. Não é necessário executar um servidor Vite durante o uso do painel.
+O build grava o shell e os assets locais em `src/finlabel/web/static/app/`; o pacote Python inclui esse diretório. Não é necessário executar um servidor Vite durante o uso do painel. Para distribuir um wheel, gere o build antes e execute `python -m pip wheel --no-deps . --wheel-dir dist`. Em um ambiente Python limpo, instale as dependências do painel e o wheel:
+
+```bash
+python -m pip install 'fastapi>=0.115' 'uvicorn>=0.30' 'plotly>=5.24'
+python -m pip install dist/finlabel_local-0.1.0-py3-none-any.whl
+```
 
 ```bash
 python -m pip install -e '.[web]'
 finlabel serve --project ./meu-projeto --host 127.0.0.1 --port 8765
 ```
 
-Abra `http://127.0.0.1:8765`. O serviço só faz bind em loopback, valida `Host`, `Origin` e CSRF, limita requisições e usa templates escapados. A captura de esquema não salva até confirmação explícita. Gráficos têm CSP sandbox ao serem exibidos no painel.
+Abra `http://127.0.0.1:8765`. O serviço só faz bind em loopback, valida `Host`, `Origin` e CSRF, limita requisições e serve as telas React e seus assets locais. Os caminhos `/`, `/analysis`, `/analysis/{run_id}`, `/monitor`, `/labeling`, `/review` e `/training` funcionam também em acesso direto e atualização do navegador; `/api/*` continua sendo JSON e assets ausentes retornam 404. A tela de análise salva recarrega resultados por um endpoint JSON que verifica o hash do artefato. A captura de esquema não salva até confirmação explícita. Gráficos HTML independentes continuam disponíveis com CSP sandbox.
 
 Use `/labeling` para gerar e revisar rótulos; `/training` lista datasets preparados e oferece envio explícito de trabalho LoRA depois que o gate do projeto estiver completo.
 

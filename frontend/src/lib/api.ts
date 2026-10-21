@@ -227,6 +227,10 @@ export function runAnalysis(source: string, question: string, plan: AnalysisPlan
   })
 }
 
+export function getAnalysisRun(runId: string): Promise<AnalysisResponse> {
+  return request(`/api/analyses/${encodeURIComponent(runId)}`)
+}
+
 export function postJson<TResponse, TBody>(path: string, body: TBody): Promise<TResponse> {
   return request<TResponse>(path, { method: 'POST', body: JSON.stringify(body) })
 }

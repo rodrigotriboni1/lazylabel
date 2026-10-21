@@ -4,13 +4,13 @@ import { CartesianGrid, Legend, Line, LineChart, Bar, BarChart, ResponsiveContai
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ApiError, getSources, proposeAnalysis, runAnalysis, type AnalysisPlan, type AnalysisResponse, type SourceInfo } from '@/lib/api'
+import { ApiError, getAnalysisRun, getSources, proposeAnalysis, runAnalysis, type AnalysisPlan, type AnalysisResponse, type SourceInfo } from '@/lib/api'
 
 const operationNames: Record<string, string> = { count_rows: 'Contagem de linhas', sum: 'Soma', average: 'Média', distinct_count: 'Valores distintos', share_of_total: 'Participação no total' }
 const timeGrainNames: Record<string, string> = { day: 'dia', week: 'semana', month: 'mês', quarter: 'trimestre', year: 'ano' }
 const readable = (value: unknown) => value === null || value === undefined ? '—' : String(value)
 
-export default function AnalysisPage() {
+export default function AnalysisPage({ runId }: { runId?: string }) {
   const [sources, setSources] = useState<SourceInfo[]>([])
   const [source, setSource] = useState('')
   const [question, setQuestion] = useState('')
@@ -21,7 +21,13 @@ export default function AnalysisPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { getSources().then(({ sources: items }) => { setSources(items); setSource(items[0]?.name ?? '') }).catch((e: Error) => setError(e.message)) }, [])
+  useEffect(() => {
+    getSources().then(({ sources: items }) => { setSources(items); setSource(items[0]?.name ?? '') }).catch((e: Error) => setError(e.message))
+    if (runId) {
+      setBusy(true)
+      getAnalysisRun(runId).then(setResult).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
+    }
+  }, [runId])
   const currentPlan = useMemo(() => {
     try { return JSON.parse(planText) as AnalysisPlan }
     catch { return null }
