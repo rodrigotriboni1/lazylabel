@@ -37,7 +37,8 @@ export interface TrainingQuality {
 }
 export interface TrainingVersion {
   version_id: string; base_model_ref: string; dataset_sha256: string; split_sha256: string
-  created_at: string; state: string; has_evaluation: boolean; is_active: boolean
+  created_at: string | null; state: string; has_evaluation: boolean; is_active: boolean
+  integrity_valid: boolean; integrity_error: string | null
   evaluation?: TrainingEvaluation
 }
 export interface TrainingEvaluation {
@@ -48,12 +49,17 @@ export interface TrainingEvaluation {
 }
 export interface TrainingOverview {
   datasets: TrainingDataset[]; tasks: TrainingTask[]; gate: TrainingGate
-  active_version: string | null; versions: TrainingVersion[]; jobs: TrainingJob[]
+  active_version: string | null; active_diagnostic: string | null; registry_diagnostics: { version_id: string; error: string }[]
+  versions: TrainingVersion[]; jobs: TrainingJob[]; evaluation_jobs: EvaluationJob[]
 }
 export interface TrainingJob {
   job_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed'; progress: string
   error: string | null; model_id: string; dataset_sha256: string; final_metrics: Record<string, number>
   bundle_id: string | null; version_id: string | null; created_at?: string
+}
+export interface EvaluationJob {
+  job_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed'; progress: string
+  error: string | null; version_id: string; created_at?: string
 }
 
 export function getTrainingOverview() { return request<TrainingOverview>('/api/train/overview') }
@@ -74,13 +80,16 @@ export function submitTraining(body: {
 }) { return postJson<{ job_id: string; state: string; progress: string }, typeof body>('/api/train/submit', body) }
 export function getTrainingJob(jobId: string) { return request<TrainingJob>(`/api/train/jobs/${encodeURIComponent(jobId)}`) }
 export function getTrainingVersions() {
-  return request<{ versions: TrainingVersion[]; active_version: string | null }>('/api/train/versions')
+  return request<{ versions: TrainingVersion[]; active_version: string | null; active_diagnostic: string | null; registry_diagnostics: { version_id: string; error: string }[] }>('/api/train/versions')
 }
 export function evaluateTrainingCandidate(version_id: string) {
-  return postJson<{ version: TrainingVersion; report: TrainingEvaluation }, { version_id: string; confirmed: true }>(
+  return postJson<{ job_id: string; state: EvaluationJob['state']; progress: string }, { version_id: string; confirmed: true }>(
     '/api/train/evaluate', { version_id, confirmed: true })
 }
-export function transitionTrainingVersion(body: { action: 'activate' | 'reject' | 'rollback'; version_id: string; confirmed: true; reason?: string }) {
+export function getEvaluationJob(jobId: string) {
+  return request<EvaluationJob>(`/api/train/evaluations/${encodeURIComponent(jobId)}`)
+}
+export function transitionTrainingVersion(body: { action: 'activate' | 'reject' | 'rollback' | 'recover'; version_id: string; confirmed: true; reason?: string }) {
   return postJson<{ version: TrainingVersion; active_version: string | null }, typeof body>('/api/train/transition', body)
 }
 

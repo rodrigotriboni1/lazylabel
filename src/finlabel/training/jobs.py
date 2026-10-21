@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -29,6 +30,16 @@ class TrainingJobStatus:
     version_id: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class EvaluationJobStatus:
+    job_id: str
+    state: str
+    progress: str
+    error: Optional[str]
+    version_id: str
+    created_at: str
+
+
 class TrainingJobManager:
     def __init__(self, workspace_dir: Path, *, gate_path: Optional[Path] = None):
         self.workspace_dir = Path(workspace_dir).expanduser().resolve()
@@ -36,7 +47,9 @@ class TrainingJobManager:
         self.jobs_dir = self.workspace_dir / "training" / "jobs"
         self._lock = threading.RLock()
         self._jobs = {}
+        self._evaluation_jobs = {}
         self._worker = None
+        self._evaluation_worker = None
         self._recover_completed_status_only()
 
     def _recover_completed_status_only(self):
@@ -59,13 +72,28 @@ class TrainingJobManager:
                 self._persist(status)
             if status.job_id == path.stem:
                 self._jobs[status.job_id] = status
+        for path in self.jobs_dir.glob("evaluation-*.json"):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                status = EvaluationJobStatus(**raw)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+                continue
+            if status.state in {"queued", "running"}:
+                status = EvaluationJobStatus(
+                    status.job_id, "failed", "The local process ended before evaluation completed.",
+                    "No evaluation was resumed after the process stopped.", status.version_id, status.created_at,
+                )
+                self._persist_evaluation(status)
+            if status.job_id == path.stem.removeprefix("evaluation-"):
+                self._evaluation_jobs[status.job_id] = status
 
     def submit(self, bundle, config: TrainingConfig, *, exploratory_confirmed: bool = False) -> str:
         validated = validate_training_request(bundle, config, gate_path=self.gate_path,
                                               exploratory_confirmed=exploratory_confirmed)
         with self._lock:
-            if self._worker is not None and self._worker.is_alive():
-                raise RuntimeError("A local training job is already active.")
+            if ((self._worker is not None and self._worker.is_alive())
+                    or (self._evaluation_worker is not None and self._evaluation_worker.is_alive())):
+                raise RuntimeError("Another local model operation is already active.")
             job_id = uuid4().hex
             status = TrainingJobStatus(
                 job_id, "queued", "Waiting for the local training worker.", None,
@@ -146,4 +174,105 @@ class TrainingJobManager:
             raise ValueError("Job history limit must be between 1 and 100.")
         with self._lock:
             values = sorted(self._jobs.values(), key=lambda item: item.created_at, reverse=True)
+            return values[:limit]
+
+    def submit_evaluation(self, version_id: str) -> str:
+        """Queue one confirmed evaluation without blocking the local API event loop."""
+        from finlabel.training.registry import ModelRegistry
+
+        registry = ModelRegistry(self.workspace_dir)
+        try:
+            candidate = registry.version(version_id)
+        except (OSError, ValueError, KeyError) as exc:
+            raise KeyError("Model candidate was not found or is invalid.") from exc
+        if candidate is None:
+            raise KeyError("Model candidate was not found.")
+        if candidate.state != "awaiting_evaluation":
+            raise ValueError("Only a candidate awaiting evaluation can be evaluated.")
+        with self._lock:
+            if ((self._worker is not None and self._worker.is_alive())
+                    or (self._evaluation_worker is not None and self._evaluation_worker.is_alive())):
+                raise RuntimeError("Another local model operation is already active.")
+            job_id = uuid4().hex
+            status = EvaluationJobStatus(
+                job_id, "queued", "Waiting for the local evaluation worker.", None,
+                version_id, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            )
+            self._persist_evaluation(status)
+            self._evaluation_jobs[job_id] = status
+            self._evaluation_worker = threading.Thread(
+                target=self._run_evaluation, args=(job_id,), daemon=True,
+                name="finlabel-evaluate-{}".format(job_id[:8]),
+            )
+            self._evaluation_worker.start()
+            return job_id
+
+    def _persist_evaluation(self, status: EvaluationJobStatus) -> None:
+        self.jobs_dir.mkdir(parents=True, exist_ok=True)
+        destination = self.jobs_dir / ("evaluation-" + status.job_id + ".json")
+        temporary = destination.with_suffix(".tmp")
+        temporary.write_text(json.dumps(asdict(status), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, destination)
+
+    def _set_evaluation_status(self, status: EvaluationJobStatus) -> None:
+        with self._lock:
+            self._evaluation_jobs[status.job_id] = status
+            self._persist_evaluation(status)
+
+    def _run_evaluation(self, job_id: str) -> None:
+        from finlabel.training.backend import load_training_bundle
+        from finlabel.training.evaluation import evaluate_candidate
+        from finlabel.training.registry import ModelRegistry
+        from finlabel.labeling.task import load_task, task_file_path
+        queued = self._evaluation_jobs[job_id]
+        self._set_evaluation_status(EvaluationJobStatus(
+            queued.job_id, "running", "Evaluating base and adapter on the reserved local holdout.", None,
+            queued.version_id, queued.created_at,
+        ))
+        try:
+            registry = ModelRegistry(self.workspace_dir)
+            candidate = registry.version(queued.version_id)
+            if candidate.state != "awaiting_evaluation":
+                raise ValueError("Candidate is no longer awaiting evaluation.")
+            bundle = load_training_bundle(candidate.bundle_manifest_path.parent)
+            manifest = json.loads(candidate.bundle_manifest_path.read_text(encoding="utf-8"))
+            task = load_task(task_file_path(self.workspace_dir, manifest["task_id"]))
+            output = self.workspace_dir / "training" / "evaluations" / (candidate.version_id + "-" + secrets.token_hex(8) + ".json")
+            evaluate_candidate(bundle, task, candidate.adapter_path, output_path=output)
+            registry.record_evaluation(candidate.version_id, output)
+            self._set_evaluation_status(EvaluationJobStatus(
+                queued.job_id, "succeeded", "Holdout evaluation saved to the local model registry.", None,
+                queued.version_id, queued.created_at,
+            ))
+        except Exception:
+            self._set_evaluation_status(EvaluationJobStatus(
+                queued.job_id, "failed", "Holdout evaluation did not complete.",
+                "Evaluation failed. Inspect local process logs; the candidate was not marked evaluated.",
+                queued.version_id, queued.created_at,
+            ))
+
+    def get_evaluation(self, job_id: str) -> EvaluationJobStatus:
+        if not isinstance(job_id, str) or len(job_id) != 32 or any(character not in "0123456789abcdef" for character in job_id):
+            raise ValueError("Invalid evaluation job ID.")
+        with self._lock:
+            status = self._evaluation_jobs.get(job_id)
+            if status is not None:
+                return status
+            path = self.jobs_dir / ("evaluation-" + job_id + ".json")
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                status = EvaluationJobStatus(**raw)
+            except FileNotFoundError as exc:
+                raise KeyError("Evaluation job was not found.") from exc
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+                raise ValueError("Evaluation job status is invalid: {}".format(exc)) from exc
+            if status.job_id != job_id:
+                raise ValueError("Evaluation job ID does not match its status file.")
+            return status
+
+    def recent_evaluations(self, limit: int = 10):
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ValueError("Evaluation history limit must be between 1 and 100.")
+        with self._lock:
+            values = sorted(self._evaluation_jobs.values(), key=lambda item: item.created_at, reverse=True)
             return values[:limit]

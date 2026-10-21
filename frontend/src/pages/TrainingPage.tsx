@@ -4,9 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  checkTrainingDataset, evaluateTrainingCandidate, getTrainingJob, getTrainingOverview,
+  checkTrainingDataset, evaluateTrainingCandidate, getEvaluationJob, getTrainingJob, getTrainingOverview,
   getTrainingVersions, splitTrainingDataset, submitTraining, transitionTrainingVersion,
-  type TrainingEvaluation, type TrainingJob, type TrainingOverview, type TrainingQuality,
+  type EvaluationJob, type TrainingEvaluation, type TrainingJob, type TrainingOverview, type TrainingQuality,
   type TrainingVersion,
 } from '@/lib/api'
 
@@ -81,6 +81,8 @@ export default function TrainingPage() {
   const [trainConfirmed, setTrainConfirmed] = useState(false)
   const [job, setJob] = useState<TrainingJob | null>(null)
   const [jobId, setJobId] = useState('')
+  const [evaluationJob, setEvaluationJob] = useState<EvaluationJob | null>(null)
+  const [evaluationJobId, setEvaluationJobId] = useState('')
   const [evaluation, setEvaluation] = useState<TrainingEvaluation | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -96,11 +98,15 @@ export default function TrainingPage() {
       const latest = data.jobs[0] ?? null
       setJob(latest)
       setJobId(latest && (latest.state === 'queued' || latest.state === 'running') ? latest.job_id : '')
+      const latestEvaluation = data.evaluation_jobs[0] ?? null
+      setEvaluationJob(latestEvaluation)
+      setEvaluationJobId(latestEvaluation && (latestEvaluation.state === 'queued' || latestEvaluation.state === 'running') ? latestEvaluation.job_id : '')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o ciclo de treinamento.') }
   }, [])
   const refreshVersions = useCallback(async () => {
     const result = await getTrainingVersions()
-    setOverview((current) => current ? { ...current, versions: result.versions, active_version: result.active_version } : current)
+    setOverview((current) => current ? { ...current, versions: result.versions, active_version: result.active_version,
+      active_diagnostic: result.active_diagnostic, registry_diagnostics: result.registry_diagnostics } : current)
   }, [])
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
@@ -122,14 +128,39 @@ export default function TrainingPage() {
     const timer = window.setInterval(() => void poll(), 1500)
     return () => { alive = false; window.clearInterval(timer) }
   }, [jobId, refreshVersions])
+  useEffect(() => {
+    if (!evaluationJobId) return
+    let alive = true
+    const poll = async () => {
+      try {
+        const current = await getEvaluationJob(evaluationJobId)
+        if (!alive) return
+        setEvaluationJob(current)
+        if (current.state === 'succeeded' || current.state === 'failed') {
+          setEvaluationJobId('')
+          if (current.state === 'succeeded') {
+            await refreshVersions()
+            const updated = await getTrainingOverview()
+            const evaluated = updated.versions.find((version) => version.version_id === current.version_id)?.evaluation
+            if (alive && evaluated) { setEvaluation(evaluated); setNotice('Avaliação do holdout concluída e registrada. Revise as métricas antes de decidir.') }
+            else if (alive) setError('O job terminou, mas o relatório não apareceu no registro de versões.')
+          } else setError(current.error ?? 'A avaliação falhou; o candidato continua sem avaliação registrada.')
+        }
+      } catch (cause) { if (alive) { setEvaluationJobId(''); setError(cause instanceof Error ? cause.message : 'Falha ao consultar o job de avaliação.') } }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 1200)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [evaluationJobId, refreshVersions])
 
   const selectedDataset = overview?.datasets.find((item) => item.name === datasetName)
   const selectedTask = overview?.tasks.find((item) => item.task_id === selectedDataset?.task_id)
   const blockers = quality?.blockers ?? []
   const warnings = [...(quality?.warnings ?? []), ...(bundle?.warnings ?? [])]
-  const latestCandidate = useMemo(() => overview?.versions.find((item) => item.version_id === job?.version_id)
-    ?? [...(overview?.versions ?? [])].reverse().find((item) => item.state === 'awaiting_evaluation'), [overview?.versions, job?.version_id])
+  const latestCandidate = useMemo(() => overview?.versions.find((item) => item.version_id === job?.version_id && item.integrity_valid)
+    ?? [...(overview?.versions ?? [])].reverse().find((item) => item.integrity_valid && item.state === 'awaiting_evaluation'), [overview?.versions, job?.version_id])
   const currentStep: StepId = job?.state === 'queued' || job?.state === 'running' ? 'train'
+    : evaluationJob?.state === 'queued' || evaluationJob?.state === 'running' ? 'evaluate'
     : latestCandidate?.state === 'awaiting_evaluation' ? 'evaluate'
     : latestCandidate?.state === 'awaiting_approval' ? 'decide'
     : bundle ? 'train' : quality?.ready ? 'split' : overview?.active_version ? 'rollback' : 'check'
@@ -168,18 +199,23 @@ export default function TrainingPage() {
     const okay = window.confirm(`Avaliar o candidato ${version.version_id} localmente no holdout reservado? O modelo base e o adaptador serão executados neste dispositivo.`)
     if (!okay) return
     setEvaluating(version.version_id); setError(null); setNotice(null)
-    try { const result = await evaluateTrainingCandidate(version.version_id); setEvaluation(result.report); setNotice('Avaliação registrada no histórico local. Revise todas as métricas antes de decidir.'); await refreshVersions() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'A avaliação não foi concluída.') }
+    try {
+      const result = await evaluateTrainingCandidate(version.version_id)
+      const status: EvaluationJob = { job_id: result.job_id, state: result.state, progress: result.progress,
+        error: null, version_id: version.version_id }
+      setEvaluationJob(status); setEvaluationJobId(result.job_id)
+      setNotice('Avaliação local enfileirada. O painel mostrará o resultado somente após o job e o registro terminarem.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'A avaliação não foi enfileirada.') }
     finally { setEvaluating(null) }
   }
-  async function transition(action: 'activate' | 'reject' | 'rollback', version: TrainingVersion) {
-    const copy = action === 'activate' ? `Ativar ${version.version_id} como versão ativa?` : action === 'rollback' ? `Restaurar ${version.version_id} como versão ativa?` : `Rejeitar o candidato ${version.version_id}?`
+  async function transition(action: 'activate' | 'reject' | 'rollback' | 'recover', version: TrainingVersion) {
+    const copy = action === 'activate' ? `Ativar ${version.version_id} como versão ativa?` : action === 'rollback' ? `Restaurar ${version.version_id} como versão ativa?` : action === 'recover' ? `Recuperar o ponteiro ativo usando a versão verificada ${version.version_id}?` : `Rejeitar o candidato ${version.version_id}?`
     if (!window.confirm(`${copy} A ação será registrada localmente.`)) return
     setError(null); setNotice(null)
     try { await transitionTrainingVersion({ action, version_id: version.version_id, confirmed: true,
       ...(action === 'reject' ? { reason: 'Rejeitado pelo usuário após revisão no painel local.' } : {}) });
-      if (action === 'activate' || action === 'rollback') { setBundle(null); setQuality(null) }
-      setNotice(action === 'activate' ? 'Versão ativada.' : action === 'rollback' ? 'Rollback registrado.' : 'Candidato rejeitado.'); await refreshVersions()
+      if (action === 'activate' || action === 'rollback' || action === 'recover') { setBundle(null); setQuality(null) }
+      setNotice(action === 'activate' ? 'Versão ativada.' : action === 'rollback' ? 'Rollback registrado.' : action === 'recover' ? 'Ponteiro ativo recuperado para uma versão íntegra.' : 'Candidato rejeitado.'); await refreshVersions()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'A transição foi recusada; o estado não foi confirmado.') }
   }
 
@@ -225,9 +261,12 @@ export default function TrainingPage() {
         <div className="flex justify-between gap-3"><span className="text-[#718077]">Autorização local</span><Badge variant="outline">{overview?.gate.authorized ? 'Autorizado' : 'Pendente'}</Badge></div>
         <div className="flex justify-between gap-3"><span className="text-[#718077]">Versão ativa</span><b className="font-mono text-xs">{overview?.active_version ?? 'Nenhuma'}</b></div>
         {overview?.gate.missing?.length ? <div className="rounded-lg bg-[#fff8f7] p-3 text-xs text-[#963f35]">Gate pendente: {overview.gate.missing.join(', ')}. O painel não altera a autorização de treino.</div> : null}
+        {overview?.active_diagnostic && <div role="alert" className="rounded-lg border border-[#edcfaa] bg-[#fff9ef] p-3 text-xs text-[#795a22]"><b>Versão ativa indisponível</b><p className="mt-1">{overview.active_diagnostic}</p><p className="mt-1">O histórico foi preservado. Use Recuperar em uma versão anterior cuja integridade esteja verificada.</p></div>}
+        {overview?.registry_diagnostics.length ? <details className="rounded-lg border border-[#e6ece7] p-3 text-xs"><summary className="cursor-pointer font-medium">Diagnósticos do histórico ({overview.registry_diagnostics.length})</summary><ul className="mt-2 list-disc space-y-1 pl-5">{overview.registry_diagnostics.map((item) => <li key={item.version_id}><code>{item.version_id}</code>: {item.error}</li>)}</ul></details> : null}
         <p className="flex gap-2 rounded-lg bg-[#f7faf7] p-3 text-xs leading-relaxed text-[#59675d]"><CircleHelp size={15} className="mt-0.5 shrink-0"/>Instale pesos e dependências compatíveis antes de pedir uma operação real. A avaliação executa modelo base e candidato e pode consumir memória/tempo local.</p>
       </CardContent></Card>
       {job && <Card className={`border shadow-sm ${job.state === 'failed' ? 'border-[#f0d5d1]' : 'border-[#dce8df]'}`}><CardHeader><CardTitle className="text-base">Trabalho {job.state === 'failed' ? 'com falha' : job.state === 'succeeded' ? 'concluído' : 'em andamento'}</CardTitle><CardDescription className="font-mono text-xs">{job.job_id}</CardDescription></CardHeader><CardContent><p className="text-sm">{job.progress}</p>{job.error && <p role="alert" className="mt-2 text-xs text-[#963f35]">{job.error}</p>}</CardContent></Card>}
+      {evaluationJob && <Card className={`border shadow-sm ${evaluationJob.state === 'failed' ? 'border-[#f0d5d1]' : evaluationJob.state === 'succeeded' ? 'border-[#cde4d1]' : 'border-[#dce8df]'}`}><CardHeader><CardTitle className="text-base">Avaliação {evaluationJob.state === 'queued' ? 'na fila' : evaluationJob.state === 'running' ? 'em andamento' : evaluationJob.state === 'succeeded' ? 'concluída' : 'com falha'}</CardTitle><CardDescription className="font-mono text-xs">{evaluationJob.job_id} · {evaluationJob.version_id}</CardDescription></CardHeader><CardContent><p className="text-sm">{evaluationJob.progress}</p>{evaluationJob.error && <p role="alert" className="mt-2 text-xs text-[#963f35]">{evaluationJob.error}</p>}</CardContent></Card>}
       </div>
     </div>
 
@@ -235,10 +274,11 @@ export default function TrainingPage() {
 
     <Card className="border-[#e1e8e2] shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><RotateCcw size={17} className="text-[#32845b]"/>Histórico de versões</CardTitle><CardDescription>Ativação, rejeição e rollback passam pelo registro local e pedem confirmação explícita.</CardDescription></CardHeader><CardContent className="space-y-3">
       {!overview?.versions.length && <p className="rounded-lg border border-dashed p-4 text-sm text-[#718077]">Nenhum candidato foi registrado ainda.</p>}
-      {overview?.versions.map((version) => <article key={version.version_id} className="rounded-xl border border-[#e6ece7] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-mono text-sm font-semibold">{version.version_id}</h3><Badge variant="outline" className={version.is_active ? 'border-[#cde4d1] bg-[#eff8f0] text-[#286444]' : ''}>{version.is_active ? 'ativa' : version.state}</Badge></div><p className="mt-1 text-xs text-[#718077]">{version.base_model_ref} · {new Date(version.created_at).toLocaleString('pt-BR')}</p><p className="mt-1 font-mono text-[10px] text-[#89958c]">dataset {version.dataset_sha256.slice(0,12)} · split {version.split_sha256.slice(0,12)}</p></div>
-          <div className="flex flex-wrap gap-2">{version.state === 'awaiting_evaluation' && <Button size="sm" disabled={evaluating !== null} onClick={()=>void doEvaluate(version)}>{evaluating === version.version_id ? 'Avaliando…' : 'Avaliar no holdout'}</Button>}
-            {version.state === 'awaiting_approval' && <><Button size="sm" onClick={()=>void transition('activate',version)}>Ativar</Button><Button size="sm" variant="outline" onClick={()=>void transition('reject',version)}>Rejeitar</Button></>}
-            {version.state === 'superseded' && <Button size="sm" variant="outline" className="gap-1" onClick={()=>void transition('rollback',version)}><RotateCcw size={13}/>Rollback</Button>}</div></div>
+      {overview?.versions.map((version) => <article key={version.version_id} className="rounded-xl border border-[#e6ece7] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-mono text-sm font-semibold">{version.version_id}</h3><Badge variant="outline" className={version.is_active && version.integrity_valid ? 'border-[#cde4d1] bg-[#eff8f0] text-[#286444]' : ''}>{!version.integrity_valid ? 'integridade inválida' : version.is_active ? 'ativa' : version.state}</Badge></div><p className="mt-1 text-xs text-[#718077]">{version.base_model_ref} · {version.created_at ? new Date(version.created_at).toLocaleString('pt-BR') : 'data indisponível'}</p><p className="mt-1 font-mono text-[10px] text-[#89958c]">dataset {version.dataset_sha256.slice(0,12) || '—'} · split {version.split_sha256.slice(0,12) || '—'}</p>{!version.integrity_valid && <p role="alert" className="mt-2 max-w-2xl text-xs text-[#963f35]">{version.integrity_error ?? 'Esta versão não passou pela verificação de integridade; operações estão desabilitadas.'}</p>}</div>
+          <div className="flex flex-wrap gap-2">{version.integrity_valid && version.state === 'awaiting_evaluation' && <Button size="sm" disabled={evaluating !== null || evaluationJobId !== ''} onClick={()=>void doEvaluate(version)}>{evaluating === version.version_id ? 'Enfileirando…' : evaluationJobId ? 'Avaliação em andamento' : 'Avaliar no holdout'}</Button>}
+            {version.integrity_valid && version.state === 'awaiting_approval' && <><Button size="sm" onClick={()=>void transition('activate',version)}>Ativar</Button><Button size="sm" variant="outline" onClick={()=>void transition('reject',version)}>Rejeitar</Button></>}
+            {version.integrity_valid && version.state === 'superseded' && overview.active_diagnostic && <Button size="sm" variant="outline" className="gap-1" onClick={()=>void transition('recover',version)}><RotateCcw size={13}/>Recuperar versão ativa</Button>}
+            {version.integrity_valid && version.state === 'superseded' && !overview.active_diagnostic && <Button size="sm" variant="outline" className="gap-1" onClick={()=>void transition('rollback',version)}><RotateCcw size={13}/>Rollback</Button>}</div></div>
           {version.evaluation && <div className="mt-4"><MetricTable report={version.evaluation}/></div>}
         </article>)}
     </CardContent></Card>

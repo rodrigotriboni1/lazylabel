@@ -286,6 +286,107 @@ class ModelRegistry:
             return []
         return [self._version(path.name) for path in sorted(versions_dir.iterdir()) if path.is_dir()]
 
+    def version(self, version_id: str) -> ModelVersion:
+        """Read one version record without asserting that its adapter is intact."""
+        return self._version(version_id)
+
+    def inspect_history(self) -> dict:
+        """Return readable version history plus integrity diagnostics without trusting a bad active pointer."""
+        active_id = None
+        active = None
+        active_error = None
+        try:
+            active = self.active()
+            active_id = active.version_id if active else None
+        except (OSError, ValueError, KeyError) as exc:
+            active_error = str(exc)
+            try:
+                pointer_path = self._contained(self.active_path, "Active pointer path")
+                pointer, _ = self._read_json(pointer_path, "active model pointer")
+                candidate_id = pointer.get("version_id")
+                if isinstance(candidate_id, str) and _VERSION_ID.fullmatch(candidate_id):
+                    active_id = candidate_id
+            except (OSError, ValueError):
+                pass
+
+        records = []
+        diagnostics = []
+        versions_dir = self._contained(self.versions_dir, "Model versions directory")
+        if versions_dir.is_dir():
+            for path in sorted(versions_dir.iterdir()):
+                if path.is_symlink() or not path.is_dir():
+                    diagnostics.append({"version_id": path.name, "error": "Version entry is not a regular directory."})
+                    continue
+                try:
+                    item = self._version(path.name)
+                except (OSError, ValueError, KeyError) as exc:
+                    diagnostics.append({"version_id": path.name, "error": str(exc)})
+                    records.append({"version": None, "version_id": path.name, "state": "invalid",
+                                    "integrity_valid": False, "integrity_error": str(exc)})
+                    continue
+                try:
+                    self._validate_intact(item)
+                    integrity_error = None
+                except (OSError, ValueError, KeyError) as exc:
+                    integrity_error = str(exc)
+                    diagnostics.append({"version_id": item.version_id, "error": integrity_error})
+                records.append({"version": item, "version_id": item.version_id, "state": item.state,
+                                "integrity_valid": integrity_error is None, "integrity_error": integrity_error})
+
+        if active is None and active_error is None and any(item["state"] == "active" for item in records):
+            active_error = "An active version exists in history, but the active pointer is missing."
+            for item in records:
+                if item["state"] == "active":
+                    item["integrity_valid"] = False
+                    item["integrity_error"] = active_error
+        if active_id is not None:
+            active_record = next((item for item in records if item["version_id"] == active_id), None)
+            if active_record is None and active_error is None:
+                active_error = "The active pointer references a version missing from registry history."
+            elif active_record is not None and not active_record["integrity_valid"] and active_error is None:
+                active_error = active_record["integrity_error"] or "The active version failed integrity validation."
+        return {"active": active, "active_pointer_id": active_id, "active_error": active_error,
+                "versions": records, "diagnostics": diagnostics}
+
+    def recover_active(self, version_id: str) -> ModelVersion:
+        """Point to a verified superseded version only when the current active state is unusable."""
+        try:
+            current = self.active()
+        except (OSError, ValueError, KeyError):
+            current = None
+        if current is not None:
+            raise ValueError("The active version is healthy; use normal rollback instead.")
+        inspection = self.inspect_history()
+        if not inspection["active_error"]:
+            raise ValueError("No invalid active pointer or artifact requires recovery.")
+        target = self._version(version_id)
+        if target.state != "superseded":
+            raise ValueError("Recovery target must be a superseded version.")
+        self._validate_intact(target)
+        previous = None
+        if inspection["active_pointer_id"]:
+            try:
+                previous = self._version(inspection["active_pointer_id"])
+            except (OSError, ValueError, KeyError):
+                previous = None
+        self._append(version_id, "activated", reason="rollback")
+        try:
+            self._write_pointer(version_id)
+        except BaseException:
+            try:
+                self._append(version_id, "activation_failed", reason="rollback_failed")
+            except Exception:
+                pass
+            raise
+        if previous is not None and previous.state == "active":
+            try:
+                self._append(previous.version_id, "superseded", reason="recovery")
+            except (OSError, ValueError, KeyError):
+                # The selected target and pointer are valid; inspection will continue to report
+                # the damaged prior history entry rather than treating it as active.
+                pass
+        return self._version(version_id)
+
     def active(self) -> Optional[ModelVersion]:
         active_path = self._contained(self.active_path, "Active pointer path")
         if not active_path.exists():

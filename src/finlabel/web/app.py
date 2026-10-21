@@ -619,7 +619,33 @@ def create_app(
             "created_at": version.created_at, "state": version.state,
             "has_evaluation": version.evaluation_path is not None,
             "is_active": version.version_id == active_id,
+            "integrity_valid": True, "integrity_error": None,
         }
+
+    def registry_history_payload(registry):
+        inspection = registry.inspect_history()
+        entries = []
+        for record in inspection["versions"]:
+            version = record["version"]
+            if version is None:
+                entries.append({"version_id": record["version_id"], "state": "invalid",
+                    "base_model_ref": "indisponível", "dataset_sha256": "", "split_sha256": "",
+                    "created_at": None, "has_evaluation": False, "is_active": False,
+                    "integrity_valid": False, "integrity_error": record["integrity_error"], "evaluation": None})
+                continue
+            item = version_payload(version, inspection["active"].version_id if inspection["active"] else None)
+            item["integrity_valid"] = record["integrity_valid"]
+            item["integrity_error"] = record["integrity_error"]
+            if record["integrity_valid"] and version.evaluation_path:
+                report = json.loads(version.evaluation_path.read_text(encoding="utf-8"))
+                item["evaluation"] = {"overall": report.get("overall", {}),
+                    "per_label": report.get("per_label", []), "confusion": report.get("confusion", {}),
+                    "error_count": len(report.get("error_ids", [])), "warnings": report.get("warnings", [])}
+            entries.append(item)
+        return {"versions": entries,
+            "active_version": inspection["active"].version_id if inspection["active"] else None,
+            "active_diagnostic": inspection["active_error"],
+            "registry_diagnostics": inspection["diagnostics"]}
 
     @app.get("/api/train/overview")
     async def train_overview():
@@ -662,25 +688,18 @@ def create_app(
                 except (OSError, ValueError, json.JSONDecodeError):
                     gate = {"authorized": False, "missing": ["gate inválido"], "model_id": None}
             registry = ModelRegistry(config.workspace_dir)
-            active = registry.active()
-            versions = registry.list_versions()
-            version_items = []
-            for item in versions:
-                summary = version_payload(item, active.version_id if active else None)
-                if item.evaluation_path:
-                    evaluation = json.loads(item.evaluation_path.read_text(encoding="utf-8"))
-                    summary["evaluation"] = {"overall": evaluation.get("overall", {}),
-                        "per_label": evaluation.get("per_label", []), "confusion": evaluation.get("confusion", {}),
-                        "error_count": len(evaluation.get("error_ids", [])), "warnings": evaluation.get("warnings", [])}
-                version_items.append(summary)
+            history = registry_history_payload(registry)
             jobs = get_training_jobs(config.workspace_dir).recent()
+            evaluation_jobs = get_training_jobs(config.workspace_dir).recent_evaluations()
             job_items = [{"job_id": job.job_id, "state": job.state, "progress": job.progress,
                           "error": job.error, "model_id": job.model_id, "dataset_sha256": job.dataset_sha256,
                           "final_metrics": dict(job.final_metrics), "bundle_id": Path(job.bundle_dir).name if job.bundle_dir else None,
                           "version_id": job.version_id, "created_at": job.created_at} for job in jobs]
+            evaluation_job_items = [{"job_id": job.job_id, "state": job.state, "progress": job.progress,
+                "error": job.error, "version_id": job.version_id, "created_at": job.created_at}
+                for job in evaluation_jobs]
             response_payload = {"datasets": datasets, "tasks": tasks, "gate": gate,
-                                "active_version": active.version_id if active else None,
-                                "versions": version_items, "jobs": job_items}
+                                **history, "jobs": job_items, "evaluation_jobs": evaluation_job_items}
             if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
                 return JSONResponse({"error": "Training metadata exceeds the local response limit; use the CLI."}, status_code=422)
             return JSONResponse(response_payload)
@@ -801,31 +820,27 @@ def create_app(
             return JSONResponse({"error": "Confirme a avaliação local no holdout."}, status_code=400)
         version_id = payload.get("version_id")
         try:
-            from dataclasses import asdict
-            from finlabel.training.backend import load_training_bundle
-            from finlabel.training.evaluation import evaluate_candidate
             from finlabel.training.registry import ModelRegistry
-            from finlabel.labeling.task import load_task, task_file_path
             config = load_project(project_path)
-            registry = ModelRegistry(config.workspace_dir)
-            version = next((item for item in registry.list_versions() if item.version_id == version_id), None)
-            if version is None:
-                return JSONResponse({"error": "Model candidate was not found."}, status_code=404)
-            if version.state != "awaiting_evaluation":
-                return JSONResponse({"error": "Only a candidate awaiting evaluation can be evaluated."}, status_code=409)
-            bundle = load_training_bundle(version.bundle_manifest_path.parent)
-            manifest = json.loads(version.bundle_manifest_path.read_text(encoding="utf-8"))
-            task = load_task(task_file_path(config.workspace_dir, manifest["task_id"]))
-            output = config.workspace_dir / "training" / "evaluations" / (version.version_id + "-" + secrets.token_hex(8) + ".json")
-            report = evaluate_candidate(bundle, task, version.adapter_path, output_path=output)
-            report_payload = {"overall": report.overall, "per_label": [asdict(item) for item in report.per_label],
-                "confusion": report.confusion, "error_count": len(report.error_ids), "warnings": list(report.warnings)}
-            if len(json.dumps(report_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
-                return JSONResponse({"error": "Evaluation report exceeds the local response limit; inspect its local artifact."}, status_code=422)
-            updated = registry.record_evaluation(version.version_id, output)
-            return JSONResponse({"version": version_payload(updated), "report": report_payload})
-        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            # Validate registry/version identity before the worker is started; model inference runs off-loop.
+            ModelRegistry(config.workspace_dir).version(version_id)
+            job_id = get_training_jobs(config.workspace_dir).submit_evaluation(version_id)
+            status = get_training_jobs(config.workspace_dir).get_evaluation(job_id)
+            return JSONResponse({"job_id": job_id, "state": status.state, "progress": status.progress}, status_code=202)
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except (OSError, ValueError, RuntimeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/train/evaluations/{job_id}")
+    async def train_evaluation_status(job_id: str):
+        try:
+            config = load_project(project_path)
+            status = get_training_jobs(config.workspace_dir).get_evaluation(job_id)
+        except (OSError, ValueError, KeyError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        return JSONResponse({"job_id": status.job_id, "state": status.state, "progress": status.progress,
+            "error": status.error, "version_id": status.version_id})
 
     @app.get("/api/train/versions")
     async def train_versions():
@@ -833,18 +848,7 @@ def create_app(
             from finlabel.training.registry import ModelRegistry
             config = load_project(project_path)
             registry = ModelRegistry(config.workspace_dir)
-            active = registry.active()
-            versions = registry.list_versions()
-            result = []
-            for version in versions:
-                item = version_payload(version, active.version_id if active else None)
-                if version.evaluation_path:
-                    evaluation = json.loads(version.evaluation_path.read_text(encoding="utf-8"))
-                    item["evaluation"] = {"overall": evaluation.get("overall", {}),
-                        "per_label": evaluation.get("per_label", []), "confusion": evaluation.get("confusion", {}),
-                        "error_count": len(evaluation.get("error_ids", [])), "warnings": evaluation.get("warnings", [])}
-                result.append(item)
-            response_payload = {"versions": result, "active_version": active.version_id if active else None}
+            response_payload = registry_history_payload(registry)
             if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
                 return JSONResponse({"error": "Version history exceeds the local response limit; use the CLI."}, status_code=422)
             return JSONResponse(response_payload)
@@ -869,6 +873,8 @@ def create_app(
                 updated = registry.reject_candidate(version_id, payload.get("reason", "Rejeitado pelo usuário no painel local."))
             elif action == "rollback":
                 updated = registry.rollback(version_id)
+            elif action == "recover":
+                updated = registry.recover_active(version_id)
             else:
                 return JSONResponse({"error": "action must be activate, reject, or rollback."}, status_code=400)
             active = registry.active()
