@@ -76,8 +76,8 @@ def _selected_key(value, strategy: str, declared_type: Optional[str]):
             raise ValueError("Group key must be a finite scalar string or number.")
         if isinstance(value, str):
             return ("string", value)
-        number = (Decimal.from_float(value) if isinstance(value, float) else Decimal(value)).normalize()
-        return ("number", Decimal(0) if number == 0 else number)
+        number = Decimal.from_float(value) if isinstance(value, float) else Decimal(value)
+        return ("number", number)
     if declared_type not in {"date", "datetime", "integer", "decimal"}:
         raise ValueError("Temporal column requires an explicit date, datetime, integer, or decimal source type.")
     try:
