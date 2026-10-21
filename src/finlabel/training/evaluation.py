@@ -5,7 +5,6 @@ import json
 import os
 import re
 import tempfile
-from uuid import uuid4
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Union
@@ -22,8 +21,8 @@ PathLike = Union[str, Path]
 MAX_NEW_TOKENS = 96
 INVALID = "__invalid__"
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
-_PROMPT_PREFIX = "Selected input JSON: "
 _PROMPT_SUFFIX = "\nReturn one JSON object with a configured label and optional short rationale."
+_SUGGESTION_ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
 @dataclass(frozen=True)
@@ -68,7 +67,7 @@ def _adapter_digest(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, list[tuple[str, str]]]:
+def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, list[tuple[str, str]], tuple[str, ...]]:
     if not isinstance(bundle, TrainingBundle):
         raise TypeError("Evaluation requires a TrainingBundle.")
     manifest_path = Path(bundle.manifest_path).expanduser().resolve()
@@ -89,6 +88,14 @@ def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, lis
             or not isinstance(bundle.holdout_count, int) or isinstance(bundle.holdout_count, bool)
             or bundle.holdout_count < 1):
         raise ValueError("Bundle partition counts do not match.")
+    provenance = manifest.get("provenance")
+    if not isinstance(provenance, dict) or not isinstance(provenance.get("holdout"), dict):
+        raise ValueError("Bundle holdout provenance is missing.")
+    suggestion_ids = provenance["holdout"].get("suggestion_ids")
+    if (not isinstance(suggestion_ids, list) or len(suggestion_ids) != bundle.holdout_count
+            or any(not isinstance(item, str) or _SUGGESTION_ID.fullmatch(item) is None for item in suggestion_ids)
+            or len(set(suggestion_ids)) != len(suggestion_ids)):
+        raise ValueError("Bundle holdout suggestion IDs are invalid or do not match its count.")
     if (_sha256(train_path) != _require_hash(manifest.get("train_sha256"), "Train hash")
             or _sha256(holdout_path) != _require_hash(manifest.get("holdout_sha256"), "Holdout hash")):
         raise ValueError("Bundle partition hash mismatch.")
@@ -105,6 +112,8 @@ def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, lis
             or dataset_manifest.get("model_ref") not in {None, "", task_model_ref}):
         raise ValueError("Reviewed dataset manifest mismatch.")
     rows = []
+    prompt_template = _prompt(task, {})
+    prompt_prefix = prompt_template[:-len("{}" + _PROMPT_SUFFIX)]
     try:
         with holdout_path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -114,10 +123,9 @@ def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, lis
                 prompt, completion = row["prompt"], row["completion"]
                 if not isinstance(prompt, str) or not isinstance(completion, str):
                     raise ValueError("Invalid holdout row.")
-                marker = prompt.find(_PROMPT_PREFIX)
-                if marker < 0 or not prompt.endswith(_PROMPT_SUFFIX):
+                if not prompt.startswith(prompt_prefix) or not prompt.endswith(_PROMPT_SUFFIX):
                     raise ValueError("Holdout prompt differs from the selected task schema.")
-                selected = json.loads(prompt[marker + len(_PROMPT_PREFIX):-len(_PROMPT_SUFFIX)])
+                selected = json.loads(prompt[len(prompt_prefix):-len(_PROMPT_SUFFIX)])
                 if (not isinstance(selected, dict) or set(selected) != set(task.input_columns)
                         or prompt != _prompt(task, selected)):
                     raise ValueError("Holdout prompt differs from the selected task schema.")
@@ -127,7 +135,7 @@ def _validate_bundle(bundle: TrainingBundle, task: LabelTask) -> tuple[dict, lis
         raise ValueError("Could not validate holdout rows.") from exc
     if len(rows) != bundle.holdout_count:
         raise ValueError("Holdout row count mismatch.")
-    return manifest, rows
+    return manifest, rows, tuple(suggestion_ids)
 
 
 def _candidate_metadata(adapter: Path, manifest: dict, task: LabelTask) -> tuple[str, str]:
@@ -204,10 +212,11 @@ def evaluate_candidate(bundle: TrainingBundle, task: LabelTask, adapter_path: Pa
     Precision is undefined without predicted positives; recall is undefined without
     actual support. Macro-F1 is null if any configured class has undefined F1.
     """
-    output = Path(output_path).expanduser().resolve()
+    output = Path(output_path).expanduser()
     if output.exists() or output.is_symlink():
         raise FileExistsError("Refusing to overwrite an existing evaluation report.")
-    manifest, rows = _validate_bundle(bundle, task)
+    output = output.absolute()
+    manifest, rows, suggestion_ids = _validate_bundle(bundle, task)
     adapter = Path(adapter_path).expanduser().resolve()
     base_ref, adapter_hash = _candidate_metadata(adapter, manifest, task)
     prompts = tuple(prompt for prompt, _ in rows)
@@ -221,24 +230,25 @@ def evaluate_candidate(bundle: TrainingBundle, task: LabelTask, adapter_path: Pa
     for model_name, backend in backends.items():
         predicted = []
         for index, prompt in enumerate(prompts):
+            raw = backend.generate(prompt, max_new_tokens=MAX_NEW_TOKENS)
             try:
-                label, _ = parse_suggestion(backend.generate(prompt, max_new_tokens=MAX_NEW_TOKENS),
-                                            valid_labels=set(task.labels))
+                label, _ = parse_suggestion(raw, valid_labels=set(task.labels))
             except ValueError:
                 label = INVALID
                 errors.add(index)
             predicted.append(label)
         overall[model_name], label_metrics, confusion[model_name] = _metrics(task.labels, actual, predicted, model_name)
         per_label.extend(label_metrics)
-    error_ids = tuple(uuid4().hex for _ in sorted(errors))
+    error_ids = tuple(suggestion_ids[index] for index in sorted(errors))
     warnings = list(manifest.get("warnings", ()))
     if any(overall[model]["invalid_count"] for model in backends):
         warnings.append("Malformed or unknown predictions counted as incorrect; see invalid_count and confusion.")
     report = EvaluationReport(base_ref, adapter, adapter_hash, manifest["dataset_sha256"],
                               manifest["split_sha256"], overall, tuple(per_label), confusion,
                               error_ids, tuple(dict.fromkeys(warnings)))
-    final_manifest, _ = _validate_bundle(bundle, task)
-    if (final_manifest != manifest or _candidate_metadata(adapter, final_manifest, task) != (base_ref, adapter_hash)):
+    final_manifest, _, final_suggestion_ids = _validate_bundle(bundle, task)
+    if (final_manifest != manifest or final_suggestion_ids != suggestion_ids
+            or _candidate_metadata(adapter, final_manifest, task) != (base_ref, adapter_hash)):
         raise ValueError("Evaluation inputs changed during inference; no report was published.")
     _publish_report(report, output)
     return report
