@@ -74,7 +74,10 @@ def _selected_key(value, strategy: str, declared_type: Optional[str]):
     if strategy == "group":
         if not isinstance(value, (str, int, float)) or isinstance(value, float) and not math.isfinite(value):
             raise ValueError("Group key must be a finite scalar string or number.")
-        return (type(value).__name__, value)
+        if isinstance(value, str):
+            return ("string", value)
+        number = (Decimal.from_float(value) if isinstance(value, float) else Decimal(value)).normalize()
+        return ("number", Decimal(0) if number == 0 else number)
     if declared_type not in {"date", "datetime", "integer", "decimal"}:
         raise ValueError("Temporal column requires an explicit date, datetime, integer, or decimal source type.")
     try:
