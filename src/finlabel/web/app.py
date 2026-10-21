@@ -240,6 +240,29 @@ def create_app(
         config = load_project(project_path)
         return JSONResponse({"status": "ok", "project": Path(project_path).name, "sources": len(config.sources)})
 
+    @app.get("/api/sources")
+    async def sources():
+        """Expose source names and schema metadata without reading record values."""
+        config = load_project(project_path)
+        result = []
+        for name in sorted(config.sources):
+            source = open_source(config, name)
+            result.append({
+                "name": name,
+                "kind": source.spec.kind,
+                "columns": [{
+                    "name": column.name,
+                    "inferred_type": column.inferred_type,
+                    "mapped_type": source.spec.schema.get(column.name),
+                    "missing_count": column.missing_count,
+                    "non_missing_count": column.non_missing_count,
+                } for column in source.columns()],
+            })
+        response_payload = {"sources": result}
+        if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+            return JSONResponse({"error": "The source metadata exceeds the local web response limit; use the CLI."}, status_code=422)
+        return JSONResponse(response_payload)
+
     @app.post("/api/schema/capture")
     async def schema_capture(request: Request):
         payload, error = await _read_json(request)

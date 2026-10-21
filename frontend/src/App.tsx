@@ -4,6 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getHealth, type Health } from '@/lib/api'
+import OverviewPage from '@/pages/OverviewPage'
+import AnalysisPage from '@/pages/AnalysisPage'
+import MonitorPage from '@/pages/MonitorPage'
 
 const navigation = [
   { label: 'Visão geral', mobileLabel: 'Início', path: '/', icon: LayoutDashboard },
@@ -60,20 +63,14 @@ export default function App() {
         </header>
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
+          {path === '/analysis' ? <AnalysisPage /> : path === '/monitor' ? <MonitorPage /> : <>
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div><p className="mb-2 text-sm font-medium text-[#47805f]">FINLABEL / LOCAL</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Seu espaço de trabalho</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#718077]">Análise, revisão humana e preparação de dados em um único ambiente privado.</p></div>
             <Button variant="outline" className="gap-2 border-[#dce5de] bg-white text-[#34493a]"><CircleHelp size={16} />Ajuda</Button>
           </div>
 
-          {error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível conectar</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : (
-            <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-              <Card className="border-[#e0e8e1] bg-white shadow-sm shadow-[#26392d]/[.03]">
-                <CardHeader className="pb-3"><div className="mb-1 flex items-center justify-between"><div className="grid size-10 place-items-center rounded-xl bg-[#eaf5ed] text-[#20744d]"><Database size={19} /></div><Badge variant="secondary" className="bg-[#edf6ef] text-[#26764c]">Local</Badge></div><CardTitle className="pt-3 text-lg">Workspace conectado</CardTitle><CardDescription>Estado recebido diretamente do servidor FinLabel.</CardDescription></CardHeader>
-                <CardContent><div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-[#edf0ed] pt-4 text-sm"><div><span className="block text-xs text-[#839087]">Projeto</span><span className="font-medium">{health?.project ?? 'Carregando…'}</span></div><div><span className="block text-xs text-[#839087]">Fontes configuradas</span><span className="font-medium">{health?.sources ?? '—'}</span></div><div><span className="block text-xs text-[#839087]">Conexão</span><span className="font-medium">{health?.status === 'ok' ? 'Disponível' : 'Verificando'}</span></div></div></CardContent>
-              </Card>
-              <Card className="border-[#e0e8e1] bg-white shadow-sm shadow-[#26392d]/[.03]"><CardHeader><div className="grid size-10 place-items-center rounded-xl bg-[#f1f0e8] text-[#83733b]"><ShieldCheck size={19} /></div><CardTitle className="pt-3 text-lg">Controle local</CardTitle><CardDescription>Os arquivos e as decisões ficam no workspace do projeto.</CardDescription></CardHeader><CardContent><p className="text-sm leading-relaxed text-[#718077]">Nenhum serviço externo é necessário para usar este painel. As telas de análise, rotulagem e treinamento serão habilitadas por etapas.</p></CardContent></Card>
-            </div>
-          )}
+          {error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível conectar</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : <OverviewPage />}
+          </>}
         </section>
         <footer className="px-5 pb-8 text-center text-xs text-[#94a097] md:px-10">FinLabel · ambiente de processamento local</footer>
       </main>
