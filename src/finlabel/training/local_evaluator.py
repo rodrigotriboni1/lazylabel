@@ -2,10 +2,13 @@
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
 from uuid import uuid4
 
 from finlabel.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
+from finlabel.labeling.prediction import Prediction, PredictionError
+from finlabel.labeling.service import _rules_match
 from finlabel.training.backend import _artifact_tree_sha256
 from finlabel.training.evaluation import fit_calibrator, labeling_policy_sha256
 from finlabel.training.task_spec import task_spec_sha256
@@ -68,48 +71,110 @@ def _model_identity(adapter_dir, task):
         raise ValueError("adapter_artifact_digest_mismatch")
     return directory, meta, "{}+peft:{}".format(base, tree_hash), tree_hash
 
-def _score(rows, backend, task):
+def _prompt_values(prompt, task):
+    marker = "\nSelected input JSON: "
+    prefix, separator, suffix = prompt.rpartition(marker)
+    ending = "\nReturn one JSON object with a configured label."
+    if not separator or not suffix.endswith(ending):
+        raise ValueError("frozen_prompt_schema_invalid")
+    values = json.loads(suffix[:-len(ending)])
+    if not isinstance(values, dict) or set(values) != set(task.input_columns):
+        raise ValueError("frozen_prompt_features_invalid")
+    return values
+
+def _score(rows, backend, task, policy, *, apply_rules=False):
     result = []
     for record_ref, prompt, target in rows:
         if target not in task.labels:
             raise ValueError("trusted_target_outside_task_taxonomy")
-        prediction = backend.predict_prompt(prompt, task=task, max_new_tokens=256)
-        if prediction.confidence_method != RAW_SCORE_METHOD or set(prediction.confidence_evidence) != set(task.labels):
-            raise ValueError("unsupported_or_missing_score_evidence")
-        result.append({"record_ref": record_ref, "prediction": prediction, "target": target})
+        if apply_rules:
+            try:
+                values = _prompt_values(prompt, task)
+            except Exception:
+                result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                               "reason_code": "invalid_input", "confidence": None, "applied": False})
+                continue
+            if not _rules_match(policy.rules, values):
+                result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                               "reason_code": "rule_conflict", "confidence": None, "applied": False})
+                continue
+        started = time.monotonic()
+        try:
+            prediction = backend.predict_prompt(prompt, task=task, max_new_tokens=256)
+            if (not isinstance(prediction, Prediction) or prediction.label not in task.labels
+                    or prediction.confidence_method != RAW_SCORE_METHOD
+                    or prediction.confidence_evidence is None
+                    or list(prediction.confidence_evidence) != list(task.labels)):
+                raise PredictionError("Prediction or score evidence did not match the task.")
+        except PredictionError as exc:
+            result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                           "reason_code": exc.reason_code if exc.reason_code in {"unknown_label", "invalid_output"}
+                           else "invalid_output", "confidence": None, "applied": False})
+            continue
+        except Exception:
+            result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                           "reason_code": "backend_error", "confidence": None, "applied": False})
+            continue
+        result.append({"record_ref": record_ref, "prediction": prediction, "target": target,
+                       "reason_code": "stale_source" if time.monotonic() - started > policy.max_staleness_seconds
+                       else None, "confidence": None, "applied": False})
     return result
 
 def _metrics(scored, calibrator, task, policy, model_ref):
-    confusion = {label: {other: 0 for other in task.labels} for label in task.labels}
+    abstain = "__finlabel_abstain__"
+    while abstain in task.labels:
+        abstain += "_"
+    confusion = {label: {other: 0 for other in (*task.labels, abstain)} for label in task.labels}
     confidences, correct = [], []
     for row in scored:
         pred, target = row["prediction"], row["target"]
-        confidence = calibrator.calibrate(pred, task=task, policy=policy, model_ref=model_ref).confidence
+        if pred is None:
+            confusion[target][abstain] += 1
+            row["applied"] = False
+            row["confidence"] = None
+            continue
+        try:
+            confidence = calibrator.calibrate(pred, task=task, policy=policy, model_ref=model_ref).confidence
+        except Exception:
+            row["prediction"] = None
+            row["reason_code"] = "calibration_error"
+            row["applied"] = False
+            row["confidence"] = None
+            confusion[target][abstain] += 1
+            continue
         confusion[target][pred.label] += 1
         confidences.append(confidence)
-        correct.append(float(pred.label == target))
+        is_correct = float(pred.label == target)
+        correct.append(is_correct)
+        if row["reason_code"] is None and confidence >= policy.min_calibrated_confidence:
+            row["applied"] = True
+            row["reason_code"] = None
+        elif row["reason_code"] is None:
+            row["reason_code"] = "below_threshold"
+        row["confidence"] = confidence
     total = len(scored)
     per_label, f1s = {}, []
     for label in task.labels:
         tp = confusion[label][label]
         fp = sum(confusion[truth][label] for truth in task.labels if truth != label)
-        fn = sum(confusion[label][guess] for guess in task.labels if guess != label)
+        fn = sum(confusion[label][guess] for guess in (*task.labels, abstain) if guess != label)
         precision = tp / (tp + fp) if tp + fp else 0.0
         recall = tp / (tp + fn) if tp + fn else 0.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
         per_label[label] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
         f1s.append(f1)
     accuracy = sum(correct) / total
-    brier = sum((p - y) ** 2 for p, y in zip(confidences, correct)) / total
+    brier = sum((p - y) ** 2 for p, y in zip(confidences, correct)) / len(correct) if correct else 1.0
     ece = 0.0
     for index in range(10):
         bucket = [(p, y) for p, y in zip(confidences, correct)
                   if index / 10 <= p < ((index + 1) / 10 if index < 9 else 1.0000001)]
         if bucket:
-            ece += len(bucket) / total * abs(sum(y for _, y in bucket) / len(bucket) -
+            ece += len(bucket) / len(confidences) * abs(sum(y for _, y in bucket) / len(bucket) -
                                                sum(p for p, _ in bucket) / len(bucket))
+    coverage = sum(bool(row["applied"]) for row in scored) / total
     return ({"accuracy": accuracy, "macro_f1": sum(f1s) / len(f1s), "brier_score": brier,
-             "calibration_error": ece, "coverage": 1.0}, per_label, confusion)
+             "calibration_error": ece if correct else 1.0, "coverage": coverage}, per_label, confusion)
 
 def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumbent_adapter, *,
                        workspace_dir, candidate_id):
@@ -139,7 +204,9 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
         backend = TransformersTextGenerationBackend(task.model_id, task.model_revision,
                                                     adapter_path=str(directory) if directory else None,
                                                     model_ref=model_ref)
-        calibration_scored = _score(calibration_rows, backend, task)
+        calibration_scored = _score(calibration_rows, backend, task, policy)
+        if any(row["prediction"] is None for row in calibration_scored):
+            raise ValueError("calibration_partition_inference_incomplete")
         labels = {ref: target for ref, _, target in calibration_rows}
         fitted = fit_calibrator([{"record_ref": row["record_ref"], "prediction": row["prediction"]}
                                  for row in calibration_scored], labels, method=RAW_SCORE_METHOD,
@@ -155,11 +222,13 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                 raise ValueError("calibration_artifact_collision")
         else:
             fitted.save(artifact_path)
-        holdout_scored = _score(holdout_rows, backend, task)
+        holdout_scored = _score(holdout_rows, backend, task, policy, apply_rules=True)
         metrics, per_label, confusion = _metrics(holdout_scored, fitted, task, policy, model_ref)
         score_material = [{"record_ref": row["record_ref"], "target": row["target"],
-                           "prediction": row["prediction"].label,
-                           "scores": dict(row["prediction"].confidence_evidence)}
+                           "prediction": row["prediction"].label if row["prediction"] else None,
+                           "scores": dict(row["prediction"].confidence_evidence) if row["prediction"] else None,
+                           "confidence": row["confidence"], "applied": row["applied"],
+                           "reason_code": row["reason_code"]}
                           for row in holdout_scored]
         score_digest = hashlib.sha256(json.dumps(score_material, sort_keys=True, ensure_ascii=False,
             separators=(",", ":")).encode("utf-8")).hexdigest()
@@ -167,6 +236,7 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                        "adapter_path": str(directory) if directory else None, "calibrator_path": str(artifact_path),
                        "calibrator_sha256": _sha(artifact_path), "metrics": metrics,
                        "per_label": per_label, "confusion": confusion,
+                       "holdout_records": score_material,
                        "holdout_scores_sha256": score_digest,
                        "calibration_brier": fitted.metrics["brier_score"],
                        "training_dataset_sha256": meta.get("dataset_sha256")})
@@ -203,20 +273,18 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
 
 def evaluate_registered_candidate(project, task, policy, candidate_id):
     """Evaluate one already-trained local registry candidate and make its gate decision."""
-    from finlabel.training.dataset import TrustedDatasetManifest
+    from finlabel.training.autopipeline import _manifest_for
     from finlabel.training.registry import ModelRegistry
+    from finlabel.training.trusted_labels import load_trusted_labels
 
     registry = ModelRegistry(project.workspace_dir)
     candidate = registry.candidate(candidate_id)
     if candidate.get("task_id") != task.task_id or candidate.get("status") != "training":
         raise ValueError("candidate_not_in_evaluable_training_state")
-    manifest_path = Path(candidate["trusted_manifest_path"]).resolve()
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-    partitions = raw["partitions"]
-    manifest = TrustedDatasetManifest(
-        manifest_path.parent, manifest_path, raw["task_id"], raw["source_name"], raw["provenance_id"],
-        raw["snapshot_sha256"], raw["task_spec_sha256"], tuple(raw["feature_columns"]), raw["label_column"],
-        raw["row_count"], raw["label_coverage"], partitions, _sha(manifest_path))
+    live_manifest = _manifest_for(load_trusted_labels(project, task), task, project.workspace_dir)
+    if Path(candidate.get("trusted_manifest_path", "")).resolve() != live_manifest.manifest_path.resolve():
+        raise ValueError("candidate_trusted_manifest_is_not_current_registered_snapshot")
+    manifest = live_manifest
     active = registry.active(task.task_id)
     if not active or not active.get("adapter_path"):
         raise ValueError("incumbent_adapter_required_for_comparison")

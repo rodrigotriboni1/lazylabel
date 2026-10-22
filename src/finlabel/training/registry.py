@@ -354,15 +354,84 @@ class ModelRegistry:
 
 def _promotion_reasons(candidate, result, policy):
     reasons = []
-    # Only the concrete local evaluator's content-addressed evidence is eligible.
+    # This is a format/version check, not an authenticated evaluator identity.
     if result.get("evaluator") != "finlabel-local-transformers-peft-v1":
-        reasons.append("trusted_evaluator_attestation_unavailable")
+        reasons.append("unsupported_evaluator_contract")
     unsigned = dict(result)
     recorded = unsigned.pop("evaluation_sha256", None)
     if not isinstance(recorded, str) or _digest(unsigned) != recorded:
         reasons.append("evaluation_integrity_mismatch")
     if result.get("score_method") != "label_json_mean_log_likelihood_v2":
         reasons.append("unsupported_score_evidence")
+    try:
+        from finlabel.labeling.task import load_task, load_task_policy
+        from finlabel.training.evaluation import labeling_policy_sha256
+        from finlabel.training.task_spec import task_spec_sha256
+        task = load_task(candidate["task_path"])
+        labeling_policy = load_task_policy(task)
+        if labeling_policy is None:
+            raise ValueError("labeling_policy_missing")
+        labels = list(task.labels)
+        threshold = labeling_policy.min_calibrated_confidence
+        if (not isinstance(labels, list) or not labels or len(set(labels)) != len(labels)
+                or not _finite(threshold) or not 0 <= threshold <= 1
+                or candidate.get("task_labels") != labels
+                or candidate.get("labeling_policy_min_confidence") != threshold
+                or labeling_policy_sha256(labeling_policy) != result.get("labeling_policy_sha256")
+                or candidate.get("labeling_policy_sha256") != result.get("labeling_policy_sha256")
+                or task_spec_sha256(task) != result.get("task_spec_sha256")):
+            raise ValueError("invalid_policy_snapshot")
+        candidate_rows = next(row["holdout_records"] for row in result["models"]
+                              if row.get("role") == "candidate")
+        incumbent_rows = next(row["holdout_records"] for row in result["models"]
+                               if row.get("role") == "incumbent")
+        from finlabel.labeling.prediction import Prediction
+        from finlabel.training.evaluation import CalibrationArtifact
+        for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
+            model = next(row for row in result["models"] if row.get("role") == role)
+            calibration_path = Path(model["calibrator_path"])
+            calibration = CalibrationArtifact.load(calibration_path)
+            if (hashlib.sha256(calibration_path.read_bytes()).hexdigest() != model.get("calibrator_sha256")
+                    or calibration.model_ref != model.get("model_ref")
+                    or calibration.task_id != task.task_id
+                    or calibration.policy_id != labeling_policy.policy_id
+                    or calibration.source_hashes.get("labeling_policy_sha256")
+                        != labeling_policy_sha256(labeling_policy)):
+                raise ValueError("calibrator_identity_invalid")
+            for row in rows:
+                if row["prediction"] is None:
+                    continue
+                prediction = Prediction(row["prediction"], None, row["scores"], None, None,
+                    "label_json_mean_log_likelihood_v2", "0" * 64)
+                confidence = calibration.calibrate(prediction, task=task,
+                    policy=labeling_policy, model_ref=model["model_ref"]).confidence
+                if not _finite(row["confidence"]) or abs(confidence - row["confidence"]) > 1e-12:
+                    raise ValueError("calibrated_confidence_does_not_match_artifact")
+        candidate_derived = _derive_holdout_metrics(candidate_rows, labels, threshold)
+        incumbent_derived = _derive_holdout_metrics(incumbent_rows, labels, threshold)
+        if candidate_derived["records_sha256"] != next(
+                row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "candidate"):
+            raise ValueError("candidate_metric_evidence_digest_mismatch")
+        if incumbent_derived["records_sha256"] != next(
+                row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "incumbent"):
+            raise ValueError("incumbent_metric_evidence_digest_mismatch")
+        candidate_ref_targets = [(row["record_ref"], row["target"]) for row in candidate_rows]
+        incumbent_ref_targets = [(row["record_ref"], row["target"]) for row in incumbent_rows]
+        if candidate_ref_targets != incumbent_ref_targets:
+            raise ValueError("candidate_incumbent_holdout_rows_differ")
+        for role, derived in (("candidate", candidate_derived), ("incumbent", incumbent_derived)):
+            stored = next(row for row in result["models"] if row.get("role") == role)
+            if (not _metrics_equal(stored.get("metrics"), derived["metrics"])
+                    or stored.get("per_label") != derived["per_label"]
+                    or stored.get("confusion") != derived["confusion"]):
+                raise ValueError(role + "_metrics_do_not_match_row_evidence")
+        if (not _metrics_equal(result.get("candidate_metrics"), candidate_derived["metrics"])
+                or not _metrics_equal(result.get("incumbent_metrics"), incumbent_derived["metrics"])
+                or result.get("candidate_per_label") != candidate_derived["per_label_f1"]
+                or result.get("incumbent_per_label") != incumbent_derived["per_label_f1"]):
+            raise ValueError("aggregate_metrics_do_not_match_row_evidence")
+    except (KeyError, TypeError, ValueError, StopIteration):
+        reasons.append("holdout_metric_evidence_invalid")
     try:
         from finlabel.training.backend import _artifact_tree_sha256
         from finlabel.training.evaluation import CalibrationArtifact
@@ -378,6 +447,7 @@ def _promotion_reasons(candidate, result, policy):
                 or calibration.model_ref != result.get("candidate_model_ref")
                 or calibration.policy_id != policy.policy_id
                 or calibration.task_id != policy.task_id
+                or calibration.task_spec_sha256 != result.get("task_spec_sha256")
                 or calibration.source_hashes.get("labeling_policy_sha256")
                     != result.get("labeling_policy_sha256")
                 or hashlib.sha256(calibration_path.read_bytes()).hexdigest() != model.get("calibrator_sha256")
@@ -452,3 +522,96 @@ def _promotion_reasons(candidate, result, policy):
         if not _finite(current) or not _finite(old) or old - current > allowance:
             reasons.append("per_label_regression_failed:{}".format(label))
     return sorted(set(reasons))
+
+
+def _metrics_equal(left, right):
+    if not isinstance(left, Mapping) or set(left) != set(right):
+        return False
+    return all(_finite(left.get(key)) and abs(left[key] - value) <= 1e-12
+               for key, value in right.items())
+
+
+def _derive_holdout_metrics(rows, labels, threshold):
+    """Recompute gates from privacy-minimized per-row target/prediction evidence."""
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("holdout_rows_missing")
+    allowed_reasons = {None, "below_threshold", "rule_conflict", "invalid_input", "unknown_label",
+                       "invalid_output", "backend_error", "calibration_error", "stale_source"}
+    abstain = "__finlabel_abstain__"
+    while abstain in labels:
+        abstain += "_"
+    confusion = {label: {guess: 0 for guess in (*labels, abstain)} for label in labels}
+    correct, confidences, canonical_rows = [], [], []
+    seen = set()
+    applied_count = 0
+    for row in rows:
+        expected_fields = {"record_ref", "target", "prediction", "scores", "confidence", "applied", "reason_code"}
+        if not isinstance(row, Mapping) or set(row) != expected_fields:
+            raise ValueError("malformed_holdout_row")
+        ref, target, predicted = row["record_ref"], row["target"], row["prediction"]
+        confidence, reason = row["confidence"], row["reason_code"]
+        if (not isinstance(ref, str) or not _SHA.fullmatch(ref) or ref in seen or target not in labels
+                or predicted is not None and predicted not in labels or reason not in allowed_reasons):
+            raise ValueError("invalid_holdout_row_identity_or_label")
+        seen.add(ref)
+        if predicted is None:
+            if (row["scores"] is not None or confidence is not None or row["applied"] is not False
+                    or reason not in {"rule_conflict", "invalid_input", "unknown_label", "invalid_output",
+                                      "backend_error", "calibration_error"}):
+                raise ValueError("abstention_has_prediction_evidence")
+            guess = abstain
+            correct.append(0.0)
+            applied = False
+        else:
+            if reason not in {None, "below_threshold", "stale_source"}:
+                raise ValueError("prediction_reason_code_invalid")
+            scores = row["scores"]
+            if (not isinstance(scores, Mapping) or set(scores) != set(labels)
+                    or any(not _finite(value) for value in scores.values())
+                    or not _finite(confidence) or not 0 <= confidence <= 1):
+                raise ValueError("prediction_score_evidence_invalid")
+            expected_applied = reason is None and confidence >= threshold
+            if row["applied"] is not expected_applied:
+                raise ValueError("applied_flag_mismatches_threshold")
+            if reason == "below_threshold" and confidence >= threshold:
+                raise ValueError("threshold_reason_mismatch")
+            if reason is None and confidence < threshold:
+                raise ValueError("threshold_reason_mismatch")
+            guess = predicted
+            correct.append(float(predicted == target))
+            confidences.append((confidence, float(predicted == target)))
+            applied = expected_applied
+        confusion[target][guess] += 1
+        applied_count += int(applied)
+        canonical_rows.append({"record_ref": ref, "target": target, "prediction": predicted,
+            "scores": ({label: row["scores"][label] for label in labels}
+                       if row["scores"] is not None else None),
+            "confidence": confidence, "applied": applied, "reason_code": reason})
+    total = len(rows)
+    per_label, f1s = {}, []
+    for label in labels:
+        tp = confusion[label][label]
+        fp = sum(confusion[truth][label] for truth in labels if truth != label)
+        fn = sum(confusion[label][guess] for guess in (*labels, abstain) if guess != label)
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        per_label[label] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
+        f1s.append(f1)
+    accuracy = sum(correct) / total
+    brier = sum((confidence - outcome) ** 2 for confidence, outcome in confidences) / len(confidences) if confidences else 1.0
+    ece = 0.0
+    if confidences:
+        for index in range(10):
+            bucket = [(confidence, outcome) for confidence, outcome in confidences
+                      if index / 10 <= confidence < ((index + 1) / 10 if index < 9 else 1.0000001)]
+            if bucket:
+                ece += len(bucket) / len(confidences) * abs(
+                    sum(outcome for _, outcome in bucket) / len(bucket)
+                    - sum(confidence for confidence, _ in bucket) / len(bucket))
+    metrics = {"accuracy": accuracy, "macro_f1": sum(f1s) / len(f1s), "brier_score": brier,
+               "calibration_error": ece if confidences else 1.0, "coverage": applied_count / total}
+    record_digest = _digest(canonical_rows)
+    return {"metrics": metrics, "per_label": per_label,
+            "per_label_f1": {label: values["f1"] for label, values in per_label.items()},
+            "confusion": confusion, "records_sha256": record_digest}

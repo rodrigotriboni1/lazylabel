@@ -11,7 +11,8 @@ from uuid import uuid4
 from finlabel.labeling.task import load_task, load_task_policy, task_file_path
 from finlabel.project import load_project
 from finlabel.training.backend import TrainingConfig, train_adapter, validate_training_request
-from finlabel.training.dataset import TrustedDatasetManifest, prepare_trusted_dataset
+from finlabel.training.dataset import (TrustedDatasetManifest, _build_trusted_dataset_artifacts,
+                                      prepare_trusted_dataset)
 from finlabel.training.evaluation import labeling_policy_sha256
 from finlabel.training.local_evaluator import evaluate_candidate
 from finlabel.training.registry import ModelRegistry, PromotionPolicy
@@ -65,32 +66,35 @@ def _manifest_for(batch, task, workspace):
         artifact_root = artifact_root / ".finlabel"
     destination = artifact_root / "trusted-datasets" / task.task_id / batch.snapshot_sha256
     manifest_path = destination / "manifest.json"
+    expected = _build_trusted_dataset_artifacts(batch, task)
     if not manifest_path.exists():
         return prepare_trusted_dataset(batch, task, workspace_dir=workspace)
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_bytes = manifest_path.read_bytes()
+    if manifest_bytes != expected["manifest_bytes"]:
+        raise ValueError("trusted_dataset_manifest_does_not_match_live_source")
+    for name, expected_bytes in expected["partition_bytes"].items():
+        partition_path = destination / (name + ".jsonl")
+        if not partition_path.is_file() or partition_path.read_bytes() != expected_bytes:
+            raise ValueError("trusted_dataset_partition_does_not_match_live_source:" + name)
+    raw = expected["manifest"]
     digest = _sha(manifest_path)
-    if (raw.get("schema_version") != 1 or raw.get("kind") != "trusted_reference_dataset"
-            or raw.get("task_id") != task.task_id or raw.get("snapshot_sha256") != batch.snapshot_sha256
-            or raw.get("provenance_id") != batch.provenance_id or raw.get("source_name") != batch.source_name
-            or raw.get("task_spec_sha256") != task_spec_sha256(task)):
-        raise ValueError("trusted_dataset_manifest_identity_mismatch")
-    if set(raw.get("partitions", {})) != {"train", "calibration", "holdout"}:
-        raise ValueError("trusted_dataset_partitions_missing")
     return TrustedDatasetManifest(destination, manifest_path, raw["task_id"], raw["source_name"],
         raw["provenance_id"], raw["snapshot_sha256"], raw["task_spec_sha256"],
         tuple(raw["feature_columns"]), raw["label_column"], raw["row_count"],
         raw["label_coverage"], raw["partitions"], digest)
 
 
-def _prior_cycle(cycles_dir, task_id, snapshot, policy_sha256):
+def _prior_cycle(cycles_dir, identity, current_active_ref):
     for path in sorted(cycles_dir.glob("*.json")):
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
-        if (raw.get("task_id") == task_id and raw.get("snapshot_sha256") == snapshot
-                and raw.get("policy_sha256") == policy_sha256 and raw.get("state") in {"complete", "rejected"}
-                and _valid_cycle_digest(raw)):
+        if (all(raw.get(key) == value for key, value in identity.items())
+                and raw.get("state") in {"complete", "rejected"} and _valid_cycle_digest(raw)
+                and (raw.get("resulting_active_model_ref") == current_active_ref
+                     or raw.get("state") == "rejected"
+                     and raw.get("incumbent_model_ref") == current_active_ref)):
             return path, raw
     return None, None
 
@@ -127,7 +131,7 @@ def run_training_cycle(project, task_id):
     cycle_id = uuid4().hex
     path = cycles_dir / (cycle_id + ".json")
     state, reasons = "blocked", []
-    snapshot = policy_sha256 = None
+    snapshot = policy_sha256 = labeling_sha256 = task_digest = gate_digest = incumbent_ref = None
     try:
         task = load_task(task_file_path(project.workspace_dir, task_id))
         policy = load_task_policy(task)
@@ -142,15 +146,25 @@ def run_training_cycle(project, task_id):
         batch = load_trusted_labels(project, task)
         snapshot = batch.snapshot_sha256
         policy_sha256 = promotion_policy.policy_sha256
-        previous_path, previous = _prior_cycle(cycles_dir, task_id, snapshot, policy_sha256)
-        if previous:
-            return _summary(previous_path, previous)
+        labeling_sha256 = labeling_policy_sha256(policy)
+        task_digest = task_spec_sha256(task)
+        gate_path = project.workspace_dir / "training-gate.json"
+        if not gate_path.is_file():
+            raise ValueError("training_gate_missing")
+        gate_digest = _sha(gate_path)
         manifest = _manifest_for(batch, task, project.workspace_dir)
-        if manifest.partitions["holdout"]["count"] < promotion_policy.min_holdout_count:
-            raise ValueError("holdout_count_below_minimum")
         active = registry.active(task_id)
         base_ref = task.model_id + ("@" + task.model_revision if task.model_revision else "")
         incumbent_ref = active.get("model_ref") if active else base_ref
+        identity = {"task_id": task_id, "snapshot_sha256": snapshot,
+                    "task_spec_sha256": task_digest, "labeling_policy_sha256": labeling_sha256,
+                    "training_gate_sha256": gate_digest, "policy_sha256": policy_sha256,
+                    "incumbent_model_ref": incumbent_ref}
+        previous_path, previous = _prior_cycle(cycles_dir, identity, incumbent_ref)
+        if previous:
+            return _summary(previous_path, previous)
+        if manifest.partitions["holdout"]["count"] < promotion_policy.min_holdout_count:
+            raise ValueError("holdout_count_below_minimum")
         incumbent_adapter = active.get("adapter_path") if active else None
         if active and not incumbent_adapter:
             raise ValueError("active_adapter_path_missing")
@@ -161,9 +175,6 @@ def run_training_cycle(project, task_id):
         output = registry.root / "adapters" / candidate_id
         config = TrainingConfig(task.model_id, task.model_revision, output)
         train_path = manifest.path / manifest.partitions["train"]["path"]
-        gate_path = project.workspace_dir / "training-gate.json"
-        if not gate_path.is_file():
-            raise ValueError("training_gate_missing")
         validate_training_request(train_path, config,
             gate_path=gate_path,
             trusted_dataset_manifest=manifest, expected_task_id=task.task_id)
@@ -174,6 +185,11 @@ def run_training_cycle(project, task_id):
             "task_id": task_id, "model_ref": candidate_ref, "adapter_path": str(result.output_dir),
             "incumbent_model_ref": incumbent_ref, "expected_active_model_ref": incumbent_ref,
             "snapshot_sha256": snapshot, "policy_sha256": promotion_policy.policy_sha256,
+            "labeling_policy_sha256": labeling_policy_sha256(policy),
+            "labeling_policy_min_confidence": policy.min_calibrated_confidence,
+            "task_labels": list(task.labels),
+            "task_path": str(task_file_path(project.workspace_dir, task_id)),
+            "labeling_policy_path": task.policy_path,
             "trusted_manifest_path": str(manifest.manifest_path),
         })
         registry.transition(candidate_id, "training")
@@ -210,6 +226,9 @@ def run_training_cycle(project, task_id):
         "reason_codes": reasons, "candidate_id": candidate_id, "evaluation_id": evaluation_id,
         "promotion_action": action, "active_model_ref": active.get("model_ref") if active else None,
         "snapshot_sha256": snapshot, "policy_sha256": policy_sha256,
+        "labeling_policy_sha256": labeling_sha256, "task_spec_sha256": task_digest,
+        "training_gate_sha256": gate_digest, "incumbent_model_ref": incumbent_ref,
+        "resulting_active_model_ref": active.get("model_ref") if active else None,
         "dataset_manifest_sha256": _sha(manifest.manifest_path) if manifest else None,
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }

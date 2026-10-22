@@ -11,7 +11,7 @@ The finlabel run command uses the configured task policy to label the current re
 
 Before the first promotion, the incumbent is the task's exact base model and revision. Later evaluations use the active adapter as incumbent. A promotion compares both models on identical frozen calibration and holdout rows.
 
-An unchanged trusted snapshot and promotion policy are processed once. A changed source snapshot or promotion-policy digest creates a new cycle. A blocked cycle may be retried after its prerequisite is corrected.
+An unchanged trusted snapshot, task specification, labeling policy, training gate, promotion policy, and active incumbent are processed once. A change to any of these identities creates a new cycle. A blocked cycle may be retried after its prerequisite is corrected. Existing partitions are rebuilt from the freshly loaded registered source and compared byte-for-byte with both the manifest and train/calibration/holdout files; an edited artifact is rejected.
 
 ## Task-specific gates
 
@@ -40,9 +40,15 @@ The task labeling policy's calibration_ref is a stable policy slot such as risk-
 
 The artifact binds that slot to the exact task specification, full labeling-policy digest, model reference, ordered labels, score method, and calibration partition/manifest/data hashes. Candidate and incumbent artifacts use different model digests and never overwrite each other. Active inference loads the artifact recorded with the promoted adapter and verifies the model reference and full policy digest before applying labels. A missing, malformed, or mismatched calibrator leaves predictions quarantined or blocks the run.
 
+The calibration slot is a namespace from the task policy. It is not expected to equal a model-specific calibration digest. A distinct immutable artifact is stored for each exact model identity under that slot.
+
 ## Evaluation evidence and local data
 
-Evaluation JSON is stored at .finlabel/models/evaluations/<evaluation-id>.json. It contains content hashes, task/policy/model identities, confusion counts, per-label metrics, calibration metrics, and artifact paths. It does not contain prompts, feature values, rationales, source record IDs, or per-row predictions. Frozen JSONL partitions and model/calibration artifacts remain in the local project workspace.
+Evaluation JSON is stored at .finlabel/models/evaluations/<evaluation-id>.json. Alongside content hashes and aggregate metrics, it contains minimized row evidence needed to independently recompute holdout coverage, confusion counts, per-label scores, accuracy, Brier score, and calibration error: opaque record references, trusted targets, predicted labels or abstentions, raw label scores, calibrated confidence, application status, and fixed reason codes. It contains no prompts, feature values, rationales, or source record IDs. Calibration and holdout record references and input hashes are included in the trusted partition manifest. Frozen JSONL partitions and model/calibration artifacts remain in the local project workspace.
+
+These SHA-256 values provide content integrity inside the single-user local workspace trust boundary. The evaluator name and its self-hash are not a cryptographic evaluator attestation, and they do not prove that a trusted binary produced the scores. Promotion re-derives calibrated confidence from the persisted raw score evidence and model-bound calibrator, then recomputes metrics from row evidence and verifies artifact/partition identity. An owner able to rewrite local evidence and recompute hashes remains inside that trust boundary.
+
+Coverage is the fraction of holdout rows actually applied after task rules, successful inference and calibration, staleness checks, and the configured minimum calibrated confidence. Invalid outputs, backend failures, rule conflicts, stale results, and below-threshold predictions count as non-applied rows. They remain in the denominator; unsupported calibration-partition inference blocks calibration rather than producing a partial calibrator.
 
 The promoted active pointer stores the adapter reference and its matching calibrator path. The next label or run command loads that adapter over the task's exact base model. The current run labels first and trains second, so a promotion affects subsequent runs.
 
