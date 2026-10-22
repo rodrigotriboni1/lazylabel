@@ -316,6 +316,8 @@ class ModelRegistry:
             return event
         previous = self.active(policy.task_id)
         reasons = _promotion_reasons(candidate, evaluation, policy)
+        if _training_gate_failure(candidate, evaluation):
+            reasons = sorted(set(reasons) | {"training_gate_missing_or_changed"})
         expected_incumbent = previous.get("model_ref") if previous else candidate.get("incumbent_model_ref")
         if evaluation.get("incumbent_model_ref") != expected_incumbent:
             reasons = sorted(set(reasons) | {"incumbent_changed_since_evaluation"})
@@ -363,6 +365,10 @@ def _promotion_reasons(candidate, result, policy):
         reasons.append("evaluation_integrity_mismatch")
     if result.get("score_method") != "label_json_mean_log_likelihood_v2":
         reasons.append("unsupported_score_evidence")
+    if (not isinstance(candidate.get("training_gate_sha256"), str)
+            or not _SHA.fullmatch(candidate["training_gate_sha256"])
+            or result.get("training_gate_sha256") != candidate.get("training_gate_sha256")):
+        reasons.append("training_gate_evidence_missing_or_mismatched")
     try:
         from finlabel.labeling.task import load_task, load_task_policy
         from finlabel.training.evaluation import labeling_policy_sha256
@@ -533,6 +539,20 @@ def _promotion_reasons(candidate, result, policy):
         if not _finite(current) or not _finite(old) or old - current > allowance:
             reasons.append("per_label_regression_failed:{}".format(label))
     return sorted(set(reasons))
+
+
+def _training_gate_failure(candidate, evaluation):
+    """Recheck the exact authorized gate under the registry promotion lock."""
+    path_value = candidate.get("training_gate_path")
+    expected = candidate.get("training_gate_sha256")
+    if (not isinstance(path_value, str) or not path_value
+            or not isinstance(expected, str) or not _SHA.fullmatch(expected)
+            or evaluation.get("training_gate_sha256") != expected):
+        return True
+    try:
+        return hashlib.sha256(Path(path_value).read_bytes()).hexdigest() != expected
+    except OSError:
+        return True
 
 
 def _metrics_equal(left, right):

@@ -183,7 +183,7 @@ def _metrics(scored, calibrator, task, policy, model_ref):
              "calibration_error": ece if correct else 1.0, "coverage": coverage}, per_label, confusion)
 
 def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumbent_adapter, *,
-                       workspace_dir, candidate_id):
+                       workspace_dir, candidate_id, training_gate_path, training_gate_sha256):
     """Evaluate candidate/incumbent on identical frozen holdout and persist aggregate evidence.
 
     Calibrators live under models/calibrators/task/policy/model-digest.json. The policy calibration_ref
@@ -195,6 +195,16 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
         raise ValueError("promotion_policy_calibration_slot_missing")
     if policy.task_id != task.task_id or tuple(policy.allowed_labels) != tuple(task.labels):
         raise ValueError("task_policy_mismatch")
+    if (not isinstance(training_gate_path, (str, Path))
+            or not isinstance(training_gate_sha256, str) or not _SHA.fullmatch(training_gate_sha256)):
+        raise ValueError("training_gate_identity_missing")
+    gate_path = Path(training_gate_path).expanduser().resolve()
+    try:
+        gate_matches = _sha(gate_path) == training_gate_sha256
+    except OSError:
+        gate_matches = False
+    if not gate_matches:
+        raise ValueError("training_gate_changed_during_cycle")
     raw, holdout_part, holdout_rows = _read_partition(dataset_manifest, "holdout")
     _, _, calibration_rows = _read_partition(dataset_manifest, "calibration")
     if raw.get("task_id") != task.task_id or raw.get("task_spec_sha256") != task_spec_sha256(task):
@@ -257,6 +267,7 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                "dataset_manifest_sha256": _sha(dataset_manifest.manifest_path),
                "holdout_dataset_sha256": holdout_part["dataset_sha256"], "holdout_sha256": holdout_part["sha256"],
                "holdout_count": len(holdout_rows), "same_frozen_holdout": True,
+               "training_gate_sha256": training_gate_sha256,
                "trusted_label_provenance": {"source_name": raw["source_name"],
                    "provenance_id": raw["provenance_id"], "trust_kind": raw["trust_kind"],
                    "snapshot_sha256": raw["snapshot_sha256"]},
@@ -288,6 +299,19 @@ def evaluate_registered_candidate(project, task, policy, candidate_id):
     candidate = registry.candidate(candidate_id)
     if candidate.get("task_id") != task.task_id or candidate.get("status") != "training":
         raise ValueError("candidate_not_in_evaluable_training_state")
+    gate_path = candidate.get("training_gate_path")
+    gate_sha256 = candidate.get("training_gate_sha256")
+    if (not isinstance(gate_path, str) or not gate_path or not isinstance(gate_sha256, str)
+            or not _SHA.fullmatch(gate_sha256)):
+        registry.transition(candidate_id, "rejected", rejection_reasons=["training_gate_identity_missing"])
+        raise ValueError("candidate_training_gate_identity_missing")
+    try:
+        gate_matches = _sha(gate_path) == gate_sha256
+    except OSError:
+        gate_matches = False
+    if not gate_matches:
+        registry.transition(candidate_id, "rejected", rejection_reasons=["training_gate_missing_or_changed"])
+        raise ValueError("candidate_training_gate_missing_or_changed")
     live_manifest = _manifest_for(load_trusted_labels(project, task), task, project.workspace_dir)
     if Path(candidate.get("trusted_manifest_path", "")).resolve() != live_manifest.manifest_path.resolve():
         raise ValueError("candidate_trusted_manifest_is_not_current_registered_snapshot")
@@ -297,7 +321,8 @@ def evaluate_registered_candidate(project, task, policy, candidate_id):
         raise ValueError("incumbent_adapter_required_for_comparison")
     evaluation_path = evaluate_candidate(
         task, policy, manifest, candidate["adapter_path"], active["adapter_path"],
-        workspace_dir=project.workspace_dir, candidate_id=candidate_id)
+        workspace_dir=project.workspace_dir, candidate_id=candidate_id,
+        training_gate_path=gate_path, training_gate_sha256=gate_sha256)
     evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
     if candidate.get("model_ref") != evaluation["candidate_model_ref"]:
         raise ValueError("candidate_registered_model_ref_mismatch")

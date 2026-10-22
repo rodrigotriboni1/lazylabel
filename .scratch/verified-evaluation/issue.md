@@ -26,7 +26,7 @@ Implemented in the verified-evaluation branch. No model weights or real trusted 
 - Coverage is the applied holdout fraction after rule, inference, staleness, calibration, and threshold checks; invalid results count as non-applied.
 - Existing partition manifests and JSONL bytes are rebuilt from the freshly loaded registered trusted snapshot and compared before reuse.
 - Cycle idempotency includes trusted snapshot, task spec, labeling policy, training gate, promotion policy, and active incumbent identity.
-- Training gate digest is rechecked immediately before promotion; if authorization changes during training/evaluation the candidate is rejected and the active pointer is preserved.
+- Each candidate/evaluation binds the training-gate path and digest. Registry promotion reopens and hashes the gate under the promotion lock for every promotion entry point; legacy candidates missing this identity or candidates with a changed gate are rejected and preserve the active pointer.
 - SHA-256 provides local content integrity only, not an authenticated evaluator attestation; registry promotion recomputes the metrics from persisted row-level evidence.
 - Registry binds both ordered candidate/incumbent evidence rows to the exact frozen holdout JSONL targets, manifest refs, and per-row input digests; extra, missing, duplicate, or modified rows fail closed.
 - See docs/verified-training-cycle.md for configuration and paths.
@@ -41,6 +41,8 @@ Implemented in the verified-evaluation branch. No model weights or real trusted 
 - Synthetic evaluation-to-holdout binding: matching ordered refs/digests/targets were accepted; changed target, changed ref, changed input digest, reordered, and extra evidence rows were rejected.
 - Synthetic cycle identity checks: unchanged identity was idempotent; changing each of snapshot/task/policy/gate/incumbent returned no prior cycle.
 - Synthetic revoked-gate check: modifying the gate after its initial digest caused the pre-promotion check to fail while the active pointer remained byte-identical.
+- Synthetic direct-registry promotion check: a gate changed after evaluation was rejected under the registry promotion lock, with the active pointer unchanged.
+- Synthetic registered-candidate evaluator check: a gate changed after candidate creation rejected the candidate before inference and preserved the active pointer.
 - Evaluation privacy metadata explicitly identifies minimized row-level evidence rather than claiming aggregate-only evidence.
 
 No automated tests, model downloads, or real dataset evaluation were run.
