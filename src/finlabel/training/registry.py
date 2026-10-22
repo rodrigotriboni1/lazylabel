@@ -486,7 +486,10 @@ def _promotion_reasons(candidate, result, policy):
             or not _SHA.fullmatch(str(result.get("holdout_dataset_sha256", "")))
             or not _SHA.fullmatch(str(result.get("dataset_manifest_sha256", "")))):
         reasons.append("holdout_provenance_missing")
-    if result.get("holdout_count", 0) < policy.min_holdout_count:
+    holdout_count = result.get("holdout_count")
+    if isinstance(holdout_count, bool) or not isinstance(holdout_count, int) or holdout_count < 0:
+        reasons.append("holdout_count_invalid")
+    elif holdout_count < policy.min_holdout_count:
         reasons.append("holdout_count_below_minimum")
     if not result.get("trusted_label_provenance"):
         reasons.append("trusted_label_provenance_missing")
@@ -549,7 +552,8 @@ def _validate_holdout_row_binding(manifest_path, manifest_digest, holdout_count,
     manifest = json.loads(manifest_bytes.decode("utf-8"))
     holdout = manifest["partitions"]["holdout"]
     refs = holdout.get("records")
-    if (not isinstance(refs, list) or isinstance(holdout.get("count"), bool)
+    if (isinstance(holdout_count, bool) or not isinstance(holdout_count, int)
+            or holdout_count < 0 or not isinstance(refs, list) or isinstance(holdout.get("count"), bool)
             or not isinstance(holdout.get("count"), int) or holdout["count"] != len(refs)
             or holdout["count"] != holdout_count):
         raise ValueError("frozen_holdout_reference_manifest_invalid")
