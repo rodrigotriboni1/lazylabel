@@ -262,9 +262,19 @@ class ModelRegistry:
         changed_active = changed_candidates = False
         for event in self._read_events():
             if event.get("action") == "promote":
+                evaluation_path = self.root / "evaluations" / (event["evaluation_id"] + ".json")
+                evaluation_bytes = evaluation_path.read_bytes()
+                if hashlib.sha256(evaluation_bytes).hexdigest() != event["evaluation_sha256"]:
+                    raise ValueError("Registry promotion evaluation evidence changed after commit.")
+                evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+                if (evaluation.get("candidate_id") != event["candidate_id"]
+                        or evaluation.get("candidate_model_ref") != event["active_model_ref"]):
+                    raise ValueError("Registry promotion evaluation identity does not match its journal event.")
                 active[event["task_id"]] = {"model_ref": event["active_model_ref"],
                     "previous_model_ref": event.get("previous_model_ref"), "candidate_id": event.get("candidate_id"),
-                    "evaluation_id": event.get("evaluation_id")}; changed_active = True
+                    "evaluation_id": event.get("evaluation_id"),
+                    "adapter_path": evaluation["candidate_adapter_path"],
+                    "calibrator_path": evaluation["candidate_calibrator_path"]}; changed_active = True
                 if event.get("candidate_id") in candidates:
                     candidates[event["candidate_id"]].update(status="promoted", decision_event_id=event["event_id"]); changed_candidates = True
             elif event.get("action") == "reject" and event.get("candidate_id") in candidates:
@@ -304,8 +314,11 @@ class ModelRegistry:
             self._append_event(asdict(event))
             self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
             return event
-        reasons = _promotion_reasons(candidate, evaluation, policy)
         previous = self.active(policy.task_id)
+        reasons = _promotion_reasons(candidate, evaluation, policy)
+        expected_incumbent = previous.get("model_ref") if previous else candidate.get("incumbent_model_ref")
+        if evaluation.get("incumbent_model_ref") != expected_incumbent:
+            reasons = sorted(set(reasons) | {"incumbent_changed_since_evaluation"})
         action = "promote" if not reasons else "reject"
         new_active = {"model_ref": candidate["model_ref"]} if action == "promote" else previous
         event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, action,
@@ -322,6 +335,8 @@ class ModelRegistry:
         if action == "promote":
             active = self._read(self.active_path, {})
             active[policy.task_id] = {"model_ref": candidate["model_ref"],
+                                      "adapter_path": evaluation["candidate_adapter_path"],
+                                      "calibrator_path": evaluation["candidate_calibrator_path"],
                                       "previous_model_ref": previous.get("model_ref") if previous else None,
                                       "candidate_id": candidate_id, "evaluation_id": evaluation_id}
             self._write_atomic(self.active_path, active)
@@ -339,9 +354,48 @@ class ModelRegistry:
 
 def _promotion_reasons(candidate, result, policy):
     reasons = []
-    # No in-process evaluator currently authenticates model execution over frozen rows.
-    # Caller-supplied metrics or boolean provenance claims are therefore never promotable.
-    reasons.append("trusted_evaluator_attestation_unavailable")
+    # Only the concrete local evaluator's content-addressed evidence is eligible.
+    if result.get("evaluator") != "finlabel-local-transformers-peft-v1":
+        reasons.append("trusted_evaluator_attestation_unavailable")
+    unsigned = dict(result)
+    recorded = unsigned.pop("evaluation_sha256", None)
+    if not isinstance(recorded, str) or _digest(unsigned) != recorded:
+        reasons.append("evaluation_integrity_mismatch")
+    if result.get("score_method") != "label_json_mean_log_likelihood_v2":
+        reasons.append("unsupported_score_evidence")
+    try:
+        from finlabel.training.backend import _artifact_tree_sha256
+        from finlabel.training.evaluation import CalibrationArtifact
+        manifest_path = Path(candidate.get("trusted_manifest_path", "")).resolve()
+        manifest_bytes = manifest_path.read_bytes()
+        trusted_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        holdout = trusted_manifest["partitions"]["holdout"]
+        adapter_path = Path(result.get("candidate_adapter_path", "")).resolve()
+        calibration_path = Path(result.get("candidate_calibrator_path", "")).resolve()
+        calibration = CalibrationArtifact.load(calibration_path)
+        model = next(item for item in result.get("models", []) if item.get("role") == "candidate")
+        if (not adapter_path.is_dir() or _artifact_tree_sha256(adapter_path) != model.get("adapter_sha256")
+                or calibration.model_ref != result.get("candidate_model_ref")
+                or calibration.policy_id != policy.policy_id
+                or calibration.task_id != policy.task_id
+                or calibration.source_hashes.get("labeling_policy_sha256")
+                    != result.get("labeling_policy_sha256")
+                or hashlib.sha256(calibration_path.read_bytes()).hexdigest() != model.get("calibrator_sha256")
+                or hashlib.sha256(manifest_bytes).hexdigest() != result.get("dataset_manifest_sha256")
+                or trusted_manifest.get("task_id") != policy.task_id
+                or trusted_manifest.get("trust_kind") not in {"provided_ground_truth", "validated_rule"}
+                or hashlib.sha256(json.dumps(
+                    [{"input_digest": row["input_digest"]} for row in holdout["records"]],
+                    sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+                    != result.get("holdout_sha256")
+                or holdout.get("dataset_sha256") != result.get("holdout_dataset_sha256")
+                or holdout.get("count") != result.get("holdout_count")
+                or result.get("trusted_label_provenance", {}).get("snapshot_sha256")
+                    != trusted_manifest.get("snapshot_sha256")
+                or not _SHA.fullmatch(str(model.get("holdout_scores_sha256", "")))):
+            reasons.append("candidate_model_or_calibrator_artifact_mismatch")
+    except (OSError, ValueError, KeyError, StopIteration, TypeError):
+        reasons.append("candidate_model_or_calibrator_artifact_missing")
     if candidate.get("task_id") != policy.task_id or result.get("task_id") != policy.task_id:
         reasons.append("task_identity_mismatch")
     if candidate.get("status") != "evaluated":
@@ -360,10 +414,15 @@ def _promotion_reasons(candidate, result, policy):
         reasons.append("trusted_label_provenance_missing")
     if result.get("candidate_model_ref") != candidate.get("model_ref"):
         reasons.append("candidate_model_provenance_mismatch")
+    if result.get("candidate_id") != candidate.get("candidate_id"):
+        reasons.append("candidate_evaluation_mismatch")
     if not isinstance(result.get("incumbent_model_ref"), str) or not result["incumbent_model_ref"]:
         reasons.append("incumbent_model_provenance_mismatch")
     previous = candidate.get("incumbent_model_ref")
     if previous is None or result.get("incumbent_model_ref") != previous:
+        reasons.append("incumbent_model_mismatch")
+    active_record = candidate.get("expected_active_model_ref")
+    if result.get("incumbent_model_ref") != (active_record or previous):
         reasons.append("incumbent_model_mismatch")
     provenance = result.get("trusted_label_provenance")
     if (not isinstance(provenance, Mapping)

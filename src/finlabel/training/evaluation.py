@@ -24,6 +24,21 @@ def _hash(value) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def labeling_policy_sha256(policy) -> str:
+    """Digest every policy field that can affect autonomous labeling or confidence."""
+    rules = []
+    for rule in policy.rules:
+        normalized = dict(rule)
+        if "values" in normalized:
+            normalized["values"] = list(normalized["values"])
+        rules.append(normalized)
+    return _hash({"policy_id": policy.policy_id, "task_id": policy.task_id,
+        "allowed_labels": list(policy.allowed_labels), "rules_version": policy.rules_version,
+        "rules": rules, "calibration_ref": policy.calibration_ref,
+        "min_calibrated_confidence": policy.min_calibrated_confidence,
+        "max_staleness_seconds": policy.max_staleness_seconds})
+
+
 def _unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -251,7 +266,7 @@ class CalibrationArtifact:
             raise ValueError("Calibration artifact parameters are incomplete or unknown.")
         if any(not _number(value) for value in self.parameters.values()) or self.parameters["scale"] <= 0:
             raise ValueError("Calibration artifact parameters must be finite and scale must be positive.")
-        expected_hashes = {"task_spec_sha256", "calibration_manifest_sha256", "calibration_partition_sha256",
+        expected_hashes = {"task_spec_sha256", "labeling_policy_sha256", "calibration_manifest_sha256", "calibration_partition_sha256",
                            "calibration_dataset_sha256", "calibration_scores_sha256",
                            "trusted_labels_sha256"}
         if not isinstance(self.source_hashes, Mapping) or set(self.source_hashes) != expected_hashes:
@@ -281,7 +296,8 @@ class CalibrationArtifact:
                 or task_spec_sha256(task) != self.task_spec_sha256
                 or policy.task_id != self.task_id or tuple(policy.allowed_labels) != self.labels
                 or policy.policy_id != self.policy_id or model_ref != self.model_ref
-                or policy.calibration_ref != self.calibration_ref):
+                or policy.calibration_ref != self.calibration_ref
+                or labeling_policy_sha256(policy) != self.source_hashes["labeling_policy_sha256"]):
             raise ValueError("Calibration artifact identity does not match this labeling run.")
         evidence, _ = _scores(prediction, task, self.confidence_method)
         top = max(evidence[label] for label in task.labels)
@@ -292,7 +308,7 @@ class CalibrationArtifact:
                                  self.confidence_method, self.calibration_ref, confidence)
 
     def to_dict(self):
-        payload = {"schema_version": 1, "task_id": self.task_id,
+        payload = {"schema_version": 2, "task_id": self.task_id,
                 "task_spec_sha256": self.task_spec_sha256, "policy_id": self.policy_id,
                 "model_ref": self.model_ref, "confidence_method": self.confidence_method,
                 "calibration_ref": self.calibration_ref, "calibrator_method": self.calibrator_method,
@@ -330,7 +346,7 @@ class CalibrationArtifact:
         allowed = {"schema_version", "task_id", "task_spec_sha256", "policy_id", "model_ref", "confidence_method",
                    "calibration_ref", "calibrator_method", "parameters", "source_hashes", "metrics", "labels",
                    "artifact_sha256"}
-        if set(raw) != allowed or raw.get("schema_version") != 1:
+        if set(raw) != allowed or raw.get("schema_version") != 2:
             raise ValueError("Unsupported or malformed calibration artifact.")
         expected_hash = raw["artifact_sha256"]
         payload = dict(raw)
@@ -396,6 +412,7 @@ def fit_calibrator(calibration_predictions, trusted_labels, *, method, dataset_m
     return CalibrationArtifact(
         task.task_id, task_spec_sha256(task), policy.policy_id, model_ref, method, calibration_ref, CALIBRATOR_METHOD,
         parameters, {"task_spec_sha256": frozen["task_spec_sha256"],
+                    "labeling_policy_sha256": labeling_policy_sha256(policy),
                     "calibration_manifest_sha256": frozen["manifest_sha256"],
                     "calibration_partition_sha256": frozen["partition_sha256"],
                     "calibration_dataset_sha256": frozen["dataset_sha256"],
