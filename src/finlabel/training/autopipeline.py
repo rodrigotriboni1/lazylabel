@@ -41,6 +41,11 @@ def _sha(path):
     return digest.hexdigest()
 
 
+def _assert_training_gate_unchanged(gate_path, expected_digest):
+    if _sha(gate_path) != expected_digest:
+        raise ValueError("training_gate_changed_during_cycle")
+
+
 def _write_cycle(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name, suffix=".tmp", dir=str(path.parent))
@@ -207,6 +212,7 @@ def run_training_cycle(project, task_id):
                 or labeling_policy_sha256(current_policy) != labeling_policy_sha256(policy)
                 or current_promotion.policy_sha256 != promotion_policy.policy_sha256):
             raise ValueError("task_or_promotion_policy_changed_during_cycle")
+        _assert_training_gate_unchanged(gate_path, gate_digest)
         decision = registry.promote_if_eligible(candidate_id, evaluation_id, current_promotion)
         action = decision.action
         state = "complete" if action == "promote" else "rejected"
@@ -216,7 +222,7 @@ def run_training_cycle(project, task_id):
         if candidate_id:
             try:
                 current = registry.candidate(candidate_id)
-                if current["status"] == "training":
+                if current["status"] in {"training", "evaluated"}:
                     registry.transition(candidate_id, "rejected", rejection_reasons=reasons)
             except Exception:
                 pass

@@ -269,7 +269,7 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                    key: value["f1"] for key, value in models[1]["per_label"].items()},
                "coverage": models[0]["metrics"]["coverage"],
                "calibration_error": models[0]["metrics"]["calibration_error"],
-               "privacy": "opaque_refs_and_aggregate_metrics_only", "models": models}
+               "privacy": "opaque_refs_and_minimized_row_level_evaluation_evidence", "models": models}
     payload["evaluation_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True,
         ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     path = root / "evaluations" / (evaluation_id + ".json")
