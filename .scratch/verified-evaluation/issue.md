@@ -44,6 +44,6 @@ Implemented in the verified-evaluation branch. No model weights or real trusted 
 - Synthetic direct-registry promotion check: a gate changed after evaluation was rejected under the registry promotion lock, with the active pointer unchanged.
 - Synthetic registered-candidate evaluator check: a gate changed after candidate creation rejected the candidate before inference and preserved the active pointer.
 - Evaluation privacy metadata explicitly identifies minimized row-level evidence rather than claiming aggregate-only evidence.
-- Synthetic evaluation file swap during promotion confirmed parsing and event hashing use the same single byte snapshot.
+- Synthetic evaluation file swap in both evaluated and non-evaluated promotion paths confirmed parsing and event hashing use the same single byte snapshot.
 
 No automated tests, model downloads, or real dataset evaluation were run.
