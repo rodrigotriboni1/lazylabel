@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -89,21 +90,31 @@ class TrainingJobManager:
     def _persist(self, status: TrainingJobStatus) -> None:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         destination = self.jobs_dir / (status.job_id + ".json")
-        temporary = destination.with_suffix(".tmp")
-        temporary.write_text(json.dumps(asdict(status), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, destination)
+        descriptor, temporary = tempfile.mkstemp(prefix="." + destination.name + ".", suffix=".tmp", dir=str(self.jobs_dir))
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(asdict(status), ensure_ascii=False, indent=2) + "\n")
+                handle.flush(); os.fsync(handle.fileno())
+            os.replace(temporary, destination)
+            directory_fd = os.open(self.jobs_dir, os.O_RDONLY)
+            try: os.fsync(directory_fd)
+            finally: os.close(directory_fd)
+        finally:
+            try: os.unlink(temporary)
+            except FileNotFoundError: pass
 
     def _set_status(self, status: TrainingJobStatus) -> None:
         with self._lock:
             self._jobs[status.job_id] = status
             self._persist(status)
 
-    def run_isolated(self, dataset_path: Path, config: TrainingConfig, *, trusted_manifest_path: Optional[Path] = None):
+    def run_isolated(self, dataset_path: Path, config: TrainingConfig, *, trusted_dataset_manifest=None,
+                     task_id: Optional[str] = None):
         """Run an isolated candidate synchronously; only the supplied train partition reaches the backend."""
         dataset_path = Path(dataset_path).expanduser().resolve()
-        trusted_manifest_path = Path(trusted_manifest_path).expanduser().resolve() if trusted_manifest_path else None
         validated = validate_training_request(dataset_path, config, gate_path=self.gate_path,
-                                             trusted_manifest_path=trusted_manifest_path)
+                                             trusted_dataset_manifest=trusted_dataset_manifest,
+                                             expected_task_id=task_id)
         train_path = validated["train_dataset_path"]
         train_hash = _sha256_file(train_path)
         job_id = uuid4().hex
@@ -116,7 +127,8 @@ class TrainingJobManager:
         self._jobs[job_id] = status
         try:
             result = train_adapter(dataset_path, config, gate_path=self.gate_path,
-                                   trusted_manifest_path=trusted_manifest_path)
+                                   trusted_dataset_manifest=trusted_dataset_manifest,
+                                   expected_task_id=task_id)
         except Exception as exc:
             failed = TrainingJobStatus(job_id, "failed", "Candidate training failed.",
                                        type(exc).__name__, str(train_path), str(config.output_dir),

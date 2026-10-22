@@ -163,17 +163,86 @@ class ModelRegistry:
                 handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
                 handle.flush(); os.fsync(handle.fileno())
             os.replace(temporary, path)
+            self._fsync_dir(path.parent)
         finally:
             try: os.unlink(temporary)
             except FileNotFoundError: pass
 
     def _append_event(self, event):
+        self._validate_event(event)
         existing = self._read_events()
         if any(row.get("event_id") == event.get("event_id") for row in existing):
             return
         with self.events_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
             handle.flush(); os.fsync(handle.fileno())
+        self._fsync_dir(self.events_path.parent)
+
+    @staticmethod
+    def _fsync_dir(path):
+        descriptor = os.open(path, os.O_RDONLY)
+        try: os.fsync(descriptor)
+        finally: os.close(descriptor)
+
+    @staticmethod
+    def _validate_event(event):
+        if not isinstance(event, dict):
+            raise ValueError("Registry journal entry must be an object.")
+        action = event.get("action")
+        promote_fields = {"event_id", "candidate_id", "evaluation_id", "task_id", "action", "reason_codes",
+                          "previous_model_ref", "active_model_ref", "policy_sha256", "evaluation_sha256", "created_at"}
+        rollback_fields = {"event_id", "task_id", "action", "reason_codes", "active_model_ref", "rollback_from",
+                           "health_sha256", "evaluation_id", "candidate_id", "policy_sha256", "created_at"}
+        expected = rollback_fields if action == "rollback" else promote_fields
+        if action not in {"promote", "reject", "rollback"} or set(event) != expected:
+            raise ValueError("Registry journal entry has an invalid schema.")
+        for key in ("event_id", "task_id", "created_at", "action"):
+            if not isinstance(event.get(key), str) or not event[key]:
+                raise ValueError("Registry journal entry has a missing identity field.")
+        if (not isinstance(event["reason_codes"], (list, tuple))
+                or any(not isinstance(reason, str) or not reason for reason in event["reason_codes"])):
+            raise ValueError("Registry journal reason codes are malformed.")
+        hash_fields = ["health_sha256"] if action == "rollback" else ["policy_sha256", "evaluation_sha256"]
+        if any(not isinstance(event.get(key), str) or not _SHA.fullmatch(event[key]) for key in hash_fields):
+            raise ValueError("Registry journal hashes are malformed.")
+        identity_fields = (("rollback_from", "active_model_ref", "evaluation_id", "candidate_id") if action == "rollback"
+                           else ("candidate_id", "evaluation_id") + (("active_model_ref",) if action == "promote" else ()))
+        if any(not isinstance(event.get(key), str) or not event[key] for key in identity_fields):
+            raise ValueError("Registry journal model or candidate identity is malformed.")
+        if action != "rollback" and event.get("previous_model_ref") is not None and not isinstance(event["previous_model_ref"], str):
+            raise ValueError("Registry journal previous model reference is malformed.")
+        if action == "reject" and event.get("active_model_ref") is not None and not isinstance(event["active_model_ref"], str):
+            raise ValueError("Registry journal active model reference is malformed.")
+        if action == "rollback" and (not isinstance(event.get("policy_sha256"), str)
+                                       or not _SHA.fullmatch(event["policy_sha256"])):
+            raise ValueError("Rollback journal policy digest is malformed.")
+        payload = {key: value for key, value in event.items() if key not in {"event_id", "created_at"}}
+        if event["event_id"] != _digest(payload):
+            raise ValueError("Registry journal event digest is invalid.")
+
+    def _repair_and_read_events(self):
+        if not self.events_path.exists():
+            return []
+        data = self.events_path.read_bytes()
+        chunks = data.splitlines(keepends=True)
+        valid, offset = [], 0
+        for index, chunk in enumerate(chunks):
+            final = index == len(chunks) - 1
+            complete = chunk.endswith(b"\n")
+            try:
+                if not complete:
+                    raise ValueError("Torn journal tail.")
+                row = json.loads(chunk.decode("utf-8"))
+                self._validate_event(row)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
+                if final:
+                    with self.events_path.open("r+b") as handle:
+                        handle.truncate(offset); handle.flush(); os.fsync(handle.fileno())
+                    break
+                raise ValueError("Registry journal contains a malformed non-trailing entry.")
+            valid.append(row)
+            offset += len(chunk)
+        return valid
 
     def _recover(self):
         """Replay durable decision events so a crash cannot leave state behind the journal."""
@@ -224,12 +293,15 @@ class ModelRegistry:
             reasons = ["candidate_not_evaluated"]
             previous = self.active(policy.task_id)
             evaluation_hash = hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
-            event_id = _digest({"candidate_id": candidate_id, "evaluation_id": evaluation_id,
-                                "policy_sha256": policy.policy_sha256, "evaluation_sha256": evaluation_hash})
-            event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, "reject", tuple(reasons),
+            event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, "reject", reasons,
                                    previous.get("model_ref") if previous else None,
                                    previous.get("model_ref") if previous else None, policy.policy_sha256,
                                    evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+            event_dict = asdict(event)
+            event_id = _digest({key: value for key, value in event_dict.items() if key not in {"event_id", "created_at"}})
+            event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, "reject", tuple(reasons),
+                                   event.previous_model_ref, event.active_model_ref, event.policy_sha256,
+                                   event.evaluation_sha256, event.created_at)
             self._append_event(asdict(event))
             self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
             return event
@@ -237,13 +309,15 @@ class ModelRegistry:
         previous = self.active(policy.task_id)
         action = "promote" if not reasons else "reject"
         new_active = {"model_ref": candidate["model_ref"]} if action == "promote" else previous
-        event_id = _digest({"candidate_id": candidate_id, "evaluation_id": evaluation_id,
-                            "policy_sha256": policy.policy_sha256, "evaluation_sha256": evaluation_hash,
-                            "action": action, "reason_codes": reasons, "previous_model_ref": previous.get("model_ref") if previous else None})
-        event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, action,
+        event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, action,
                                tuple(reasons), previous.get("model_ref") if previous else None,
                                new_active.get("model_ref") if new_active else None, policy.policy_sha256,
                                evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+        event_dict = asdict(event)
+        event_id = _digest({key: value for key, value in event_dict.items() if key not in {"event_id", "created_at"}})
+        event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, action,
+                               tuple(reasons), event.previous_model_ref, event.active_model_ref,
+                               event.policy_sha256, event.evaluation_sha256, event.created_at)
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
         self._append_event(asdict(event))
         if action == "promote":
@@ -258,62 +332,10 @@ class ModelRegistry:
         return event
 
     def _read_events(self):
-        if not self.events_path.exists():
-            return []
-        return [json.loads(line) for line in self.events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return self._repair_and_read_events()
 
     def rollback_if_unhealthy(self, task_id, health_evaluation):
-        with self._locked():
-            self._recover_unlocked()
-            active = self.active(task_id)
-            if not active or not active.get("previous_model_ref"):
-                return None
-            policy = PromotionPolicy.load(self.root / "promotion-policies" / (task_id + ".json"), task_id=task_id)
-            if not isinstance(health_evaluation, Mapping):
-                raise ValueError("Health evaluation requires configured metric evidence.")
-            required = {"task_id", "model_ref", "candidate_id", "policy_sha256", "evaluation_id", "evaluation_sha256", "metrics"}
-            if set(health_evaluation) != required:
-                raise ValueError("Health evidence requires task, active model, policy, evaluation, and metrics identity.")
-            if (health_evaluation["task_id"] != task_id or health_evaluation["model_ref"] != active["model_ref"]
-                    or health_evaluation["candidate_id"] != active.get("candidate_id")
-                    or health_evaluation["policy_sha256"] != policy.policy_sha256
-                    or health_evaluation["evaluation_id"] != active.get("evaluation_id")):
-                raise ValueError("Health evidence identity does not match the currently active candidate and policy.")
-            evaluation_path = self.root / "evaluations" / (health_evaluation["evaluation_id"] + ".json")
-            actual_evaluation_sha = hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
-            if actual_evaluation_sha != health_evaluation["evaluation_sha256"]:
-                raise ValueError("Health evidence evaluation digest does not match the persisted evaluation.")
-            metrics = health_evaluation["metrics"]
-            if not isinstance(metrics, Mapping):
-                raise ValueError("Health evaluation requires configured metric evidence.")
-            reasons = ["rollback_gate_failed:{}".format(name) for name, minimum in policy.rollback_monitor_limits.items()
-                       if name not in metrics or not _finite(metrics[name]) or metrics[name] < minimum]
-            digest = _digest(health_evaluation)
-            evidence_dir = self.root / "health-evidence"; evidence_dir.mkdir(parents=True, exist_ok=True)
-            evidence_path = evidence_dir / (digest + ".json")
-            if evidence_path.exists() and _digest(json.loads(evidence_path.read_text())) != digest:
-                raise ValueError("Persisted health evidence digest collision.")
-            if not evidence_path.exists():
-                descriptor, temporary = tempfile.mkstemp(prefix=".health-", suffix=".tmp", dir=str(evidence_dir))
-                try:
-                    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                        handle.write(json.dumps(dict(health_evaluation), sort_keys=True, indent=2) + "\n")
-                        handle.flush(); os.fsync(handle.fileno())
-                    os.replace(temporary, evidence_path)
-                finally:
-                    try: os.unlink(temporary)
-                    except FileNotFoundError: pass
-            if not reasons:
-                return None
-            event = {"event_id": _digest({"task_id": task_id, "health_sha256": digest,
-                      "active_model_ref": active["model_ref"], "policy_sha256": policy.policy_sha256}),
-                     "task_id": task_id, "action": "rollback", "reason_codes": reasons,
-                     "active_model_ref": active["previous_model_ref"], "rollback_from": active["model_ref"],
-                     "health_sha256": digest, "evaluation_id": active.get("evaluation_id"),
-                     "candidate_id": active.get("candidate_id"), "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
-            self._append_event(event)
-            self._recover_unlocked()
-            return event
+        raise ValueError("trusted_health_evaluator_attestation_unavailable")
 
 
 def _promotion_reasons(candidate, result, policy):
