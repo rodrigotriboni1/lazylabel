@@ -180,6 +180,9 @@ def _record_ref(source_name: str, record_id: str) -> str:
 
 
 def _model_ref_for_prediction(task: LabelTask, backend) -> str:
+    explicit = getattr(backend, "model_ref", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
     model_id = getattr(backend, "model_id", None) or task.model_id
     revision = getattr(backend, "revision", None) or task.model_revision
     return "{}@{}".format(model_id, revision) if revision else str(model_id)

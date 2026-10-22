@@ -547,11 +547,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 # No model call is needed: the service persists a terminal
                 # missing_policy outcome for every source record.
                 backend = None
+                calibrator = None
             else:
-                from finlabel.models.text_generation import TransformersTextGenerationBackend
-
-                backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
-            run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir)
+                from finlabel.training.active_model import active_inference
+                backend, calibrator = active_inference(config, task, policy, device=args.device)
+            run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir,
+                               calibrator=calibrator)
             result = _verified_label_run(config.workspace_dir, run.run_id)
             if result["policy_id"] is None:
                 result["notice"] = (
@@ -580,12 +581,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             policy = load_task_policy(task)
             backend = None
+            calibrator = None
             if policy is not None:
-                from finlabel.models.text_generation import TransformersTextGenerationBackend
-
-                backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
+                from finlabel.training.active_model import active_inference
+                backend, calibrator = active_inference(config, task, policy, device=args.device)
             run_started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            label_run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir)
+            label_run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir,
+                                     calibrator=calibrator)
             label_metadata = _verified_label_run(config.workspace_dir, label_run.run_id)
             try:
                 cycle = run_training_cycle(config.path, task.task_id)

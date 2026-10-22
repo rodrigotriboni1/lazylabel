@@ -22,12 +22,15 @@ class PredictionBackend(Protocol):
 
 
 class TransformersTextGenerationBackend:
-    def __init__(self, model_id: str, revision: Optional[str] = None, device: str = "auto"):
+    def __init__(self, model_id: str, revision: Optional[str] = None, device: str = "auto",
+                 adapter_path: Optional[str] = None, model_ref: Optional[str] = None):
         if not model_id or not model_id.strip():
             raise ValueError("model_id must be a non-empty local model reference.")
         self.model_id = model_id
         self.revision = revision
         self.device = device
+        self.adapter_path = adapter_path
+        self.model_ref = model_ref or ("{}@{}".format(model_id, revision) if revision else model_id)
         self._model = None
         self._tokenizer = None
 
@@ -44,6 +47,12 @@ class TransformersTextGenerationBackend:
             kwargs["torch_dtype"] = "auto"
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, **kwargs)
         self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
+        if self.adapter_path:
+            try:
+                from peft import PeftModel
+            except ImportError as exc:
+                raise RuntimeError("Install finlabel-local[train] to load a local PEFT adapter.") from exc
+            self._model = PeftModel.from_pretrained(self._model, self.adapter_path, is_trainable=False)
         if self.device != "auto":
             self._model.to(self.device)
         self._model.eval()
@@ -135,6 +144,15 @@ class TransformersTextGenerationBackend:
         prompt = _prompt(task, dict(selected_values))
         raw = self.generate(prompt, max_new_tokens=max_new_tokens)
         # Reject malformed output before performing the more expensive scoring pass.
+        parse_prediction(raw, valid_labels=task.labels)
+        evidence = self._label_scores(prompt, task.labels)
+        return parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
+                                confidence_method=RAW_SCORE_METHOD)
+
+    def predict_prompt(self, prompt: str, *, task: LabelTask, max_new_tokens: int = 256) -> Prediction:
+        """Score a frozen prompt with the same generation and exact v2 scoring path."""
+        from finlabel.labeling.suggestions import parse_prediction
+        raw = self.generate(prompt, max_new_tokens=max_new_tokens)
         parse_prediction(raw, valid_labels=task.labels)
         evidence = self._label_scores(prompt, task.labels)
         return parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
