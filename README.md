@@ -177,3 +177,34 @@ decisions = log.read()
 ```
 
 O log não guarda linha, prompt ou notas livres. O MVP é para um processo escritor local; retenção, controle de acesso e compliance normativo não estão implementados.
+
+## Contrato de previsão local estruturada
+
+Backends autônomos implementam `predict(selected_values, *, task, max_new_tokens)`
+e retornam `finlabel.labeling.prediction.Prediction`, um objeto imutável com rótulo,
+justificativa opcional, evidência por classe, método e digest SHA-256 da resposta.
+O mapa de evidência também é imutável. JSON inválido recebe `PredictionError`
+com `reason_code="invalid_output"`; classe fora da tarefa recebe `unknown_label`.
+Campos de confiança autorreportados pelo modelo são rejeitados.
+
+`TransformersTextGenerationBackend` usa o chat template do tokenizer quando
+presente (incluindo Qwen); somente tokenizers sem template usam texto simples.
+`generate(prompt, max_new_tokens=...)` continua disponível para consumidores
+legados explícitos. `predict` valida modelo/revisão e recebe exatamente as
+colunas da tarefa, sem selecionar campos extras da fonte.
+
+O método `label_json_mean_log_likelihood_v1` calcula, em ordem da taxonomia,
+a média dos logaritmos das probabilidades dos tokens da continuação canônica
+`{"label":"CLASSE"}` para cada classe, condicionada ao mesmo prompt. O JSON
+canônico inclui sua sintaxe; diferenças de tokenização influenciam os escores.
+Esses números brutos não são probabilidades calibradas, não são o texto da
+justificativa e não permitem aplicar um rótulo sozinhos. Esse cálculo exige uma
+passagem adicional do modelo por classe e pode custar memória/tempo em tarefas
+com muitas classes.
+
+O backend sempre devolve `calibrated_confidence=None` e `calibration_ref=None`.
+O serviço autônomo só pode preencher confiança com um artefato de calibração
+validado para política, tarefa, modelo e método. Sem evidência/calibrador,
+o resultado permanece em quarentena. A construção de `Prediction` rejeita
+NaN, infinitos, escores booleanos e confiança fora de `[0, 1]`; sua validação
+estrutural não substitui a verificação da origem do calibrador pelo serviço.
