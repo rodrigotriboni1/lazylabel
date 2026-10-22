@@ -7,7 +7,9 @@ from finlabel.labeling.prediction import Prediction
 from finlabel.labeling.task import LabelTask
 
 
-RAW_SCORE_METHOD = "label_json_mean_log_likelihood_v1"
+# v2 scores the tokenizer's joint prompt+JSON encoding. v1 concatenated two
+# independently tokenized sequences; its calibration artifacts are incompatible.
+RAW_SCORE_METHOD = "label_json_mean_log_likelihood_v2"
 
 
 class TextGenerationBackend(Protocol):
@@ -69,34 +71,54 @@ class TransformersTextGenerationBackend:
 
 
     def _label_scores(self, prompt: str, labels) -> dict:
-        """Mean token log likelihood of each canonical JSON continuation (not probability)."""
+        """Raw mean log likelihood of exact JSON continuation tokens.
+
+        v2 uses joint encoding and character offsets, excluding special tokens.
+        A token spanning the prompt/JSON boundary has no exact continuation span;
+        unsupported offsets or such a merge fail closed instead of approximating
+        the evidence. These scores require their own v2 calibration artifact.
+        """
         import torch
 
-        if getattr(self._tokenizer, "chat_template", None):
+        has_template = bool(getattr(self._tokenizer, "chat_template", None))
+        if has_template:
             prompt = self._tokenizer.apply_chat_template(
                 [{"role": "user", "content": prompt}], tokenize=False,
                 add_generation_prompt=True,
             )
-            prefix = self._tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
-        else:
-            prefix = self._tokenizer(prompt, return_tensors="pt")
-        prefix_ids = prefix["input_ids"].to(self._model.device)
-        if prefix_ids.shape[1] == 0:
-            raise ValueError("Cannot score a label without prompt tokens.")
+        boundary = len(prompt)
         scores = {}
         with torch.inference_mode():
             for label in labels:
                 completion = json.dumps({"label": label}, ensure_ascii=False, separators=(",", ":"))
-                target = self._tokenizer(
-                    completion, return_tensors="pt", add_special_tokens=False
-                )["input_ids"].to(self._model.device)
-                if target.shape[1] == 0:
-                    raise ValueError("Cannot score an empty label completion.")
-                ids = torch.cat((prefix_ids, target), dim=1)
-                attention_mask = torch.ones_like(ids)
-                logits = self._model(input_ids=ids, attention_mask=attention_mask).logits
-                start = prefix_ids.shape[1] - 1
-                token_log_probs = logits[:, start:-1, :].float().log_softmax(dim=-1)
+                joined = prompt + completion
+                try:
+                    encoded = self._tokenizer(
+                        joined, return_tensors="pt", add_special_tokens=not has_template,
+                        return_offsets_mapping=True,
+                    )
+                except (NotImplementedError, TypeError) as exc:
+                    raise ValueError("Exact label scoring requires tokenizer character offsets.") from exc
+                offsets = encoded.pop("offset_mapping", None)
+                if offsets is None:
+                    raise ValueError("Tokenizer did not supply exact label token offsets.")
+                spans = offsets[0].tolist()
+                if any(start < boundary < end for start, end in spans):
+                    raise ValueError("Tokenizer merged the prompt and label scoring boundary.")
+                indices = [index for index, (start, end) in enumerate(spans)
+                           if start >= boundary and end > start]
+                if (not indices or indices[0] == 0
+                        or indices != list(range(indices[0], indices[-1] + 1))
+                        or spans[indices[0]][0] != boundary
+                        or spans[indices[-1]][1] != len(joined)):
+                    raise ValueError("Tokenizer cannot isolate the complete label continuation.")
+                encoded = encoded.to(self._model.device)
+                ids = encoded["input_ids"]
+                logits = self._model(**encoded).logits
+                # Token j is predicted by logits at j-1; only JSON token IDs
+                # from this same joint encoding are scored, never prompt/EOS.
+                target = ids[:, indices[0]:indices[-1] + 1]
+                token_log_probs = logits[:, indices[0] - 1:indices[-1], :].float().log_softmax(dim=-1)
                 selected = token_log_probs.gather(-1, target.unsqueeze(-1)).squeeze(-1)
                 scores[label] = float(selected.mean().item())
         return scores
