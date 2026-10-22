@@ -84,6 +84,7 @@ class TrustedLabelRecord:
     features: Mapping[str, object]
     label: str
     input_digest: str
+    split_key: str = ""
 
     def __post_init__(self):
         object.__setattr__(self, "features", MappingProxyType(dict(self.features)))
@@ -197,7 +198,7 @@ def load_trusted_labels(project, task) -> TrustedLabelBatch:
         "trust_kind": spec.trust_kind,
         "feature_columns": list(task.input_columns),
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-    opaque_key = secrets.token_bytes(32)
+    pending_records = []
     for source_record in source.iter_records(requested):
         record_id = source_record.record_id
         if not isinstance(record_id, str) or not record_id.strip():
@@ -216,18 +217,26 @@ def load_trusted_labels(project, task) -> TrustedLabelBatch:
             raise ValueError("Trusted-label mapping resolves outside the task label set.")
         features = {column: source_record.values[column] for column in task.input_columns}
         input_digest = _canonical_digest(features)
-        record_ref = _opaque_ref(opaque_key, spec.source_name, record_id)
         snapshot.update(source_record.input_digest.encode("ascii"))
         snapshot.update(b"\n")
-        records.append(TrustedLabelRecord(record_ref, features, label, input_digest))
+        pending_records.append((record_id, features, label, input_digest))
 
-    if not records:
+    if not pending_records:
         raise ValueError("Trusted-label source contains no records.")
     snapshot_sha256 = snapshot.hexdigest()
     if expected_snapshot is not None and (
-        expected_snapshot != snapshot_sha256 or expected_count != len(records)
+        expected_snapshot != snapshot_sha256 or expected_count != len(pending_records)
     ):
         raise ValueError("Trusted-label source changed since registration; refresh its trusted snapshot before training.")
+    # Artifact refs stay private per load; the independent split key is deterministic,
+    # internal, and never serialized, so repeated snapshot/seed splits remain stable.
+    opaque_key = secrets.token_bytes(32)
+    records = []
+    for ordinal, (record_id, features, label, input_digest) in enumerate(pending_records):
+        split_material = "{}\0{}\0{}\0{}".format(snapshot_sha256, ordinal, input_digest, spec.source_name)
+        split_key = hashlib.sha256(split_material.encode("utf-8")).hexdigest()
+        records.append(TrustedLabelRecord(_opaque_ref(opaque_key, spec.source_name, record_id),
+                                          features, label, input_digest, split_key))
     return TrustedLabelBatch(
         spec.source_name, spec.task_id, spec.provenance_id, spec.trust_kind,
         tuple(task.input_columns), spec.label_column, tuple(records), snapshot_sha256,
