@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 
 _RUN_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -118,6 +118,7 @@ def write_label_run(
     model_ref: str,
     started_at: str,
     outcomes: Sequence[LabelOutcome],
+    before_publish: Optional[Callable[[Sequence[LabelOutcome]], Sequence[LabelOutcome]]] = None,
 ) -> LabelRunSummary:
     """Persist a complete run by atomically renaming a fully synced directory.
 
@@ -134,13 +135,6 @@ def write_label_run(
     if len(record_refs) != len(set(record_refs)):
         raise ValueError("A run cannot contain duplicate record outcomes.")
 
-    applied_count = sum(item.state == "applied" for item in outcomes)
-    quarantined_count = len(outcomes) - applied_count
-    reason_counts = {}
-    for item in outcomes:
-        if item.reason_code:
-            reason_counts[item.reason_code] = reason_counts.get(item.reason_code, 0) + 1
-
     root = Path(workspace_dir).expanduser() / "label-runs"
     root.mkdir(parents=True, exist_ok=True)
     final_dir = root / run_id
@@ -155,7 +149,38 @@ def write_label_run(
             handle.flush()
             os.fsync(handle.fileno())
 
+        # The caller can re-read its read-only source after staging the rows,
+        # immediately before metadata and the atomic directory publication.
+        if before_publish is not None:
+            checked_outcomes = tuple(before_publish(outcomes))
+            if (
+                len(checked_outcomes) != len(outcomes)
+                or any(not isinstance(item, LabelOutcome) or item.run_id != run_id
+                       for item in checked_outcomes)
+                or [item.record_ref for item in checked_outcomes] != record_refs
+            ):
+                raise ValueError("Pre-publication freshness check changed the run's outcome identities.")
+            if checked_outcomes != outcomes:
+                with outcomes_path.open("w", encoding="utf-8", newline="\n") as handle:
+                    for outcome in checked_outcomes:
+                        handle.write(json.dumps(outcome.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                outcomes = checked_outcomes
+
+        applied_count = sum(item.state == "applied" for item in outcomes)
+        quarantined_count = len(outcomes) - applied_count
+        reason_counts = {}
+        for item in outcomes:
+            if item.reason_code:
+                reason_counts[item.reason_code] = reason_counts.get(item.reason_code, 0) + 1
+
         outcomes_sha256 = hashlib.sha256(outcomes_path.read_bytes()).hexdigest()
+        snapshot_material = "".join(
+            "{}\0{}\n".format(item.record_ref, item.input_digest)
+            for item in sorted(outcomes, key=lambda item: item.record_ref)
+        )
+        source_snapshot_sha256 = hashlib.sha256(snapshot_material.encode("utf-8")).hexdigest()
         metadata = {
             "schema_version": 1,
             "run_id": run_id,
@@ -169,6 +194,9 @@ def write_label_run(
             "quarantined_count": quarantined_count,
             "reason_counts": dict(sorted(reason_counts.items())),
             "outcomes_sha256": outcomes_sha256,
+            "source_snapshot_sha256": source_snapshot_sha256,
+            "source_rechecked_before_publish": before_publish is not None,
+            "source_lock_acquired": False,
         }
         metadata_path = temporary_dir / "run.json"
         with metadata_path.open("w", encoding="utf-8", newline="\n") as handle:

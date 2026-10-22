@@ -93,6 +93,10 @@ Exemplo de `risk-policy.json` para a tarefa `risk` acima:
   "task_id": "risk",
   "allowed_labels": ["low", "medium", "high"],
   "rules_version": "risk-rules-v1",
+  "rules": [
+    {"field": "exposure", "operator": "number_between", "minimum": 0},
+    {"field": "days_past_due", "operator": "number_between", "minimum": 0}
+  ],
   "calibration_ref": null,
   "min_calibrated_confidence": 0.95,
   "max_staleness_seconds": 300
@@ -102,10 +106,11 @@ Exemplo de `risk-policy.json` para a tarefa `risk` acima:
 - `policy_id`: referência versionada e não vazia da política.
 - `task_id`: deve coincidir com a tarefa que carrega a política.
 - `allowed_labels`: conjunto exato de rótulos da tarefa, sem duplicatas; a ordem pode variar.
-- `rules_version`: referência não vazia das regras determinísticas; o serviço de execução deve reconhecer essa versão antes de aplicar resultados.
+- `rules_version`: versão da lista `rules`, validada e executada pelo serviço.
+- `rules`: lista obrigatória e não vazia. Cada regra é uma condição que todos os registros precisam satisfazer; uma falha gera quarentena `rule_conflict` antes da inferência. Operadores suportados: `not_empty`, `equals`, `one_of` e `number_between`. Campos extras, operadores desconhecidos e colunas fora de `input_columns` são rejeitados. A política não aceita expressões nem código.
 - `calibration_ref`: referência à evidência de calibração da tarefa ou `null` quando indisponível.
 - `min_calibrated_confidence`: número finito entre 0 e 1; `0.95` é apenas ilustrativo e exige validação específica da tarefa.
-- `max_staleness_seconds`: inteiro positivo que limita a idade da inferência; o serviço também precisa verificar se os dados mudaram.
+- `max_staleness_seconds`: inteiro positivo que limita, por registro, o tempo entre o início da inferência e a conclusão da calibração. O tempo gasto processando outros registros não entra nesse limite.
 
 ```python
 from finlabel.labeling.task import load_task, load_task_policy
@@ -115,8 +120,9 @@ task = load_task("./risk.json")
 policy = load_task_policy(task)  # None se policy_path não estiver configurado
 ```
 
-`LabelingPolicy` é imutável, inclusive a sequência de rótulos. O carregador rejeita
-campos desconhecidos, IDs divergentes, taxonomia diferente e valores inválidos.
+`LabelingPolicy` é imutável, inclusive rótulos e regras. O carregador rejeita
+regras ausentes, vazias ou não suportadas; campos desconhecidos; IDs divergentes;
+taxonomia diferente; regras que usem colunas não selecionadas; e valores inválidos.
 `has_calibration_configuration` indica somente que existe uma referência;
 ela não comprova calibração. O runtime deve validar a evidência, sua ligação com
 a tarefa/modelo e o método de confiança da previsão antes de aplicar qualquer
@@ -124,6 +130,15 @@ rótulo. Sem política ou sem calibração validada, o fluxo autônomo coloca re
 em quarentena. Nenhum limite, regra ou referência permissiva é criado por padrão.
 Este contrato prepara o fluxo autônomo; os comandos legados de revisão descritos
 acima ainda permanecem nesta etapa da implementação.
+
+Cada resultado grava o `input_digest` dos campos selecionados e uma referência
+opaca do registro. O `source_snapshot_sha256` de `run.json` agrega as referências
+e digests processados. Depois de preparar os arquivos temporários, o serviço
+relê as colunas selecionadas imediatamente antes de publicar o diretório e coloca
+em quarentena registros que mudaram até essa releitura. CSV e SQLite não oferecem
+um lock comum ao serviço: uma alteração posterior à última releitura ainda é
+possível. Consumidores devem recalcular o digest da linha atual e só tratar o
+rótulo aplicado como atual quando ele corresponder ao `input_digest` do resultado.
 
 ## Preparação do dataset e fine-tuning
 
