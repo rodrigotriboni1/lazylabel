@@ -2,9 +2,13 @@
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import TYPE_CHECKING, Optional, Sequence, Union
+
+
+if TYPE_CHECKING:
+    from finlabel.labeling.policy import LabelingPolicy
 
 
 PathLike = Union[str, Path]
@@ -25,6 +29,7 @@ class LabelTask:
     labels: Sequence[str]
     model_id: str
     model_revision: Optional[str] = None
+    policy_path: Optional[str] = None
 
     def __post_init__(self):
         if not isinstance(self.task_id, str) or not _TASK_ID.fullmatch(self.task_id):
@@ -48,6 +53,11 @@ class LabelTask:
         if self.model_revision is not None and not isinstance(self.model_revision, str):
             raise ValueError("model_revision must be a string when provided.")
 
+        if self.policy_path is not None and (
+            not isinstance(self.policy_path, str) or not self.policy_path.strip()
+        ):
+            raise ValueError("policy_path must be a non-empty string when provided.")
+
 
 def task_to_dict(task: LabelTask) -> dict:
     return asdict(task)
@@ -56,7 +66,7 @@ def task_to_dict(task: LabelTask) -> dict:
 def task_from_dict(raw: dict, *, available_columns: Optional[Sequence[str]] = None) -> LabelTask:
     if not isinstance(raw, dict):
         raise ValueError("Task document must be a JSON object.")
-    allowed = {"task_id", "instructions", "input_columns", "labels", "model_id", "model_revision"}
+    allowed = {"task_id", "instructions", "input_columns", "labels", "model_id", "model_revision", "policy_path"}
     unknown = set(raw) - allowed
     if unknown:
         raise ValueError("Unknown task field(s): {}".format(", ".join(sorted(unknown))))
@@ -80,7 +90,23 @@ def load_task(path: PathLike, *, available_columns: Optional[Sequence[str]] = No
         raw = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Could not load task {}: {}".format(source, exc)) from exc
-    return task_from_dict(raw, available_columns=available_columns)
+    task = task_from_dict(raw, available_columns=available_columns)
+    if task.policy_path is not None:
+        policy_path = Path(task.policy_path).expanduser()
+        if not policy_path.is_absolute():
+            policy_path = source.resolve().parent / policy_path
+        task = replace(task, policy_path=str(policy_path.resolve()))
+        load_task_policy(task)
+    return task
+
+
+def load_task_policy(task: LabelTask) -> Optional["LabelingPolicy"]:
+    """Return no policy when unconfigured; never invent permissive defaults."""
+    if task.policy_path is None:
+        return None
+    from finlabel.labeling.policy import load_policy
+
+    return load_policy(task.policy_path, task=task)
 
 
 def save_task(task: LabelTask, path: PathLike) -> Path:
