@@ -77,6 +77,54 @@ O modelo recebe somente `input_columns` serializadas como dados, nunca a linha c
 
 Na revisão CLI, use `accept`, `edit RÓTULO`, `reject` ou `skip`. O painel oferece as mesmas decisões e bloqueia linhas cuja fonte mudou. Eventos append-only ficam em `.finlabel/review.jsonl`; eventos antigos de esquema v1 continuam legíveis e os novos de v2 incluem proveniência.
 
+## Política de rotulagem autônoma (contrato de configuração)
+
+A tarefa aceita `"policy_path": "./risk-policy.json"` opcional. `load_task`
+resolve esse caminho a partir da pasta do JSON da tarefa, valida a política e
+preserva os rótulos e a identidade/revisão do modelo. Ao importar uma tarefa, o
+caminho normalizado é absoluto; mantenha o arquivo de política disponível nesse
+local. Tarefas antigas, sem `policy_path`, continuam legíveis.
+
+Exemplo de `risk-policy.json` para a tarefa `risk` acima:
+
+```json
+{
+  "policy_id": "risk-policy-v1",
+  "task_id": "risk",
+  "allowed_labels": ["low", "medium", "high"],
+  "rules_version": "risk-rules-v1",
+  "calibration_ref": null,
+  "min_calibrated_confidence": 0.95,
+  "max_staleness_seconds": 300
+}
+```
+
+- `policy_id`: referência versionada e não vazia da política.
+- `task_id`: deve coincidir com a tarefa que carrega a política.
+- `allowed_labels`: conjunto exato de rótulos da tarefa, sem duplicatas; a ordem pode variar.
+- `rules_version`: referência não vazia das regras determinísticas; o serviço de execução deve reconhecer essa versão antes de aplicar resultados.
+- `calibration_ref`: referência à evidência de calibração da tarefa ou `null` quando indisponível.
+- `min_calibrated_confidence`: número finito entre 0 e 1; `0.95` é apenas ilustrativo e exige validação específica da tarefa.
+- `max_staleness_seconds`: inteiro positivo que limita a idade da inferência; o serviço também precisa verificar se os dados mudaram.
+
+```python
+from finlabel.labeling.task import load_task, load_task_policy
+
+# load_task rejeita políticas ilegíveis, malformadas ou incompatíveis.
+task = load_task("./risk.json")
+policy = load_task_policy(task)  # None se policy_path não estiver configurado
+```
+
+`LabelingPolicy` é imutável, inclusive a sequência de rótulos. O carregador rejeita
+campos desconhecidos, IDs divergentes, taxonomia diferente e valores inválidos.
+`has_calibration_configuration` indica somente que existe uma referência;
+ela não comprova calibração. O runtime deve validar a evidência, sua ligação com
+a tarefa/modelo e o método de confiança da previsão antes de aplicar qualquer
+rótulo. Sem política ou sem calibração validada, o fluxo autônomo coloca registros
+em quarentena. Nenhum limite, regra ou referência permissiva é criado por padrão.
+Este contrato prepara o fluxo autônomo; os comandos legados de revisão descritos
+acima ainda permanecem nesta etapa da implementação.
+
 ## Preparação do dataset e fine-tuning
 
 Só uma ação explícita prepara exemplos. O JSONL contém prompt com as colunas escolhidas e completion em JSON com o rótulo humano final (o mesmo contrato estruturado esperado na inferência):
