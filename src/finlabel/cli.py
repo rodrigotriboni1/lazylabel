@@ -323,7 +323,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
             run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir)
             result = _verified_label_run(config.workspace_dir, run.run_id)
-            if result["reason_counts"].get("missing_policy"):
+            if result["policy_id"] is None:
                 result["notice"] = (
                     "No labeling policy is configured. All records were quarantined without model inference; "
                     "configure task policy_path and rerun."
