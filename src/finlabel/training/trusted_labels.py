@@ -1,10 +1,8 @@
 """Load explicitly registered, read-only reference labels for training."""
 
 import hashlib
-import hmac
 import json
 import re
-import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -119,11 +117,6 @@ def _canonical_digest(values: Mapping[str, object]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _opaque_ref(key: bytes, source_name: str, record_id: str) -> str:
-    material = (source_name + "\0" + record_id).encode("utf-8")
-    return hmac.new(key, material, hashlib.sha256).hexdigest()
-
-
 def _registered_spec(project, task_id: str):
     matches = []
     for key, raw in project.supervision_sources.items():
@@ -228,14 +221,15 @@ def load_trusted_labels(project, task) -> TrustedLabelBatch:
         expected_snapshot != snapshot_sha256 or expected_count != len(pending_records)
     ):
         raise ValueError("Trusted-label source changed since registration; refresh its trusted snapshot before training.")
-    # Artifact refs stay private per load; the independent split key is deterministic,
-    # internal, and never serialized, so repeated snapshot/seed splits remain stable.
-    opaque_key = secrets.token_bytes(32)
+    # Stable pseudonymous refs let future runs verify the exact frozen split without
+    # retaining source record IDs. The digest is scoped to the snapshot and split key.
     records = []
     for ordinal, (record_id, features, label, input_digest) in enumerate(pending_records):
         split_material = "{}\0{}\0{}\0{}".format(snapshot_sha256, ordinal, input_digest, spec.source_name)
         split_key = hashlib.sha256(split_material.encode("utf-8")).hexdigest()
-        records.append(TrustedLabelRecord(_opaque_ref(opaque_key, spec.source_name, record_id),
+        record_ref = hashlib.sha256(("finlabel:trusted-record:v1\0{}\0{}".format(
+            snapshot_sha256, split_key)).encode("utf-8")).hexdigest()
+        records.append(TrustedLabelRecord(record_ref,
                                           features, label, input_digest, split_key))
     return TrustedLabelBatch(
         spec.source_name, spec.task_id, spec.provenance_id, spec.trust_kind,
