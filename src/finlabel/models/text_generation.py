@@ -1,10 +1,22 @@
 """Lazy Hugging Face Transformers integration for local text generation."""
 
-from typing import Optional, Protocol
+import json
+from typing import Mapping, Optional, Protocol
+
+from finlabel.labeling.prediction import Prediction
+from finlabel.labeling.task import LabelTask
+
+
+RAW_SCORE_METHOD = "label_json_mean_log_likelihood_v1"
 
 
 class TextGenerationBackend(Protocol):
     def generate(self, prompt: str, *, max_new_tokens: int) -> str: ...
+
+
+class PredictionBackend(Protocol):
+    def predict(self, selected_values: Mapping, *, task: LabelTask,
+                max_new_tokens: int) -> Prediction: ...
 
 
 class TransformersTextGenerationBackend:
@@ -40,8 +52,68 @@ class TransformersTextGenerationBackend:
         if max_new_tokens < 1 or max_new_tokens > 8192:
             raise ValueError("max_new_tokens must be between 1 and 8192.")
         self._load()
-        inputs = self._tokenizer(prompt, return_tensors="pt")
+        if getattr(self._tokenizer, "chat_template", None):
+            prompt = self._tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}], tokenize=False,
+                add_generation_prompt=True,
+            )
+            inputs = self._tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
+        else:
+            inputs = self._tokenizer(prompt, return_tensors="pt")
         inputs = inputs.to(self._model.device)
         prompt_length = inputs["input_ids"].shape[1]
-        outputs = self._model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        import torch
+        with torch.inference_mode():
+            outputs = self._model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         return self._tokenizer.decode(outputs[0][prompt_length:], skip_special_tokens=True).strip()
+
+
+    def _label_scores(self, prompt: str, labels) -> dict:
+        """Mean token log likelihood of each canonical JSON continuation (not probability)."""
+        import torch
+
+        if getattr(self._tokenizer, "chat_template", None):
+            prompt = self._tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}], tokenize=False,
+                add_generation_prompt=True,
+            )
+            prefix = self._tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
+        else:
+            prefix = self._tokenizer(prompt, return_tensors="pt")
+        prefix_ids = prefix["input_ids"].to(self._model.device)
+        if prefix_ids.shape[1] == 0:
+            raise ValueError("Cannot score a label without prompt tokens.")
+        scores = {}
+        with torch.inference_mode():
+            for label in labels:
+                completion = json.dumps({"label": label}, ensure_ascii=False, separators=(",", ":"))
+                target = self._tokenizer(
+                    completion, return_tensors="pt", add_special_tokens=False
+                )["input_ids"].to(self._model.device)
+                if target.shape[1] == 0:
+                    raise ValueError("Cannot score an empty label completion.")
+                ids = torch.cat((prefix_ids, target), dim=1)
+                attention_mask = torch.ones_like(ids)
+                logits = self._model(input_ids=ids, attention_mask=attention_mask).logits
+                start = prefix_ids.shape[1] - 1
+                token_log_probs = logits[:, start:-1, :].float().log_softmax(dim=-1)
+                selected = token_log_probs.gather(-1, target.unsqueeze(-1)).squeeze(-1)
+                scores[label] = float(selected.mean().item())
+        return scores
+
+    def predict(self, selected_values: Mapping, *, task: LabelTask,
+                max_new_tokens: int) -> Prediction:
+        from finlabel.labeling.service import _prompt
+        from finlabel.labeling.suggestions import parse_prediction
+
+        if self.model_id != task.model_id or self.revision != task.model_revision:
+            raise ValueError("Backend model identity must match the configured task.")
+        if not isinstance(selected_values, Mapping) or set(selected_values) != set(task.input_columns):
+            raise ValueError("Prediction input must contain exactly the task-selected columns.")
+        prompt = _prompt(task, dict(selected_values))
+        raw = self.generate(prompt, max_new_tokens=max_new_tokens)
+        # Reject malformed output before performing the more expensive scoring pass.
+        parse_prediction(raw, valid_labels=task.labels)
+        evidence = self._label_scores(prompt, task.labels)
+        return parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
+                                confidence_method=RAW_SCORE_METHOD)
