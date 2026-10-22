@@ -229,16 +229,15 @@ class ModelRegistry:
         for index, chunk in enumerate(chunks):
             final = index == len(chunks) - 1
             complete = chunk.endswith(b"\n")
+            if final and not complete:
+                # A final unterminated fragment is the only recoverable journal damage.
+                with self.events_path.open("r+b") as handle:
+                    handle.truncate(offset); handle.flush(); os.fsync(handle.fileno())
+                break
             try:
-                if not complete:
-                    raise ValueError("Torn journal tail.")
                 row = json.loads(chunk.decode("utf-8"))
                 self._validate_event(row)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
-                if final:
-                    with self.events_path.open("r+b") as handle:
-                        handle.truncate(offset); handle.flush(); os.fsync(handle.fileno())
-                    break
                 raise ValueError("Registry journal contains a malformed non-trailing entry.")
             valid.append(row)
             offset += len(chunk)
