@@ -61,7 +61,8 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike) -> dict:
+def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike,
+                              train_dataset_path: Optional[PathLike] = None) -> dict:
     """Validate dataset and project authorization without importing ML libraries."""
     dataset = Path(dataset_path).expanduser().resolve()
     if config.output_dir.exists():
@@ -111,11 +112,32 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
         raise ValueError("Training gate is missing: {}".format(", ".join(missing)))
     if gate["model_id"] != config.model_id:
         raise ValueError("Training model does not match the project gate model_id.")
-    return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": row_count, "dataset_path": dataset, "gate": gate}
+    train_dataset = Path(train_dataset_path).expanduser().resolve() if train_dataset_path is not None else dataset
+    if train_dataset != dataset:
+        if not train_dataset.is_file():
+            raise FileNotFoundError("Train partition does not exist: {}".format(train_dataset))
+        train_count = 0
+        with train_dataset.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, dict) or set(row) != {"prompt", "completion"}:
+                    raise ValueError("Train partition rows must contain exactly prompt and completion fields.")
+                if not all(isinstance(row.get(key), str) and row[key].strip() for key in ("prompt", "completion")):
+                    raise ValueError("Train partition contains an empty prompt or completion (line {}).".format(line_number))
+                train_count += 1
+        expected = manifest.get("partitions", {}).get("train", {})
+        if not train_count or train_count != expected.get("count") or _sha256(train_dataset) != expected.get("dataset_sha256"):
+            raise ValueError("Train partition no longer matches its trusted frozen manifest.")
+    return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": row_count,
+            "dataset_path": dataset, "train_dataset_path": train_dataset, "gate": gate}
 
 
-def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike) -> TrainingResult:
-    validated = validate_training_request(dataset_path, config, gate_path=gate_path)
+def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike,
+                  train_dataset_path: Optional[PathLike] = None) -> TrainingResult:
+    validated = validate_training_request(dataset_path, config, gate_path=gate_path,
+                                          train_dataset_path=train_dataset_path)
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     try:
         from datasets import load_dataset
@@ -131,7 +153,10 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
     try:
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
         model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False)
-        examples = load_dataset("json", data_files={"train": str(validated["dataset_path"])}, split="train")
+        # The orchestration layer may provide an immutable trusted train-only partition.
+        # Ordinary reviewed datasets retain their existing single-file behavior.
+        train_path = validated.get("train_dataset_path", validated["dataset_path"])
+        examples = load_dataset("json", data_files={"train": str(train_path)}, split="train")
         trainer = SFTTrainer(
             model=model,
             args=SFTConfig(

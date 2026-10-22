@@ -12,6 +12,15 @@ from uuid import uuid4
 from finlabel.training.backend import TrainingConfig, train_adapter, validate_training_request
 
 
+def _sha256_file(path):
+    import hashlib
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True)
 class TrainingJobStatus:
     job_id: str
@@ -88,6 +97,37 @@ class TrainingJobManager:
         with self._lock:
             self._jobs[status.job_id] = status
             self._persist(status)
+
+    def run_isolated(self, dataset_path: Path, config: TrainingConfig, *, train_dataset_path: Optional[Path] = None):
+        """Run an isolated candidate synchronously; only the supplied train partition reaches the backend."""
+        dataset_path = Path(dataset_path).expanduser().resolve()
+        train_dataset_path = Path(train_dataset_path or dataset_path).expanduser().resolve()
+        validated = validate_training_request(dataset_path, config, gate_path=self.gate_path)
+        train_hash = _sha256_file(train_dataset_path)
+        job_id = uuid4().hex
+        status = TrainingJobStatus(
+            job_id, "training", "Training an isolated local candidate.", None,
+            str(train_dataset_path), str(config.output_dir), config.model_id,
+            train_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), {},
+        )
+        self._persist(status)
+        self._jobs[job_id] = status
+        try:
+            result = train_adapter(dataset_path, config, gate_path=self.gate_path,
+                                   train_dataset_path=train_dataset_path)
+        except Exception as exc:
+            failed = TrainingJobStatus(job_id, "failed", "Candidate training failed.",
+                                       type(exc).__name__, str(train_dataset_path), str(config.output_dir),
+                                       config.model_id, train_hash, status.created_at, {})
+            self._persist(failed)
+            self._jobs[job_id] = failed
+            raise
+        succeeded = TrainingJobStatus(job_id, "succeeded", "Candidate adapter saved locally.", None,
+                                       str(train_dataset_path), str(result.output_dir), config.model_id,
+                                       train_hash, status.created_at, dict(result.final_metrics))
+        self._persist(succeeded)
+        self._jobs[job_id] = succeeded
+        return result
 
     def _run(self, job_id: str, dataset_path: Path, config: TrainingConfig) -> None:
         status = self._jobs[job_id]
