@@ -132,8 +132,9 @@ Este contrato prepara o fluxo autônomo; os comandos legados de revisão descrit
 acima ainda permanecem nesta etapa da implementação.
 
 Cada resultado grava o `input_digest` dos campos selecionados e uma referência
-opaca do registro. O `source_snapshot_sha256` de `run.json` agrega as referências
-e digests processados. Depois de preparar os arquivos temporários, o serviço
+opaca do registro. O `processed_batch_sha256` de `run.json` agrega as referências
+e digests distintos que entraram na execução; ele não é o hash de uma captura
+completa da fonte. Depois de preparar os arquivos temporários, o serviço
 relê as colunas selecionadas imediatamente antes de publicar o diretório e coloca
 em quarentena registros que mudaram até essa releitura. CSV e SQLite não oferecem
 um lock comum ao serviço: uma alteração posterior à última releitura ainda é

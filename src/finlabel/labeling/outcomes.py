@@ -180,7 +180,7 @@ def write_label_run(
             "{}\0{}\n".format(item.record_ref, item.input_digest)
             for item in sorted(outcomes, key=lambda item: item.record_ref)
         )
-        source_snapshot_sha256 = hashlib.sha256(snapshot_material.encode("utf-8")).hexdigest()
+        processed_batch_sha256 = hashlib.sha256(snapshot_material.encode("utf-8")).hexdigest()
         metadata = {
             "schema_version": 1,
             "run_id": run_id,
@@ -194,7 +194,7 @@ def write_label_run(
             "quarantined_count": quarantined_count,
             "reason_counts": dict(sorted(reason_counts.items())),
             "outcomes_sha256": outcomes_sha256,
-            "source_snapshot_sha256": source_snapshot_sha256,
+            "processed_batch_sha256": processed_batch_sha256,
             "source_rechecked_before_publish": before_publish is not None,
             "source_lock_acquired": False,
         }
