@@ -1,6 +1,6 @@
 # FinLabel Local
 
-Biblioteca em desenvolvimento para análise local e rotulagem assistida de dados financeiros, com revisão humana e rastreabilidade. Inclui conectores somente de leitura para CSV e SQLite, monitoramento explícito de esquema, análises determinísticas, gráficos offline, painel web e preparação de datasets para treino local.
+Biblioteca em desenvolvimento para análise local e rotulagem autônoma de dados financeiros. Inclui conectores somente de leitura para CSV e SQLite, monitoramento de esquema, análises determinísticas, gráficos offline, painel web e fluxos locais de calibração e treino.
 
 O contrato de fine-tuning PEFT/LoRA está implementado. A execução com pesos reais permanece bloqueada até registrar e autorizar modelo, licença, hardware, política de dados e protocolo de avaliação no projeto. Nenhum peso é carregado implicitamente.
 
@@ -70,12 +70,12 @@ Uma tarefa declarativa define instruções, colunas permitidas, rótulos e o mod
 finlabel task add ./risk.json --project ./meu-projeto
 python -m pip install -e '.[models]'
 finlabel label carteira --task risk --project ./meu-projeto
-finlabel review RUN_ID --project ./meu-projeto
+finlabel label-run RUN_ID --project ./meu-projeto
 ```
 
-O modelo recebe somente `input_columns` serializadas como dados, nunca a linha completa. A saída esperada é JSON com um rótulo configurado e uma justificativa curta opcional. Respostas inválidas são contadas e ignoradas. O arquivo imutável de sugestões guarda ID opaco, digest, rótulo, justificativa, tarefa e referência do modelo; não grava prompts ou linhas da fonte.
+O modelo recebe somente `input_columns` serializadas como dados, nunca a linha completa. A biblioteca aplica automaticamente apenas previsões com política válida, regras satisfeitas, origem atual e confiança calibrada acima do limite configurado. Registros inválidos, incertos ou sem evidência compatível de calibração vão para quarentena com um código de motivo. Os resultados são imutáveis e guardam somente referências opacas, digests, rótulos permitidos, confiança calibrada e proveniência; não gravam prompts, valores da fonte ou justificativas livres.
 
-Na revisão CLI, use `accept`, `edit RÓTULO`, `reject` ou `skip`. O painel oferece as mesmas decisões e bloqueia linhas cuja fonte mudou. Eventos append-only ficam em `.finlabel/review.jsonl`; eventos antigos de esquema v1 continuam legíveis e os novos de v2 incluem proveniência.
+`finlabel label-run` verifica o hash de `outcomes.jsonl` e confere os totais antes de exibir somente metadados agregados. Não é necessário revisar cada linha para concluir uma execução. O comando histórico `finlabel review` continua disponível para consultar execuções antigas baseadas em sugestões, mas não faz parte do fluxo autônomo.
 
 ## Política de rotulagem autônoma (contrato de configuração)
 
@@ -124,12 +124,13 @@ policy = load_task_policy(task)  # None se policy_path não estiver configurado
 regras ausentes, vazias ou não suportadas; campos desconhecidos; IDs divergentes;
 taxonomia diferente; regras que usem colunas não selecionadas; e valores inválidos.
 `has_calibration_configuration` indica somente que existe uma referência;
-ela não comprova calibração. O runtime deve validar a evidência, sua ligação com
-a tarefa/modelo e o método de confiança da previsão antes de aplicar qualquer
-rótulo. Sem política ou sem calibração validada, o fluxo autônomo coloca registros
-em quarentena. Nenhum limite, regra ou referência permissiva é criado por padrão.
-Este contrato prepara o fluxo autônomo; os comandos legados de revisão descritos
-acima ainda permanecem nesta etapa da implementação.
+ela não comprova calibração. O runtime deve validar a evidência e sua ligação com
+a tarefa, política, modelo e método de pontuação antes de aplicar qualquer
+rótulo. Sem política, regras determinísticas ou calibrador validado, os registros
+ficam em quarentena. Nenhum limite, regra ou referência permissiva é criado por
+padrão. No estado atual, o backend Transformers ainda não produz confiança
+calibrada; portanto, mesmo previsões válidas ficam em quarentena com motivo
+`uncalibrated`. O CLI informa esse estado sem apresentar dados das linhas.
 
 Cada resultado grava o `input_digest` dos campos selecionados e uma referência
 opaca do registro. O `processed_batch_sha256` de `run.json` agrega as referências
