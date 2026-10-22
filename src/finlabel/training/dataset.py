@@ -84,6 +84,13 @@ def prepare_trusted_dataset(batch, task, *, workspace_dir) -> TrustedDatasetMani
                                             ensure_ascii=False, separators=(",", ":")) + "\n")
             summary = dict(split.manifest["partitions"][name])
             summary.update({"path": data_path.name, "dataset_sha256": _sha256(data_path)})
+            if name == "calibration":
+                # Opaque references are aligned one-for-one with the unchanged SFT rows.
+                # Source record identifiers and feature/label values are never included.
+                summary["records"] = [
+                    {"record_ref": row.record_ref, "input_digest": row.input_digest}
+                    for row in rows
+                ]
             partition_meta[name] = summary
         manifest = {
             "schema_version": 1,
