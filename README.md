@@ -193,10 +193,13 @@ presente (incluindo Qwen); somente tokenizers sem template usam texto simples.
 legados explícitos. `predict` valida modelo/revisão e recebe exatamente as
 colunas da tarefa, sem selecionar campos extras da fonte.
 
-O método `label_json_mean_log_likelihood_v1` calcula, em ordem da taxonomia,
-a média dos logaritmos das probabilidades dos tokens da continuação canônica
-`{"label":"CLASSE"}` para cada classe, condicionada ao mesmo prompt. O JSON
-canônico inclui sua sintaxe; diferenças de tokenização influenciam os escores.
+O método `label_json_mean_log_likelihood_v2` calcula, em ordem da taxonomia,
+a média dos logaritmos das probabilidades dos tokens do JSON canônico
+`{"label":"CLASSE"}` para cada classe, condicionada ao mesmo prompt. Prompt e
+continuação são tokenizados juntos, e somente os tokens que cobrem exatamente o
+texto JSON são pontuados. Tokenizers sem offsets ou com token atravessando a
+fronteira entre prompt e JSON falham de forma segura. O método v2 é incompatível
+com calibrações produzidas para v1.
 Esses números brutos não são probabilidades calibradas, não são o texto da
 justificativa e não permitem aplicar um rótulo sozinhos. Esse cálculo exige uma
 passagem adicional do modelo por classe e pode custar memória/tempo em tarefas
