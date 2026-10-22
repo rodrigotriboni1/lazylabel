@@ -8,7 +8,7 @@ from finlabel.sources.base import ProjectConfig, SourceSpec
 
 
 PathLike = Union[str, Path]
-_ARTIFACT_DIRS = ("schemas", "analyses", "runs", "label-runs", "tasks", "models", "training")
+_ARTIFACT_DIRS = ("schemas", "analyses", "runs", "label-runs", "tasks", "models", "training", "supervision")
 
 
 def _config_path(path: PathLike) -> Path:
@@ -28,7 +28,7 @@ def init_project(path: PathLike) -> Path:
     if config_path.exists():
         raise FileExistsError("Project configuration already exists: {}".format(config_path))
     config_path.write_text(
-        json.dumps({"version": 1, "sources": {}, "model_roles": {}}, indent=2) + "\n",
+        json.dumps({"version": 1, "sources": {}, "model_roles": {}, "supervision_sources": {}}, indent=2) + "\n",
         encoding="utf-8",
     )
     return config_path
@@ -46,8 +46,9 @@ def load_project(path: PathLike) -> ProjectConfig:
         raise ValueError("Unsupported or malformed project configuration: {}".format(config_path))
     sources_raw = raw.get("sources", {})
     roles = raw.get("model_roles", {})
-    if not isinstance(sources_raw, dict) or not isinstance(roles, dict):
-        raise ValueError("Project sources and model_roles must be objects: {}".format(config_path))
+    supervision = raw.get("supervision_sources", {})
+    if not isinstance(sources_raw, dict) or not isinstance(roles, dict) or not isinstance(supervision, dict):
+        raise ValueError("Project sources, model_roles, and supervision_sources must be objects: {}".format(config_path))
     sources = {}
     for source_name, source_raw in sources_raw.items():
         if not isinstance(source_raw, dict):
@@ -71,7 +72,7 @@ def load_project(path: PathLike) -> ProjectConfig:
             raise ValueError("Malformed source {!r} in {}: {}".format(source_name, config_path, exc)) from exc
     if any(not isinstance(key, str) or not isinstance(value, str) for key, value in roles.items()):
         raise ValueError("Model role references must be strings in {}".format(config_path))
-    return ProjectConfig(config_path, sources, roles, config_path.parent)
+    return ProjectConfig(config_path, sources, roles, config_path.parent, supervision)
 
 
 def save_project(config: ProjectConfig, path: PathLike) -> None:
@@ -90,6 +91,9 @@ def save_project(config: ProjectConfig, path: PathLike) -> None:
             for name, spec in sorted(config.sources.items())
         },
         "model_roles": dict(config.model_roles),
+        "supervision_sources": {
+            key: dict(value) for key, value in sorted(config.supervision_sources.items())
+        },
     }
     config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

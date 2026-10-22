@@ -187,6 +187,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     train.add_argument("--lora-rank", type=int, default=8)
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--project", default=".")
+    supervision = commands.add_parser("supervision", help="register trusted labels from a read-only source")
+    supervision_commands = supervision.add_subparsers(dest="supervision_command", required=True)
+    supervision_add = supervision_commands.add_parser("add", help="register a trusted label column for a task")
+    supervision_add.add_argument("source")
+    supervision_add.add_argument("--task", required=True)
+    supervision_add.add_argument("--label-column", required=True)
+    supervision_add.add_argument("--provenance", required=True)
+    supervision_add.add_argument("--trust-kind", required=True, choices=("provided_ground_truth", "validated_rule"))
+    supervision_add.add_argument("--label-map", help="JSON object mapping source label values to task labels")
+    supervision_add.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
     try:
@@ -213,6 +223,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     {**config.sources, args.name: updated_spec},
                     config.model_roles,
                     config.workspace_dir,
+                    config.supervision_sources,
                 )
                 save_project(updated, config.path)
                 print(json.dumps({"source": args.name, "column": args.column, "type": args.type}))
@@ -240,9 +251,81 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 {**config.sources, args.name: spec},
                 config.model_roles,
                 config.workspace_dir,
+                config.supervision_sources,
             )
             save_project(updated, config.path)
             print(json.dumps({"name": args.name, "kind": kind, "path": str(spec.path)}, ensure_ascii=False))
+            return 0
+        if args.command == "supervision" and args.supervision_command == "add":
+            from finlabel.labeling.task import load_task, task_file_path
+            from finlabel.training.trusted_labels import (
+                TrustedLabelSourceSpec,
+                load_trusted_labels,
+                snapshot_manifest,
+                supervision_key,
+            )
+
+            config = load_project(args.project)
+            if args.source not in config.sources:
+                raise ValueError("Unknown project source: {}".format(args.source))
+            source = open_source(config, args.source)
+            available_columns = tuple(column.name for column in source.columns())
+            task = load_task(
+                task_file_path(config.workspace_dir, args.task),
+                available_columns=available_columns,
+            )
+            if args.label_column in task.input_columns:
+                raise ValueError("The trusted label column cannot be a task inference input column.")
+            if args.label_column not in available_columns:
+                raise ValueError("Unknown trusted label column: {}".format(args.label_column))
+            if args.label_map:
+                try:
+                    label_mapping = json.loads(args.label_map)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("--label-map must be a JSON object.") from exc
+                if not isinstance(label_mapping, dict):
+                    raise ValueError("--label-map must be a JSON object.")
+            else:
+                label_mapping = {label: label for label in task.labels}
+            spec = TrustedLabelSourceSpec(
+                source_name=args.source,
+                task_id=task.task_id,
+                label_column=args.label_column,
+                label_mapping=label_mapping,
+                provenance_id=args.provenance,
+                trust_kind=args.trust_kind,
+            )
+            key = supervision_key(task.task_id, args.source)
+            if key in config.supervision_sources:
+                raise ValueError("A trusted-label source is already registered for this task and source.")
+            updated = ProjectConfig(
+                config.path, config.sources, config.model_roles, config.workspace_dir,
+                {**config.supervision_sources, key: spec.to_dict()},
+            )
+            # Validate all source rows and the immutable snapshot before changing project configuration.
+            batch = load_trusted_labels(updated, task)
+            manifest = snapshot_manifest(batch)
+            manifest_dir = config.workspace_dir / "supervision" / task.task_id
+            manifest_path = manifest_dir / (args.source + ".json")
+            if manifest_path.exists():
+                raise FileExistsError("Trusted-label snapshot already exists: {}".format(manifest_path))
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            try:
+                save_project(updated, config.path)
+            except BaseException:
+                manifest_path.unlink(missing_ok=True)
+                raise
+            print(json.dumps({
+                "source": args.source,
+                "task_id": task.task_id,
+                "trust_kind": args.trust_kind,
+                "rows": batch.row_count,
+                "feature_columns": list(batch.feature_columns),
+                "label_column": batch.label_column,
+                "snapshot_sha256": batch.snapshot_sha256,
+                "manifest": str(manifest_path),
+            }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "schema" and args.schema_command == "capture":
             config = load_project(args.project)

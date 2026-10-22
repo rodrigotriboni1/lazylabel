@@ -23,6 +23,7 @@ class ProjectConfig:
     sources: Mapping[str, SourceSpec] = field(default_factory=dict)
     model_roles: Mapping[str, str] = field(default_factory=dict)
     workspace_dir: Optional[Path] = None
+    supervision_sources: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
