@@ -8,7 +8,7 @@ from finlabel.sources.base import ProjectConfig, SourceSpec
 
 
 PathLike = Union[str, Path]
-_ARTIFACT_DIRS = ("schemas", "analyses", "runs", "tasks", "models", "training")
+_ARTIFACT_DIRS = ("schemas", "analyses", "runs", "label-runs", "tasks", "models", "training")
 
 
 def _config_path(path: PathLike) -> Path:
