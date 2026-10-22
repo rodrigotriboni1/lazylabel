@@ -14,6 +14,7 @@ from finlabel.project import open_source
 from finlabel.review import ReviewAction, ReviewLog
 from finlabel.training.quality import validate_trusted_batch
 from finlabel.training.split import split_trusted_records
+from finlabel.training.task_spec import task_spec_sha256
 
 
 PathLike = Union[str, Path]
@@ -39,6 +40,7 @@ class TrustedDatasetManifest:
     source_name: str
     provenance_id: str
     snapshot_sha256: str
+    task_spec_sha256: str
     feature_columns: Sequence[str]
     label_column: str
     row_count: int
@@ -102,6 +104,7 @@ def prepare_trusted_dataset(batch, task, *, workspace_dir) -> TrustedDatasetMani
             "feature_columns": list(task.input_columns),
             "label_column": batch.label_column,
             "snapshot_sha256": batch.snapshot_sha256,
+            "task_spec_sha256": task_spec_sha256(task),
             "row_count": batch.row_count,
             "label_coverage": coverage,
             "split": {"strategy": split.manifest["strategy"], "seed": split.manifest["seed"],
@@ -113,7 +116,7 @@ def prepare_trusted_dataset(batch, task, *, workspace_dir) -> TrustedDatasetMani
                                  encoding="utf-8")
         return TrustedDatasetManifest(
             destination, manifest_path, task.task_id, batch.source_name, batch.provenance_id,
-            batch.snapshot_sha256, tuple(task.input_columns), batch.label_column, batch.row_count,
+            batch.snapshot_sha256, task_spec_sha256(task), tuple(task.input_columns), batch.label_column, batch.row_count,
             coverage, partition_meta, _sha256(manifest_path),
         )
     except BaseException:
