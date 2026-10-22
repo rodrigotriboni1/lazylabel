@@ -1,7 +1,9 @@
 """Command-line interface for local dataset inspection."""
 
 import argparse
+import hashlib
 import json
+import re
 import sqlite3
 import sys
 from dataclasses import asdict, replace
@@ -14,6 +16,92 @@ from finlabel.sources.base import ProjectConfig, SourceSpec
 from finlabel.monitor import capture_schema, load_schema_baseline, monitor_source, save_schema_baseline
 from finlabel.analysis.schema import plan_from_dict
 from finlabel.analysis.service import analyze_source
+
+
+_LABEL_RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _verified_label_run(workspace_dir: Path, run_id: str) -> dict:
+    """Verify an autonomous run artifact and return aggregate metadata only."""
+    from finlabel.labeling.outcomes import LabelOutcome
+
+    if not isinstance(run_id, str) or not _LABEL_RUN_ID.fullmatch(run_id):
+        raise ValueError("run_id must be a 32-character lowercase hexadecimal identifier.")
+    run_dir = Path(workspace_dir) / "label-runs" / run_id
+    metadata_path = run_dir / "run.json"
+    outcomes_path = run_dir / "outcomes.jsonl"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        outcomes_bytes = outcomes_path.read_bytes()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Could not read autonomous label run artifact.") from exc
+    if not isinstance(metadata, dict) or metadata.get("schema_version") != 1:
+        raise ValueError("Unsupported or malformed autonomous label run metadata.")
+    if metadata.get("run_id") != run_id:
+        raise ValueError("Autonomous label run metadata identity does not match its directory.")
+    digest = hashlib.sha256(outcomes_bytes).hexdigest()
+    if metadata.get("outcomes_sha256") != digest:
+        raise ValueError("Autonomous label run integrity check failed for outcomes.jsonl.")
+
+    outcomes = []
+    try:
+        for line in outcomes_bytes.decode("utf-8").splitlines():
+            if not line.strip():
+                raise ValueError("Autonomous label run contains an empty outcome line.")
+            raw = json.loads(line)
+            if not isinstance(raw, dict):
+                raise ValueError("Autonomous label run contains a malformed outcome.")
+            outcomes.append(LabelOutcome(**raw))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError("Autonomous label run contains invalid outcome data.") from exc
+
+    if any(outcome.run_id != run_id for outcome in outcomes):
+        raise ValueError("Autonomous label run contains an outcome with a different run ID.")
+    if any(
+        outcome.task_id != metadata.get("task_id")
+        or outcome.policy_id != metadata.get("policy_id")
+        or outcome.model_ref != metadata.get("model_ref")
+        for outcome in outcomes
+    ):
+        raise ValueError("Autonomous label run outcome provenance does not match its metadata.")
+    snapshot_material = "".join(
+        "{}\0{}\n".format(outcome.record_ref, outcome.input_digest)
+        for outcome in sorted(outcomes, key=lambda outcome: outcome.record_ref)
+    )
+    processed_batch_digest = hashlib.sha256(snapshot_material.encode("utf-8")).hexdigest()
+    if metadata.get("processed_batch_sha256") != processed_batch_digest:
+        raise ValueError("Autonomous label run integrity check failed for the processed batch digest.")
+    applied_count = sum(outcome.state == "applied" for outcome in outcomes)
+    quarantined_count = sum(outcome.state == "quarantined" for outcome in outcomes)
+    reason_counts = {}
+    for outcome in outcomes:
+        if outcome.reason_code:
+            reason_counts[outcome.reason_code] = reason_counts.get(outcome.reason_code, 0) + 1
+    expected_reason_counts = dict(sorted(reason_counts.items()))
+    if (
+        metadata.get("outcome_count") != len(outcomes)
+        or metadata.get("applied_count") != applied_count
+        or metadata.get("quarantined_count") != quarantined_count
+        or metadata.get("reason_counts") != expected_reason_counts
+    ):
+        raise ValueError("Autonomous label run aggregate metadata does not match its outcomes.")
+
+    return {
+        "run_id": run_id,
+        "task_id": metadata["task_id"],
+        "policy_id": metadata["policy_id"],
+        "model_ref": metadata["model_ref"],
+        "started_at": metadata["started_at"],
+        "finished_at": metadata["finished_at"],
+        "applied_count": applied_count,
+        "quarantined_count": quarantined_count,
+        "outcome_count": len(outcomes),
+        "reason_counts": expected_reason_counts,
+        "artifact_dir": str(run_dir),
+        "outcomes_sha256": digest,
+        "processed_batch_sha256": processed_batch_digest,
+        "source_rechecked_before_publish": metadata["source_rechecked_before_publish"],
+    }
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -71,11 +159,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     task_add = task_commands.add_parser("add", help="add a declarative task JSON file")
     task_add.add_argument("file")
     task_add.add_argument("--project", default=".")
-    label = commands.add_parser("label", help="generate local suggestions for a configured task")
+    label = commands.add_parser("label", help="run autonomous local labeling for a configured task")
     label.add_argument("source")
     label.add_argument("--task", required=True)
     label.add_argument("--project", default=".")
     label.add_argument("--device", default="auto")
+    label_run = commands.add_parser("label-run", help="show privacy-safe summary of an autonomous labeling run")
+    label_run.add_argument("run_id")
+    label_run.add_argument("--project", default=".")
     review = commands.add_parser("review", help="interactively review suggestions in a local run")
     review.add_argument("run_id")
     review.add_argument("--project", default=".")
@@ -214,21 +305,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(str(destination))
             return 0
         if args.command == "label":
-            from finlabel.labeling.service import suggest_labels
-            from finlabel.labeling.task import load_task, task_file_path
-            from finlabel.models.text_generation import TransformersTextGenerationBackend
+            from finlabel.labeling.service import run_labeling
+            from finlabel.labeling.task import load_task, load_task_policy, task_file_path
 
             config = load_project(args.project)
             source = open_source(config, args.source)
             task_path = task_file_path(config.workspace_dir, args.task)
             task = load_task(task_path, available_columns=tuple(column.name for column in source.columns()))
-            backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
-            run = suggest_labels(source, task, backend, workspace_dir=config.workspace_dir)
-            print(json.dumps({
-                "run_id": run.run_id, "source": run.source_name, "task": run.task_id,
-                "model_ref": run.model_ref, "suggestions": run.row_count, "invalid": run.invalid_count,
-                "suggestion_file": str(run.suggestion_path),
-            }, ensure_ascii=False, indent=2))
+            policy = load_task_policy(task)
+            if policy is None:
+                # No model call is needed: the service persists a terminal
+                # missing_policy outcome for every source record.
+                backend = None
+            else:
+                from finlabel.models.text_generation import TransformersTextGenerationBackend
+
+                backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
+            run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir)
+            result = _verified_label_run(config.workspace_dir, run.run_id)
+            if result["reason_counts"].get("missing_policy"):
+                result["notice"] = (
+                    "No labeling policy is configured. All records were quarantined without model inference; "
+                    "configure task policy_path and rerun."
+                )
+            elif result["reason_counts"].get("uncalibrated"):
+                result["notice"] = (
+                    "Predictions are uncalibrated and remain quarantined. A fitted calibrator matching the "
+                    "task, model, policy, and score method is required before labels can be applied."
+                )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "label-run":
+            config = load_project(args.project)
+            print(json.dumps(_verified_label_run(config.workspace_dir, args.run_id), ensure_ascii=False, indent=2))
             return 0
         if args.command == "review":
             from finlabel.labeling.task import load_task, task_file_path, validate_label
