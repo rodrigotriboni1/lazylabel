@@ -19,6 +19,12 @@ from finlabel.analysis.service import analyze_source
 
 
 _LABEL_RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+_PIPELINE_RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _canonical_digest(payload: dict) -> str:
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _verified_label_run(workspace_dir: Path, run_id: str) -> dict:
@@ -104,6 +110,122 @@ def _verified_label_run(workspace_dir: Path, run_id: str) -> dict:
     }
 
 
+def _verified_pipeline_run(workspace_dir: Path, run_id: str) -> dict:
+    """Verify a combined run and return metadata only, never row-level content."""
+    if not isinstance(run_id, str) or not _PIPELINE_RUN_ID.fullmatch(run_id):
+        raise ValueError("run_id must be a 32-character lowercase hexadecimal identifier.")
+    run_dir = Path(workspace_dir) / "pipeline-runs" / run_id
+    manifest_path = run_dir / "run.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Could not read pipeline run artifact.") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise ValueError("Unsupported or malformed pipeline run metadata.")
+    if manifest.get("run_id") != run_id:
+        raise ValueError("Pipeline run metadata identity does not match its directory.")
+    recorded_digest = manifest.get("integrity_sha256")
+    unsigned = {key: value for key, value in manifest.items() if key != "integrity_sha256"}
+    if not isinstance(recorded_digest, str) or _canonical_digest(unsigned) != recorded_digest:
+        raise ValueError("Pipeline run integrity check failed for run.json.")
+
+    label_run = _verified_label_run(workspace_dir, manifest.get("label_run_id"))
+    if label_run["outcomes_sha256"] != manifest.get("label_outcomes_sha256"):
+        raise ValueError("Pipeline run integrity check failed for linked label outcomes.")
+    if label_run["task_id"] != manifest.get("task_id") or label_run["model_ref"] != manifest.get("label_model_ref"):
+        raise ValueError("Pipeline run label provenance does not match its manifest.")
+
+    training = manifest.get("training")
+    if not isinstance(training, dict):
+        raise ValueError("Pipeline run training summary is malformed.")
+    cycle_id = training.get("cycle_id")
+    cycle_path = None
+    if cycle_id is not None:
+        if not isinstance(cycle_id, str) or not _PIPELINE_RUN_ID.fullmatch(cycle_id):
+            raise ValueError("Pipeline run contains an invalid training cycle identifier.")
+        cycle_path = Path(workspace_dir) / "training" / "cycles" / (cycle_id + ".json")
+        try:
+            cycle_bytes = cycle_path.read_bytes()
+            cycle = json.loads(cycle_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Could not read linked training cycle artifact.") from exc
+        if hashlib.sha256(cycle_bytes).hexdigest() != training.get("cycle_sha256"):
+            raise ValueError("Pipeline run integrity check failed for training cycle.")
+        if not isinstance(cycle, dict) or cycle.get("cycle_id") != cycle_id:
+            raise ValueError("Pipeline run training cycle identity does not match its manifest.")
+        if cycle.get("task_id") != manifest.get("task_id") or cycle.get("state") != training.get("state"):
+            raise ValueError("Pipeline run training provenance does not match its manifest.")
+        for field in ("reason_codes", "candidate_id", "evaluation_id", "promotion_action", "active_model_ref"):
+            if cycle.get(field) != training.get(field):
+                raise ValueError("Pipeline run training summary does not match its cycle artifact.")
+
+    return {
+        "run_id": run_id,
+        "task_id": manifest["task_id"],
+        "source": manifest["source_name"],
+        "started_at": manifest["started_at"],
+        "finished_at": manifest["finished_at"],
+        "label_run_id": label_run["run_id"],
+        "label_model_ref": manifest["label_model_ref"],
+        "labels": {
+            "applied": label_run["applied_count"],
+            "quarantined": label_run["quarantined_count"],
+            "reason_counts": label_run["reason_counts"],
+        },
+        "training": {
+            "state": training["state"],
+            "reason_codes": training["reason_codes"],
+            "candidate_id": training.get("candidate_id"),
+            "evaluation_id": training.get("evaluation_id"),
+            "promotion_action": training.get("promotion_action"),
+            "active_model_ref": training.get("active_model_ref"),
+        },
+        "artifacts": {
+            "pipeline_manifest": str(manifest_path),
+            "label_run_dir": str(Path(workspace_dir) / "label-runs" / label_run["run_id"]),
+            "label_outcomes": str(Path(workspace_dir) / "label-runs" / label_run["run_id"] / "outcomes.jsonl"),
+            "training_cycle": str(cycle_path) if cycle_path is not None else None,
+        },
+        "integrity_sha256": recorded_digest,
+    }
+
+
+def _write_pipeline_run(workspace_dir: Path, run_id: str, payload: dict) -> Path:
+    """Publish an immutable combined manifest as one atomic directory rename."""
+    import os
+    import tempfile
+
+    root = Path(workspace_dir) / "pipeline-runs"
+    root.mkdir(parents=True, exist_ok=True)
+    final_dir = root / run_id
+    if final_dir.exists():
+        raise FileExistsError("Pipeline run already exists: {}".format(final_dir))
+    temporary_dir = Path(tempfile.mkdtemp(prefix="." + run_id + "-", dir=str(root)))
+    try:
+        manifest = {**payload, "integrity_sha256": _canonical_digest(payload)}
+        manifest_path = temporary_dir / "run.json"
+        with manifest_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        directory_fd = os.open(str(temporary_dir), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        os.replace(str(temporary_dir), str(final_dir))
+        root_fd = os.open(str(root), os.O_RDONLY)
+        try:
+            os.fsync(root_fd)
+        finally:
+            os.close(root_fd)
+    except BaseException:
+        import shutil
+        shutil.rmtree(temporary_dir, ignore_errors=True)
+        raise
+    return final_dir / "run.json"
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="finlabel")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -164,6 +286,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     label.add_argument("--task", required=True)
     label.add_argument("--project", default=".")
     label.add_argument("--device", default="auto")
+    pipeline = commands.add_parser("run", help="run autonomous labeling followed by a trusted training eligibility cycle")
+    pipeline.add_argument("--task", required=True)
+    pipeline.add_argument("--source", required=True)
+    pipeline.add_argument("--project", default=".")
+    pipeline.add_argument("--device", default="auto")
+    pipeline_status = commands.add_parser("run-status", help="show a privacy-safe pipeline run summary")
+    pipeline_status.add_argument("run_id")
+    pipeline_status.add_argument("--project", default=".")
     label_run = commands.add_parser("label-run", help="show privacy-safe summary of an autonomous labeling run")
     label_run.add_argument("run_id")
     label_run.add_argument("--project", default=".")
@@ -434,6 +564,72 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "task, model, policy, and score method is required before labels can be applied."
                 )
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "run":
+            from datetime import datetime, timezone
+            from uuid import uuid4
+            from finlabel.labeling.service import run_labeling
+            from finlabel.labeling.task import load_task, load_task_policy, task_file_path
+            from finlabel.training.autopipeline import run_training_cycle
+
+            config = load_project(args.project)
+            source = open_source(config, args.source)
+            task = load_task(
+                task_file_path(config.workspace_dir, args.task),
+                available_columns=tuple(column.name for column in source.columns()),
+            )
+            policy = load_task_policy(task)
+            backend = None
+            if policy is not None:
+                from finlabel.models.text_generation import TransformersTextGenerationBackend
+
+                backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, args.device)
+            run_started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            label_run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir)
+            label_metadata = _verified_label_run(config.workspace_dir, label_run.run_id)
+            try:
+                cycle = run_training_cycle(config.path, task.task_id)
+                training = {
+                    "cycle_id": cycle.cycle_id,
+                    "cycle_sha256": hashlib.sha256(Path(cycle.manifest_path).read_bytes()).hexdigest(),
+                    "state": cycle.state,
+                    "reason_codes": list(cycle.reason_codes),
+                    "candidate_id": cycle.candidate_id,
+                    "evaluation_id": cycle.evaluation_id,
+                    "promotion_action": cycle.promotion_action,
+                    "active_model_ref": cycle.active_model_ref,
+                }
+            except Exception as exc:
+                # Keep diagnostics privacy-safe; never serialize arbitrary exception text.
+                training = {
+                    "cycle_id": None,
+                    "cycle_sha256": None,
+                    "state": "blocked",
+                    "reason_codes": ["training_cycle_failed:" + type(exc).__name__],
+                    "candidate_id": None,
+                    "evaluation_id": None,
+                    "promotion_action": None,
+                    "active_model_ref": None,
+                }
+            run_id = uuid4().hex
+            payload = {
+                "schema_version": 1,
+                "run_id": run_id,
+                "task_id": task.task_id,
+                "source_name": args.source,
+                "started_at": run_started,
+                "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "label_run_id": label_run.run_id,
+                "label_model_ref": label_metadata["model_ref"],
+                "label_outcomes_sha256": label_metadata["outcomes_sha256"],
+                "training": training,
+            }
+            _write_pipeline_run(config.workspace_dir, run_id, payload)
+            print(json.dumps(_verified_pipeline_run(config.workspace_dir, run_id), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "run-status":
+            config = load_project(args.project)
+            print(json.dumps(_verified_pipeline_run(config.workspace_dir, args.run_id), ensure_ascii=False, indent=2))
             return 0
         if args.command == "label-run":
             config = load_project(args.project)

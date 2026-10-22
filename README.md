@@ -77,6 +77,24 @@ O modelo recebe somente `input_columns` serializadas como dados, nunca a linha c
 
 `finlabel label-run` verifica o hash de `outcomes.jsonl` e confere os totais antes de exibir somente metadados agregados. Não é necessário revisar cada linha para concluir uma execução. O comando histórico `finlabel review` continua disponível para consultar execuções antigas baseadas em sugestões, mas não faz parte do fluxo autônomo.
 
+Para executar uma rodada única de rotulagem seguida da checagem de elegibilidade
+do ciclo de treino confiável:
+
+```bash
+finlabel run --task risk --source carteira --project ./meu-projeto
+finlabel run-status RUN_ID --project ./meu-projeto
+```
+
+`run` salva um manifesto combinado em `.finlabel/pipeline-runs/` que referencia
+os artefatos de rotulagem e o manifesto do ciclo de treino por ID e hash. O
+resumo contém contagens aplicadas/em quarentena, motivos, estado do treino,
+ação de promoção, modelo ativo e caminhos dos artefatos; linhas, prompts e
+justificativas não são incluídos. `run-status` verifica os hashes e a identidade
+dos artefatos antes de mostrar o resumo. A execução é iniciada pelo operador e
+não instala um daemon. A promoção permanece bloqueada até existir avaliação
+verificável de calibração e holdout; nesse caso o motivo explícito é
+`verifiable_calibration_and_holdout_evaluator_unavailable`.
+
 ## Política de rotulagem autônoma (contrato de configuração)
 
 A tarefa aceita `"policy_path": "./risk-policy.json"` opcional. `load_task`
