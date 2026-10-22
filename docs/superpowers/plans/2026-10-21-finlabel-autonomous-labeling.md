@@ -62,12 +62,12 @@ Implement as the first reviewable delivery on branch `codex/finlabel-autonomous-
 - Modify: `README.md` with backend prediction contract.
 
 **Interfaces:**
-- `Prediction(label: str | None, rationale: str | None, confidence: float | None, confidence_method: str | None, raw_output_digest: str)`.
-- Model backend method `predict(selected_values, *, task, max_new_tokens) -> Prediction` returns parsed structured output and confidence evidence; rationale is never a confidence score.
-- A backend without calibration evidence returns `confidence=None` and cannot auto-apply.
+- `Prediction(label: str | None, rationale: str | None, confidence_evidence: Mapping[str, float] | None, calibrated_confidence: float | None, calibration_ref: str | None, confidence_method: str | None, raw_output_digest: str)`.
+- Model backend method `predict(selected_values, *, task, max_new_tokens) -> Prediction` returns parsed structured output and raw per-label score evidence; rationale is never confidence evidence.
+- The labeling service accepts an optional task calibrator. It sets `calibrated_confidence` only when the calibration artifact matches policy, model, task and evidence method. No calibrator/evidence means quarantine.
 
-- [ ] **Step 1:** Add normalized prediction types and finite/range validation for confidence values; manually inspect JSON, malformed, unknown-label, and missing-confidence examples.
-- [ ] **Step 2:** Adapt the Transformers backend to return structured output while preserving the configured model revision and chat-template behavior.
+- [ ] **Step 1:** Add normalized prediction types and finite-value validation for per-label raw scores and calibrated confidence; manually inspect JSON, malformed, unknown-label, and missing-score examples.
+- [ ] **Step 2:** Adapt the Transformers backend to return structured output and per-label score evidence while preserving model revision and chat-template behavior. Never call raw scores calibrated probabilities.
 - [ ] **Step 3:** Keep the prior text `generate` interface temporarily available for explicit legacy callers; document that the autonomous service uses `predict`.
 - [ ] **Step 4:** Commit as `feat: expose structured local predictions`.
 
@@ -80,13 +80,13 @@ Implement as the first reviewable delivery on branch `codex/finlabel-autonomous-
 
 **Interfaces:**
 - `LabelOutcome` records `run_id`, `record_ref`, `input_digest`, `task_id`, `policy_id`, `model_ref`, `predicted_label`, `state` (`applied` or `quarantined`), `reason_code`, `confidence`, and UTC timestamp.
-- `run_labeling(source, task, policy, backend, *, workspace_dir) -> LabelRunSummary` writes `outcomes.jsonl` and `run.json` atomically and does not mutate `source`.
+- `run_labeling(source, task, policy, backend, *, workspace_dir, calibrator=None) -> LabelRunSummary` writes `outcomes.jsonl` and `run.json` atomically and does not mutate `source`.
 - Stable reason codes include `invalid_output`, `unknown_label`, `rule_conflict`, `uncalibrated`, `below_threshold`, `stale_source`, `backend_error`, and `missing_policy`.
 
 - [ ] **Step 1:** Add the outcome schema and atomic writer; manually inspect that an outcome artifact contains no raw values or prompt.
-- [ ] **Step 2:** Implement row-level state decisions: apply only when parsing, task validation, policy rules, freshness, and calibration all pass; otherwise quarantine with one reason code.
+- [ ] **Step 2:** Implement row-level state decisions: apply only when parsing, task validation, policy rules, freshness, and a matching calibrator all pass; otherwise quarantine with one reason code. Until the trusted-training stage adds a real calibrator, valid Qwen outputs must remain quarantined as `uncalibrated`.
 - [ ] **Step 3:** Make duplicate/retried record outcomes idempotent within a run and keep processing independent rows after recoverable per-row failures.
-- [ ] **Step 4:** Manually run a 4-row synthetic CSV containing valid, malformed, unknown-label, and uncalibrated cases; confirm counts, reasons, read-only source, and artifacts.
+- [ ] **Step 4:** Manually run a 4-row synthetic CSV containing valid but uncalibrated, malformed, unknown-label, and stale cases; confirm reasons, read-only source, and artifacts contain no values. Verify applied outcomes after stage 2 supplies a fitted calibrator.
 - [ ] **Step 5:** Commit as `feat: persist autonomous labeling outcomes`.
 
 ### Task 4: Make the CLI execute the autonomous service
@@ -107,7 +107,7 @@ Implement as the first reviewable delivery on branch `codex/finlabel-autonomous-
 
 ## Manual completion evidence
 
-- A synthetic run has applied and quarantined rows, each with a reason/status and model/policy provenance.
+- A synthetic run safely quarantines valid-but-uncalibrated and invalid rows with reasons and model/policy provenance; the applied path stays disabled until the calibrator exists in stage 2.
 - The CSV/SQLite source hash/content is unchanged.
 - Default CLI/API summaries and outcome JSONL contain no source values or prompts.
 - The task cannot silently auto-apply when no calibration policy exists.
