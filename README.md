@@ -144,6 +144,41 @@ rótulo aplicado como atual quando ele corresponder ao `input_digest` do resulta
 
 ## Preparação do dataset e fine-tuning
 
+Para o fluxo de treino autônomo, registre uma coluna de referência externa, separada
+das previsões e dos logs do FinLabel. A fonte CSV ou SQLite permanece somente para
+leitura; o registro local guarda proveniência, contagem e hash do snapshot, sem
+copiar linhas ou rótulos para logs. A coluna de rótulo nunca pode entrar em
+`input_columns` da tarefa.
+
+Exemplo quando a coluna já usa os rótulos da tarefa:
+
+```bash
+finlabel supervision add carteira \
+  --task risk \
+  --label-column reference_label \
+  --provenance auditoria-2026-10 \
+  --trust-kind provided_ground_truth \
+  --project ./meu-projeto
+```
+
+Se os valores tiverem outra taxonomia, informe o mapeamento explicitamente:
+
+```bash
+finlabel supervision add carteira \
+  --task risk \
+  --label-column reference_label \
+  --label-map '{"baixo":"low","medio":"medium","alto":"high"}' \
+  --provenance regra-validada-v1 \
+  --trust-kind validated_rule \
+  --project ./meu-projeto
+```
+
+Os únicos tipos aceitos são `provided_ground_truth` e `validated_rule`.
+Fontes internas do FinLabel, previsões, sugestões, resultados de execução e logs
+de revisão não são aceitos como verdade de referência. O registro valida IDs
+estáveis, rótulos conhecidos, colunas selecionadas e leitura somente antes de
+salvar o snapshot.
+
 Só uma ação explícita prepara exemplos. O JSONL contém prompt com as colunas escolhidas e completion em JSON com o rótulo humano final (o mesmo contrato estruturado esperado na inferência):
 
 ```bash
