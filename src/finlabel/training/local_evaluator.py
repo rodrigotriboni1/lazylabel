@@ -56,7 +56,8 @@ def _read_partition(manifest, name):
             rows.append((item["prompt"], target["label"]))
     if len(rows) != len(refs):
         raise ValueError("frozen_partition_row_count_mismatch")
-    return raw, part, tuple((ref["record_ref"], row[0], row[1]) for ref, row in zip(refs, rows))
+    return raw, part, tuple((ref["record_ref"], ref["input_digest"], row[0], row[1])
+                            for ref, row in zip(refs, rows))
 
 def _model_identity(adapter_dir, task):
     base = task.model_id + ("@" + task.model_revision if task.model_revision else "")
@@ -84,18 +85,20 @@ def _prompt_values(prompt, task):
 
 def _score(rows, backend, task, policy, *, apply_rules=False):
     result = []
-    for record_ref, prompt, target in rows:
+    for record_ref, input_digest, prompt, target in rows:
         if target not in task.labels:
             raise ValueError("trusted_target_outside_task_taxonomy")
         if apply_rules:
             try:
                 values = _prompt_values(prompt, task)
             except Exception:
-                result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                result.append({"record_ref": record_ref, "input_digest": input_digest,
+                               "prediction": None, "target": target,
                                "reason_code": "invalid_input", "confidence": None, "applied": False})
                 continue
             if not _rules_match(policy.rules, values):
-                result.append({"record_ref": record_ref, "prediction": None, "target": target,
+                result.append({"record_ref": record_ref, "input_digest": input_digest,
+                               "prediction": None, "target": target,
                                "reason_code": "rule_conflict", "confidence": None, "applied": False})
                 continue
         started = time.monotonic()
@@ -107,15 +110,18 @@ def _score(rows, backend, task, policy, *, apply_rules=False):
                     or list(prediction.confidence_evidence) != list(task.labels)):
                 raise PredictionError("Prediction or score evidence did not match the task.")
         except PredictionError as exc:
-            result.append({"record_ref": record_ref, "prediction": None, "target": target,
+            result.append({"record_ref": record_ref, "input_digest": input_digest,
+                           "prediction": None, "target": target,
                            "reason_code": exc.reason_code if exc.reason_code in {"unknown_label", "invalid_output"}
                            else "invalid_output", "confidence": None, "applied": False})
             continue
         except Exception:
-            result.append({"record_ref": record_ref, "prediction": None, "target": target,
+            result.append({"record_ref": record_ref, "input_digest": input_digest,
+                           "prediction": None, "target": target,
                            "reason_code": "backend_error", "confidence": None, "applied": False})
             continue
-        result.append({"record_ref": record_ref, "prediction": prediction, "target": target,
+        result.append({"record_ref": record_ref, "input_digest": input_digest,
+                       "prediction": prediction, "target": target,
                        "reason_code": "stale_source" if time.monotonic() - started > policy.max_staleness_seconds
                        else None, "confidence": None, "applied": False})
     return result
@@ -207,7 +213,7 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
         calibration_scored = _score(calibration_rows, backend, task, policy)
         if any(row["prediction"] is None for row in calibration_scored):
             raise ValueError("calibration_partition_inference_incomplete")
-        labels = {ref: target for ref, _, target in calibration_rows}
+        labels = {row["record_ref"]: row["target"] for row in calibration_scored}
         fitted = fit_calibrator([{"record_ref": row["record_ref"], "prediction": row["prediction"]}
                                  for row in calibration_scored], labels, method=RAW_SCORE_METHOD,
                                 dataset_manifest=dataset_manifest, task=task, policy=policy,
@@ -224,7 +230,8 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
             fitted.save(artifact_path)
         holdout_scored = _score(holdout_rows, backend, task, policy, apply_rules=True)
         metrics, per_label, confusion = _metrics(holdout_scored, fitted, task, policy, model_ref)
-        score_material = [{"record_ref": row["record_ref"], "target": row["target"],
+        score_material = [{"record_ref": row["record_ref"], "input_digest": row["input_digest"],
+                           "target": row["target"],
                            "prediction": row["prediction"].label if row["prediction"] else None,
                            "scores": dict(row["prediction"].confidence_evidence) if row["prediction"] else None,
                            "confidence": row["confidence"], "applied": row["applied"],

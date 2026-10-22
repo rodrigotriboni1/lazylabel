@@ -385,6 +385,12 @@ def _promotion_reasons(candidate, result, policy):
                               if row.get("role") == "candidate")
         incumbent_rows = next(row["holdout_records"] for row in result["models"]
                                if row.get("role") == "incumbent")
+        manifest_path = Path(candidate["trusted_manifest_path"]).resolve()
+        _validate_holdout_row_binding(manifest_path, result.get("dataset_manifest_sha256"),
+            result.get("holdout_count"), task, labels, candidate_rows, incumbent_rows)
+        manifest_bytes = manifest_path.read_bytes()
+        trusted_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        holdout = trusted_manifest["partitions"]["holdout"]
         from finlabel.labeling.prediction import Prediction
         from finlabel.training.evaluation import CalibrationArtifact
         for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
@@ -415,8 +421,10 @@ def _promotion_reasons(candidate, result, policy):
         if incumbent_derived["records_sha256"] != next(
                 row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "incumbent"):
             raise ValueError("incumbent_metric_evidence_digest_mismatch")
-        candidate_ref_targets = [(row["record_ref"], row["target"]) for row in candidate_rows]
-        incumbent_ref_targets = [(row["record_ref"], row["target"]) for row in incumbent_rows]
+        candidate_ref_targets = [(row["record_ref"], row["input_digest"], row["target"])
+                                 for row in candidate_rows]
+        incumbent_ref_targets = [(row["record_ref"], row["input_digest"], row["target"])
+                                 for row in incumbent_rows]
         if candidate_ref_targets != incumbent_ref_targets:
             raise ValueError("candidate_incumbent_holdout_rows_differ")
         for role, derived in (("candidate", candidate_derived), ("incumbent", incumbent_derived)):
@@ -430,7 +438,7 @@ def _promotion_reasons(candidate, result, policy):
                 or result.get("candidate_per_label") != candidate_derived["per_label_f1"]
                 or result.get("incumbent_per_label") != incumbent_derived["per_label_f1"]):
             raise ValueError("aggregate_metrics_do_not_match_row_evidence")
-    except (KeyError, TypeError, ValueError, StopIteration):
+    except (OSError, KeyError, TypeError, ValueError, StopIteration):
         reasons.append("holdout_metric_evidence_invalid")
     try:
         from finlabel.training.backend import _artifact_tree_sha256
@@ -531,6 +539,72 @@ def _metrics_equal(left, right):
                for key, value in right.items())
 
 
+def _validate_holdout_row_binding(manifest_path, manifest_digest, holdout_count, task, labels,
+                                  candidate_rows, incumbent_rows):
+    """Bind both model evidence sequences to the exact frozen references and JSONL targets."""
+    manifest_path = Path(manifest_path).resolve()
+    manifest_bytes = manifest_path.read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != manifest_digest:
+        raise ValueError("holdout_manifest_digest_mismatch")
+    manifest = json.loads(manifest_bytes.decode("utf-8"))
+    holdout = manifest["partitions"]["holdout"]
+    refs = holdout.get("records")
+    if (not isinstance(refs, list) or isinstance(holdout.get("count"), bool)
+            or not isinstance(holdout.get("count"), int) or holdout["count"] != len(refs)
+            or holdout["count"] != holdout_count):
+        raise ValueError("frozen_holdout_reference_manifest_invalid")
+    ordered_refs, seen_refs = [], set()
+    for ref in refs:
+        if (not isinstance(ref, Mapping) or set(ref) != {"record_ref", "input_digest"}
+                or not isinstance(ref.get("record_ref"), str) or not _SHA.fullmatch(ref["record_ref"])
+                or not isinstance(ref.get("input_digest"), str) or not _SHA.fullmatch(ref["input_digest"])
+                or ref["record_ref"] in seen_refs):
+            raise ValueError("frozen_holdout_reference_manifest_invalid")
+        seen_refs.add(ref["record_ref"])
+        ordered_refs.append((ref["record_ref"], ref["input_digest"]))
+    if holdout.get("path") != "holdout.jsonl":
+        raise ValueError("frozen_holdout_path_invalid")
+    holdout_bytes = (manifest_path.parent / holdout["path"]).read_bytes()
+    if hashlib.sha256(holdout_bytes).hexdigest() != holdout.get("dataset_sha256"):
+        raise ValueError("frozen_holdout_dataset_digest_mismatch")
+    from finlabel.training.dataset import _trusted_prompt
+    from finlabel.training.local_evaluator import _prompt_values
+    frozen_rows = []
+    for line in holdout_bytes.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if (not isinstance(item, dict) or set(item) != {"prompt", "completion"}
+                or not isinstance(item["prompt"], str) or not isinstance(item["completion"], str)):
+            raise ValueError("frozen_holdout_row_schema_invalid")
+        completion = json.loads(item["completion"])
+        if not isinstance(completion, dict) or set(completion) != {"label"}:
+            raise ValueError("frozen_holdout_completion_schema_invalid")
+        target = completion["label"]
+        if not isinstance(target, str) or target not in labels:
+            raise ValueError("frozen_holdout_target_invalid")
+        features = _prompt_values(item["prompt"], task)
+        canonical_features = json.dumps(features, ensure_ascii=False, sort_keys=True,
+                                        separators=(",", ":"), default=str)
+        input_digest = hashlib.sha256(canonical_features.encode("utf-8")).hexdigest()
+        if _trusted_prompt(task, features) != item["prompt"]:
+            raise ValueError("frozen_holdout_prompt_invalid")
+        frozen_rows.append((input_digest, target))
+    if len(frozen_rows) != len(ordered_refs):
+        raise ValueError("frozen_holdout_row_count_mismatch")
+    expected = [(ref, digest, row[1]) for (ref, digest), row in zip(ordered_refs, frozen_rows)]
+    if any(digest != row[0] for (_, digest), row in zip(ordered_refs, frozen_rows)):
+        raise ValueError("frozen_holdout_input_digest_does_not_match_prompt")
+    for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
+        if not isinstance(rows, list):
+            raise ValueError(role + "_holdout_rows_malformed")
+        observed = [(row.get("record_ref"), row.get("input_digest"), row.get("target"))
+                    if isinstance(row, Mapping) else None for row in rows]
+        if observed != expected:
+            raise ValueError(role + "_holdout_rows_do_not_match_frozen_partition")
+    return expected
+
+
 def _derive_holdout_metrics(rows, labels, threshold):
     """Recompute gates from privacy-minimized per-row target/prediction evidence."""
     if not isinstance(rows, list) or not rows:
@@ -545,12 +619,14 @@ def _derive_holdout_metrics(rows, labels, threshold):
     seen = set()
     applied_count = 0
     for row in rows:
-        expected_fields = {"record_ref", "target", "prediction", "scores", "confidence", "applied", "reason_code"}
+        expected_fields = {"record_ref", "input_digest", "target", "prediction", "scores", "confidence", "applied", "reason_code"}
         if not isinstance(row, Mapping) or set(row) != expected_fields:
             raise ValueError("malformed_holdout_row")
-        ref, target, predicted = row["record_ref"], row["target"], row["prediction"]
+        ref, input_digest, target, predicted = (row["record_ref"], row["input_digest"],
+                                                row["target"], row["prediction"])
         confidence, reason = row["confidence"], row["reason_code"]
-        if (not isinstance(ref, str) or not _SHA.fullmatch(ref) or ref in seen or target not in labels
+        if (not isinstance(ref, str) or not _SHA.fullmatch(ref) or ref in seen
+                or not isinstance(input_digest, str) or not _SHA.fullmatch(input_digest) or target not in labels
                 or predicted is not None and predicted not in labels or reason not in allowed_reasons):
             raise ValueError("invalid_holdout_row_identity_or_label")
         seen.add(ref)
@@ -583,7 +659,8 @@ def _derive_holdout_metrics(rows, labels, threshold):
             applied = expected_applied
         confusion[target][guess] += 1
         applied_count += int(applied)
-        canonical_rows.append({"record_ref": ref, "target": target, "prediction": predicted,
+        canonical_rows.append({"record_ref": ref, "input_digest": input_digest,
+            "target": target, "prediction": predicted,
             "scores": ({label: row["scores"][label] for label in labels}
                        if row["scores"] is not None else None),
             "confidence": confidence, "applied": applied, "reason_code": reason})

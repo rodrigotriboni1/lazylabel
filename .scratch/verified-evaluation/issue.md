@@ -27,6 +27,7 @@ Implemented in the verified-evaluation branch. No model weights or real trusted 
 - Existing partition manifests and JSONL bytes are rebuilt from the freshly loaded registered trusted snapshot and compared before reuse.
 - Cycle idempotency includes trusted snapshot, task spec, labeling policy, training gate, promotion policy, and active incumbent identity.
 - SHA-256 provides local content integrity only, not an authenticated evaluator attestation; registry promotion recomputes the metrics from persisted row-level evidence.
+- Registry binds both ordered candidate/incumbent evidence rows to the exact frozen holdout JSONL targets, manifest refs, and per-row input digests; extra, missing, duplicate, or modified rows fail closed.
 - See docs/verified-training-cycle.md for configuration and paths.
 
 ## Manual checks
@@ -36,6 +37,7 @@ Implemented in the verified-evaluation branch. No model weights or real trusted 
 - A temporary synthetic project without a promotion policy produced the explicit promotion_policy_missing blocked state; the seeded active pointer's bytes remained unchanged.
 - Synthetic row-evidence recomputation: applied coverage 1/4 with one confident correct prediction, one below-threshold prediction, one invalid output, and one rule conflict; edited `applied` evidence was rejected.
 - Synthetic frozen-manifest validation: unchanged regenerated manifest and partition bytes were accepted; edited holdout bytes and edited manifest were rejected.
+- Synthetic evaluation-to-holdout binding: matching ordered refs/digests/targets were accepted; changed target, changed ref, changed input digest, reordered, and extra evidence rows were rejected.
 - Synthetic cycle identity checks: unchanged identity was idempotent; changing each of snapshot/task/policy/gate/incumbent returned no prior cycle.
 
 No automated tests, model downloads, or real dataset evaluation were run.
