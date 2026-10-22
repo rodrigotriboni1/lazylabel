@@ -196,6 +196,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     supervision_add.add_argument("--provenance", required=True)
     supervision_add.add_argument("--trust-kind", required=True, choices=("provided_ground_truth", "validated_rule"))
     supervision_add.add_argument("--label-map", help="JSON object mapping source label values to task labels")
+    supervision_add.add_argument("--refresh", action="store_true", help="explicitly bind the same provenance to the current source snapshot")
     supervision_add.add_argument("--project", default=".")
     args = parser.parse_args(argv)
 
@@ -261,7 +262,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             from finlabel.training.trusted_labels import (
                 TrustedLabelSourceSpec,
                 load_trusted_labels,
-                snapshot_manifest,
                 supervision_key,
             )
 
@@ -297,25 +297,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             key = supervision_key(task.task_id, args.source)
             if key in config.supervision_sources:
-                raise ValueError("A trusted-label source is already registered for this task and source.")
+                existing_spec = TrustedLabelSourceSpec.from_dict(config.supervision_sources[key])
+                if existing_spec != spec:
+                    raise ValueError("A different trusted-label configuration is already registered for this task and source.")
+                if not args.refresh:
+                    batch = load_trusted_labels(config, task)
+                    print(json.dumps({
+                        "source": args.source,
+                        "task_id": task.task_id,
+                        "trust_kind": args.trust_kind,
+                        "rows": batch.row_count,
+                        "feature_columns": list(batch.feature_columns),
+                        "label_column": batch.label_column,
+                        "snapshot_sha256": batch.snapshot_sha256,
+                        "project_config": str(config.path),
+                        "already_registered": True,
+                    }, ensure_ascii=False, indent=2))
+                    return 0
+            provisional_sources = {**config.supervision_sources, key: spec.to_dict()}
+            batch = load_trusted_labels(
+                ProjectConfig(config.path, config.sources, config.model_roles, config.workspace_dir,
+                              provisional_sources),
+                task,
+            )
+            persisted_spec = {
+                **spec.to_dict(),
+                "snapshot_sha256": batch.snapshot_sha256,
+                "row_count": batch.row_count,
+            }
             updated = ProjectConfig(
                 config.path, config.sources, config.model_roles, config.workspace_dir,
-                {**config.supervision_sources, key: spec.to_dict()},
+                {**config.supervision_sources, key: persisted_spec},
             )
-            # Validate all source rows and the immutable snapshot before changing project configuration.
-            batch = load_trusted_labels(updated, task)
-            manifest = snapshot_manifest(batch)
-            manifest_dir = config.workspace_dir / "supervision" / task.task_id
-            manifest_path = manifest_dir / (args.source + ".json")
-            if manifest_path.exists():
-                raise FileExistsError("Trusted-label snapshot already exists: {}".format(manifest_path))
-            manifest_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            try:
-                save_project(updated, config.path)
-            except BaseException:
-                manifest_path.unlink(missing_ok=True)
-                raise
+            # project.json is the single atomic authority for both the source spec and snapshot digest.
+            save_project(updated, config.path)
             print(json.dumps({
                 "source": args.source,
                 "task_id": task.task_id,
@@ -324,7 +339,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "feature_columns": list(batch.feature_columns),
                 "label_column": batch.label_column,
                 "snapshot_sha256": batch.snapshot_sha256,
-                "manifest": str(manifest_path),
+                "project_config": str(config.path),
+                "registry_key": key,
+                "refreshed": bool(args.refresh),
             }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "schema" and args.schema_command == "capture":

@@ -1,6 +1,8 @@
 """Project configuration and local workspace management."""
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Union
 
@@ -95,7 +97,20 @@ def save_project(config: ProjectConfig, path: PathLike) -> None:
             key: dict(value) for key, value in sorted(config.supervision_sources.items())
         },
     }
-    config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    descriptor, temporary_path = tempfile.mkstemp(prefix=".finlabel-project-", dir=str(config_path.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, config_path)
+    except BaseException:
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def open_source(config: ProjectConfig, name: str):

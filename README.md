@@ -146,8 +146,11 @@ rótulo aplicado como atual quando ele corresponder ao `input_digest` do resulta
 
 Para o fluxo de treino autônomo, registre uma coluna de referência externa, separada
 das previsões e dos logs do FinLabel. A fonte CSV ou SQLite permanece somente para
-leitura; o registro local guarda proveniência, contagem e hash do snapshot, sem
-copiar linhas ou rótulos para logs. A coluna de rótulo nunca pode entrar em
+leitura; o registro em `.finlabel/project.json` guarda proveniência, contagem e
+hash do snapshot, sem copiar linhas ou rótulos para logs. Esse arquivo é a única
+fonte de verdade da configuração e do snapshot. `trust_kind` e `provenance` são
+declarações do operador: FinLabel valida formato, mapeamento e origem configurada,
+mas não autentica criptograficamente quem produziu ou aprovou os rótulos. A coluna de rótulo nunca pode entrar em
 `input_columns` da tarefa.
 
 Exemplo quando a coluna já usa os rótulos da tarefa:
@@ -174,10 +177,13 @@ finlabel supervision add carteira \
 ```
 
 Os únicos tipos aceitos são `provided_ground_truth` e `validated_rule`.
-Fontes internas do FinLabel, previsões, sugestões, resultados de execução e logs
-de revisão não são aceitos como verdade de referência. O registro valida IDs
-estáveis, rótulos conhecidos, colunas selecionadas e leitura somente antes de
-salvar o snapshot.
+Fontes dentro de `.finlabel` e fontes identificáveis como saídas de modelo,
+sugestões, resultados de execução ou logs de revisão são rejeitadas. O registro
+valida IDs estáveis, rótulos conhecidos, colunas selecionadas e leitura somente
+antes de gravar atomicamente a configuração e o digest do snapshot.
+Uma alteração posterior na fonte bloqueia a carga; depois de confirmar que a nova
+versão conserva a proveniência declarada, repita o mesmo comando com `--refresh`
+para registrar o novo snapshot.
 
 Só uma ação explícita prepara exemplos. O JSONL contém prompt com as colunas escolhidas e completion em JSON com o rótulo humano final (o mesmo contrato estruturado esperado na inferência):
 
