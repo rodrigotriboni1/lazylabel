@@ -196,10 +196,13 @@ def run_training_cycle(project, task_id):
             "task_path": str(task_file_path(project.workspace_dir, task_id)),
             "labeling_policy_path": task.policy_path,
             "trusted_manifest_path": str(manifest.manifest_path),
+            "training_gate_path": str(gate_path.resolve()),
+            "training_gate_sha256": gate_digest,
         })
         registry.transition(candidate_id, "training")
         evaluation_path = evaluate_candidate(task, policy, manifest, result.output_dir, incumbent_adapter,
-            workspace_dir=project.workspace_dir, candidate_id=candidate_id)
+            workspace_dir=project.workspace_dir, candidate_id=candidate_id,
+            training_gate_path=gate_path, training_gate_sha256=gate_digest)
         evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
         if evaluation["candidate_model_ref"] != candidate_ref or evaluation["incumbent_model_ref"] != incumbent_ref:
             raise ValueError("evaluation_model_identity_mismatch")

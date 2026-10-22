@@ -30,7 +30,7 @@ Create .finlabel/models/promotion-policies/<task>.json with exactly these fields
 
 The values above illustrate the schema only. Choose metric names and thresholds for the task's evaluation protocol and evidence; FinLabel does not supply universal thresholds. Supported evaluator metrics are accuracy, macro_f1, brier_score, calibration_error, and coverage. Per-label regression gates compare F1 for every named task label. A metric omitted from required_metrics is not given an implicit minimum.
 
-The existing training gate remains explicit and local. It must include the approved model_id, license, hardware, data_policy, evaluation_protocol, and authorized: true. The cycle uses the task's exact base model ID and revision; mismatches fail closed. Its content digest is checked again after training and evaluation immediately before promotion; if the gate changed during the cycle, the evaluated candidate is rejected and the active pointer stays unchanged.
+The existing training gate remains explicit and local. It must include the approved model_id, license, hardware, data_policy, evaluation_protocol, and authorized: true. The cycle uses the task's exact base model ID and revision; mismatches fail closed. Candidate and evaluation evidence record the gate path and digest. The registry reloads and hashes that file while holding the promotion lock for every promotion entry point; if it is missing or changed, the candidate is rejected and the active pointer stays unchanged.
 
 ## Calibration reference and artifact location
 
