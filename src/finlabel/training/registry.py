@@ -290,8 +290,9 @@ class ModelRegistry:
             raise ValueError("Promotion policy is invalid or changed after configuration.")
         candidate = self.candidate(candidate_id)
         evaluation_path = self.root / "evaluations" / (evaluation_id + ".json")
-        evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
-        evaluation_hash = hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
+        evaluation_bytes = evaluation_path.read_bytes()
+        evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+        evaluation_hash = hashlib.sha256(evaluation_bytes).hexdigest()
         if candidate["status"] in {"promoted", "rejected"}:
             events = self._read_events()
             prior = next((row for row in events if row["candidate_id"] == candidate_id and row["evaluation_id"] == evaluation_id), None)
