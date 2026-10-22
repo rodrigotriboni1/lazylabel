@@ -11,6 +11,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
+from finlabel.training.task_spec import task_spec_sha256
+
 
 SUPPORTED_SCORE_METHOD = "label_json_mean_log_likelihood_v2"
 CALIBRATOR_METHOD = "platt_top_score_v1"
@@ -94,6 +96,8 @@ def _frozen_calibration_partition(dataset_manifest, task):
     if not isinstance(raw, dict) or raw.get("schema_version") != 1 or raw.get("kind") != "trusted_reference_dataset":
         raise ValueError("Unsupported trusted dataset manifest.")
     if (raw.get("task_id") != task.task_id or raw.get("snapshot_sha256") != dataset_manifest.snapshot_sha256
+            or raw.get("task_spec_sha256") != task_spec_sha256(task)
+            or raw.get("task_spec_sha256") != dataset_manifest.task_spec_sha256
             or raw.get("source_name") != dataset_manifest.source_name
             or raw.get("provenance_id") != dataset_manifest.provenance_id
             or raw.get("feature_columns") != list(task.input_columns)
@@ -145,7 +149,8 @@ def _frozen_calibration_partition(dataset_manifest, task):
                 or set(completion) != {"label"} or completion["label"] not in task.labels):
             raise ValueError("Calibration JSONL contains a malformed or unknown trusted label.")
         labels[entry["record_ref"]] = completion["label"]
-    return {"manifest_sha256": actual_manifest_hash, "partition_sha256": partition_hash,
+    return {"manifest_sha256": actual_manifest_hash, "task_spec_sha256": task_spec_sha256(task),
+            "partition_sha256": partition_hash,
             "dataset_sha256": dataset_hash, "labels": labels, "refs": tuple(refs)}
 
 
@@ -215,6 +220,7 @@ class CalibrationResult:
 @dataclass(frozen=True)
 class CalibrationArtifact:
     task_id: str
+    task_spec_sha256: str
     policy_id: str
     model_ref: str
     confidence_method: str
@@ -226,10 +232,12 @@ class CalibrationArtifact:
     labels: tuple
 
     def __post_init__(self):
-        for name in ("task_id", "policy_id", "model_ref", "calibration_ref"):
+        for name in ("task_id", "policy_id", "model_ref", "calibration_ref", "task_spec_sha256"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("Calibration artifact {} must be a non-empty string.".format(name))
+        if not _HASH_RE.fullmatch(self.task_spec_sha256):
+            raise ValueError("Calibration artifact task_spec_sha256 must be a SHA-256 digest.")
         if self.confidence_method != SUPPORTED_SCORE_METHOD or self.calibrator_method != CALIBRATOR_METHOD:
             raise ValueError("Calibration artifact method is unsupported.")
         if not isinstance(self.labels, (list, tuple)) or not self.labels or any(
@@ -243,7 +251,7 @@ class CalibrationArtifact:
             raise ValueError("Calibration artifact parameters are incomplete or unknown.")
         if any(not _number(value) for value in self.parameters.values()) or self.parameters["scale"] <= 0:
             raise ValueError("Calibration artifact parameters must be finite and scale must be positive.")
-        expected_hashes = {"calibration_manifest_sha256", "calibration_partition_sha256",
+        expected_hashes = {"task_spec_sha256", "calibration_manifest_sha256", "calibration_partition_sha256",
                            "calibration_dataset_sha256", "calibration_scores_sha256",
                            "trusted_labels_sha256"}
         if not isinstance(self.source_hashes, Mapping) or set(self.source_hashes) != expected_hashes:
@@ -251,6 +259,8 @@ class CalibrationArtifact:
         if any(not isinstance(value, str) or not _HASH_RE.fullmatch(value)
                for value in self.source_hashes.values()):
             raise ValueError("Calibration artifact contains a malformed source hash.")
+        if self.source_hashes["task_spec_sha256"] != self.task_spec_sha256:
+            raise ValueError("Calibration artifact task specification identity is inconsistent.")
         if not isinstance(self.metrics, Mapping) or set(self.metrics) != {"brier_score", "row_count", "correct_count"}:
             raise ValueError("Calibration artifact metrics are incomplete or unknown.")
         brier = self.metrics["brier_score"]
@@ -268,6 +278,7 @@ class CalibrationArtifact:
 
     def calibrate(self, prediction, *, task, policy, model_ref):
         if (task.task_id != self.task_id or tuple(task.labels) != self.labels
+                or task_spec_sha256(task) != self.task_spec_sha256
                 or policy.task_id != self.task_id or tuple(policy.allowed_labels) != self.labels
                 or policy.policy_id != self.policy_id or model_ref != self.model_ref
                 or policy.calibration_ref != self.calibration_ref):
@@ -281,7 +292,8 @@ class CalibrationArtifact:
                                  self.confidence_method, self.calibration_ref, confidence)
 
     def to_dict(self):
-        payload = {"schema_version": 1, "task_id": self.task_id, "policy_id": self.policy_id,
+        payload = {"schema_version": 1, "task_id": self.task_id,
+                "task_spec_sha256": self.task_spec_sha256, "policy_id": self.policy_id,
                 "model_ref": self.model_ref, "confidence_method": self.confidence_method,
                 "calibration_ref": self.calibration_ref, "calibrator_method": self.calibrator_method,
                 "parameters": dict(self.parameters), "source_hashes": dict(self.source_hashes),
@@ -315,7 +327,7 @@ class CalibrationArtifact:
         raw = json.loads(Path(path).expanduser().read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
         if not isinstance(raw, dict):
             raise ValueError("Unsupported or malformed calibration artifact.")
-        allowed = {"schema_version", "task_id", "policy_id", "model_ref", "confidence_method",
+        allowed = {"schema_version", "task_id", "task_spec_sha256", "policy_id", "model_ref", "confidence_method",
                    "calibration_ref", "calibrator_method", "parameters", "source_hashes", "metrics", "labels",
                    "artifact_sha256"}
         if set(raw) != allowed or raw.get("schema_version") != 1:
@@ -327,7 +339,7 @@ class CalibrationArtifact:
             raise ValueError("Calibration artifact integrity hash does not match its contents.")
         if not isinstance(raw["labels"], list):
             raise ValueError("Calibration artifact labels must be stored as an ordered JSON array.")
-        return cls(raw["task_id"], raw["policy_id"], raw["model_ref"], raw["confidence_method"],
+        return cls(raw["task_id"], raw["task_spec_sha256"], raw["policy_id"], raw["model_ref"], raw["confidence_method"],
                    raw["calibration_ref"], raw["calibrator_method"], raw["parameters"],
                    raw["source_hashes"], raw["metrics"], tuple(raw["labels"]))
 
@@ -382,8 +394,9 @@ def fit_calibrator(calibration_predictions, trusted_labels, *, method, dataset_m
     labels_hash = _hash(sorted((ref, label) for ref, label in
                                ((row[0], row[2]) for row in rows)))
     return CalibrationArtifact(
-        task.task_id, policy.policy_id, model_ref, method, calibration_ref, CALIBRATOR_METHOD,
-        parameters, {"calibration_manifest_sha256": frozen["manifest_sha256"],
+        task.task_id, task_spec_sha256(task), policy.policy_id, model_ref, method, calibration_ref, CALIBRATOR_METHOD,
+        parameters, {"task_spec_sha256": frozen["task_spec_sha256"],
+                    "calibration_manifest_sha256": frozen["manifest_sha256"],
                     "calibration_partition_sha256": frozen["partition_sha256"],
                     "calibration_dataset_sha256": frozen["dataset_sha256"],
                     "calibration_scores_sha256": scores_hash, "trusted_labels_sha256": labels_hash},
