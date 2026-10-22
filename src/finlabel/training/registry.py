@@ -4,6 +4,9 @@ import hashlib
 import json
 import os
 import re
+import tempfile
+import fcntl
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,6 +99,18 @@ class ModelRegistry:
         self.events_path = self.root / "registry-events.jsonl"
         self.active_path = self.root / "active-models.json"
         self.candidates_path = self.root / "candidates.json"
+        self.lock_path = self.root / "registry.lock"
+        self._recover()
+
+    @contextmanager
+    def _locked(self):
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.lock_path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def _read(self, path, default):
         try:
@@ -113,6 +128,11 @@ class ModelRegistry:
         return value
 
     def transition(self, candidate_id, state, **fields):
+        with self._locked():
+            self._recover_unlocked()
+            return self._transition_unlocked(candidate_id, state, **fields)
+
+    def _transition_unlocked(self, candidate_id, state, **fields):
         candidates = self._read(self.candidates_path, {})
         value = candidates.get(candidate_id)
         if value is None:
@@ -125,20 +145,69 @@ class ModelRegistry:
         self._write_atomic(self.candidates_path, candidates)
 
     def create_candidate(self, candidate_id, payload):
-        candidates = self._read(self.candidates_path, {})
-        if candidate_id in candidates:
-            return candidates[candidate_id]
-        value = dict(payload); value.update({"candidate_id": candidate_id, "status": "queued"})
-        candidates[candidate_id] = value
-        self._write_atomic(self.candidates_path, candidates)
-        return value
+        with self._locked():
+            self._recover_unlocked()
+            candidates = self._read(self.candidates_path, {})
+            if candidate_id in candidates:
+                return candidates[candidate_id]
+            value = dict(payload); value.update({"candidate_id": candidate_id, "status": "queued"})
+            candidates[candidate_id] = value
+            self._write_atomic(self.candidates_path, candidates)
+            return value
 
     def _write_atomic(self, path, value):
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+                handle.flush(); os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            try: os.unlink(temporary)
+            except FileNotFoundError: pass
+
+    def _append_event(self, event):
+        existing = self._read_events()
+        if any(row.get("event_id") == event.get("event_id") for row in existing):
+            return
+        with self.events_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+            handle.flush(); os.fsync(handle.fileno())
+
+    def _recover(self):
+        """Replay durable decision events so a crash cannot leave state behind the journal."""
+        if not self.events_path.exists():
+            return
+        with self._locked():
+            self._recover_unlocked()
 
     def promote_if_eligible(self, candidate_id, evaluation_id, policy):
+        with self._locked():
+            self._recover_unlocked()
+            return self._promote_locked(candidate_id, evaluation_id, policy)
+
+    def _recover_unlocked(self):
+        # Same recovery routine without acquiring the already-held process lock.
+        active = self._read(self.active_path, {})
+        candidates = self._read(self.candidates_path, {})
+        changed_active = changed_candidates = False
+        for event in self._read_events():
+            if event.get("action") == "promote":
+                active[event["task_id"]] = {"model_ref": event["active_model_ref"],
+                    "previous_model_ref": event.get("previous_model_ref"), "candidate_id": event.get("candidate_id"),
+                    "evaluation_id": event.get("evaluation_id")}; changed_active = True
+                if event.get("candidate_id") in candidates:
+                    candidates[event["candidate_id"]].update(status="promoted", decision_event_id=event["event_id"]); changed_candidates = True
+            elif event.get("action") == "reject" and event.get("candidate_id") in candidates:
+                candidates[event["candidate_id"]].update(status="rejected", decision_event_id=event["event_id"], rejection_reasons=event.get("reason_codes", [])); changed_candidates = True
+            elif event.get("action") == "rollback":
+                active[event["task_id"]] = {"model_ref": event["active_model_ref"], "previous_model_ref": None,
+                    "rollback_from": event["rollback_from"], "health_sha256": event["health_sha256"]}; changed_active = True
+        if changed_active: self._write_atomic(self.active_path, active)
+        if changed_candidates: self._write_atomic(self.candidates_path, candidates)
+
+    def _promote_locked(self, candidate_id, evaluation_id, policy):
         if not isinstance(policy, PromotionPolicy) or policy.sha256_payload() != policy.policy_sha256:
             raise ValueError("Promotion policy is invalid or changed after configuration.")
         candidate = self.candidate(candidate_id)
@@ -161,32 +230,31 @@ class ModelRegistry:
                                    previous.get("model_ref") if previous else None,
                                    previous.get("model_ref") if previous else None, policy.policy_sha256,
                                    evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
-            with self.events_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(asdict(event), sort_keys=True) + "\n")
-            self.transition(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
+            self._append_event(asdict(event))
+            self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
             return event
         reasons = _promotion_reasons(candidate, evaluation, policy)
         previous = self.active(policy.task_id)
         action = "promote" if not reasons else "reject"
         new_active = {"model_ref": candidate["model_ref"]} if action == "promote" else previous
         event_id = _digest({"candidate_id": candidate_id, "evaluation_id": evaluation_id,
-                            "policy_sha256": policy.policy_sha256, "evaluation_sha256": evaluation_hash})
+                            "policy_sha256": policy.policy_sha256, "evaluation_sha256": evaluation_hash,
+                            "action": action, "reason_codes": reasons, "previous_model_ref": previous.get("model_ref") if previous else None})
         event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, action,
                                tuple(reasons), previous.get("model_ref") if previous else None,
                                new_active.get("model_ref") if new_active else None, policy.policy_sha256,
                                evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.events_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(asdict(event), sort_keys=True) + "\n")
+        self._append_event(asdict(event))
         if action == "promote":
             active = self._read(self.active_path, {})
             active[policy.task_id] = {"model_ref": candidate["model_ref"],
                                       "previous_model_ref": previous.get("model_ref") if previous else None,
                                       "candidate_id": candidate_id, "evaluation_id": evaluation_id}
             self._write_atomic(self.active_path, active)
-            self.transition(candidate_id, "promoted", decision_event_id=event_id)
+            self._transition_unlocked(candidate_id, "promoted", decision_event_id=event_id)
         else:
-            self.transition(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
+            self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
         return event
 
     def _read_events(self):
@@ -195,35 +263,64 @@ class ModelRegistry:
         return [json.loads(line) for line in self.events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     def rollback_if_unhealthy(self, task_id, health_evaluation):
-        active = self.active(task_id)
-        if not active or not active.get("previous_model_ref"):
-            return None
-        policy = PromotionPolicy.load(self.root / "promotion-policies" / (task_id + ".json"), task_id=task_id)
-        if not isinstance(health_evaluation, Mapping):
-            raise ValueError("Health evaluation requires configured metric evidence.")
-        metrics = health_evaluation.get("metrics", {})
-        if not isinstance(metrics, Mapping):
-            raise ValueError("Health evaluation requires configured metric evidence.")
-        reasons = ["rollback_gate_failed:{}".format(name) for name, minimum in policy.rollback_monitor_limits.items()
-                   if name not in metrics or not _finite(metrics[name]) or metrics[name] < minimum]
-        if not reasons:
-            return None
-        digest = _digest(health_evaluation)
-        pointer = {"model_ref": active["previous_model_ref"], "previous_model_ref": None,
-                   "rollback_from": active["model_ref"], "health_sha256": digest}
-        current = self._read(self.active_path, {})
-        current[task_id] = pointer
-        self._write_atomic(self.active_path, current)
-        event = {"event_id": _digest({"task_id": task_id, "health_sha256": digest}), "task_id": task_id,
-                 "action": "rollback", "reason_codes": reasons, "active_model_ref": pointer["model_ref"],
-                 "health_sha256": digest, "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
-        with self.events_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, sort_keys=True) + "\n")
-        return event
+        with self._locked():
+            self._recover_unlocked()
+            active = self.active(task_id)
+            if not active or not active.get("previous_model_ref"):
+                return None
+            policy = PromotionPolicy.load(self.root / "promotion-policies" / (task_id + ".json"), task_id=task_id)
+            if not isinstance(health_evaluation, Mapping):
+                raise ValueError("Health evaluation requires configured metric evidence.")
+            required = {"task_id", "model_ref", "candidate_id", "policy_sha256", "evaluation_id", "evaluation_sha256", "metrics"}
+            if set(health_evaluation) != required:
+                raise ValueError("Health evidence requires task, active model, policy, evaluation, and metrics identity.")
+            if (health_evaluation["task_id"] != task_id or health_evaluation["model_ref"] != active["model_ref"]
+                    or health_evaluation["candidate_id"] != active.get("candidate_id")
+                    or health_evaluation["policy_sha256"] != policy.policy_sha256
+                    or health_evaluation["evaluation_id"] != active.get("evaluation_id")):
+                raise ValueError("Health evidence identity does not match the currently active candidate and policy.")
+            evaluation_path = self.root / "evaluations" / (health_evaluation["evaluation_id"] + ".json")
+            actual_evaluation_sha = hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
+            if actual_evaluation_sha != health_evaluation["evaluation_sha256"]:
+                raise ValueError("Health evidence evaluation digest does not match the persisted evaluation.")
+            metrics = health_evaluation["metrics"]
+            if not isinstance(metrics, Mapping):
+                raise ValueError("Health evaluation requires configured metric evidence.")
+            reasons = ["rollback_gate_failed:{}".format(name) for name, minimum in policy.rollback_monitor_limits.items()
+                       if name not in metrics or not _finite(metrics[name]) or metrics[name] < minimum]
+            digest = _digest(health_evaluation)
+            evidence_dir = self.root / "health-evidence"; evidence_dir.mkdir(parents=True, exist_ok=True)
+            evidence_path = evidence_dir / (digest + ".json")
+            if evidence_path.exists() and _digest(json.loads(evidence_path.read_text())) != digest:
+                raise ValueError("Persisted health evidence digest collision.")
+            if not evidence_path.exists():
+                descriptor, temporary = tempfile.mkstemp(prefix=".health-", suffix=".tmp", dir=str(evidence_dir))
+                try:
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                        handle.write(json.dumps(dict(health_evaluation), sort_keys=True, indent=2) + "\n")
+                        handle.flush(); os.fsync(handle.fileno())
+                    os.replace(temporary, evidence_path)
+                finally:
+                    try: os.unlink(temporary)
+                    except FileNotFoundError: pass
+            if not reasons:
+                return None
+            event = {"event_id": _digest({"task_id": task_id, "health_sha256": digest,
+                      "active_model_ref": active["model_ref"], "policy_sha256": policy.policy_sha256}),
+                     "task_id": task_id, "action": "rollback", "reason_codes": reasons,
+                     "active_model_ref": active["previous_model_ref"], "rollback_from": active["model_ref"],
+                     "health_sha256": digest, "evaluation_id": active.get("evaluation_id"),
+                     "candidate_id": active.get("candidate_id"), "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+            self._append_event(event)
+            self._recover_unlocked()
+            return event
 
 
 def _promotion_reasons(candidate, result, policy):
     reasons = []
+    # No in-process evaluator currently authenticates model execution over frozen rows.
+    # Caller-supplied metrics or boolean provenance claims are therefore never promotable.
+    reasons.append("trusted_evaluator_attestation_unavailable")
     if candidate.get("task_id") != policy.task_id or result.get("task_id") != policy.task_id:
         reasons.append("task_identity_mismatch")
     if candidate.get("status") != "evaluated":

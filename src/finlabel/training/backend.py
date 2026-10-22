@@ -51,6 +51,7 @@ class TrainingResult:
     dataset_sha256: str
     adapter_files: Sequence[Path]
     final_metrics: Mapping[str, float]
+    artifact_sha256: str = ""
 
 
 def _sha256(path: Path) -> str:
@@ -61,15 +62,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _artifact_tree_sha256(root: Path) -> str:
+    """Hash adapter artifacts by relative path and file content, excluding this metadata file."""
+    entries = []
+    for path in sorted((item for item in root.rglob("*") if item.is_file() and item.name != "finlabel-training.json"),
+                       key=lambda item: item.relative_to(root).as_posix()):
+        entries.append({"path": path.relative_to(root).as_posix(), "sha256": _sha256(path)})
+    encoded = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike,
-                              train_dataset_path: Optional[PathLike] = None) -> dict:
+                              train_dataset_path: Optional[PathLike] = None,
+                              trusted_manifest_path: Optional[PathLike] = None) -> dict:
     """Validate dataset and project authorization without importing ML libraries."""
     dataset = Path(dataset_path).expanduser().resolve()
     if config.output_dir.exists():
         raise FileExistsError("Refusing to overwrite training output: {}".format(config.output_dir))
     if not dataset.is_file():
         raise FileNotFoundError("Training dataset does not exist: {}".format(dataset))
-    manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+    manifest_path = (Path(trusted_manifest_path).expanduser().resolve() if trusted_manifest_path is not None
+                     else dataset.with_suffix(dataset.suffix + ".manifest.json"))
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
@@ -90,10 +103,23 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
     if not row_count:
         raise ValueError("Training dataset must contain at least one example.")
     dataset_hash = _sha256(dataset)
-    if manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != row_count:
+    trusted = trusted_manifest_path is not None
+    if trusted:
+        if manifest.get("kind") != "trusted_reference_dataset" or manifest.get("schema_version") != 1:
+            raise ValueError("Trusted training requires a trusted-reference manifest.")
+        partitions = manifest.get("partitions")
+        train_partition = partitions.get("train") if isinstance(partitions, dict) else None
+        if not isinstance(train_partition, dict):
+            raise ValueError("Trusted manifest has no frozen train partition.")
+        if (train_partition.get("path") != dataset.name or train_partition.get("dataset_sha256") != dataset_hash
+                or train_partition.get("count") != row_count):
+            raise ValueError("Training dataset does not match the trusted train partition in its manifest.")
+        if manifest.get("task_id") is None or not isinstance(manifest.get("task_spec_sha256"), str):
+            raise ValueError("Trusted training manifest is missing task identity.")
+    elif manifest.get("dataset_sha256") != dataset_hash or manifest.get("row_count") != row_count:
         raise ValueError("Training dataset does not match its manifest hash or row count.")
     manifest_model = manifest.get("model_ref")
-    if manifest_model:
+    if manifest_model and not trusted:
         manifest_model_id, separator, manifest_revision = manifest_model.partition("@")
         expected_revision = manifest_revision if separator else None
         if manifest_model_id != config.model_id:
@@ -127,17 +153,22 @@ def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *,
                 if not all(isinstance(row.get(key), str) and row[key].strip() for key in ("prompt", "completion")):
                     raise ValueError("Train partition contains an empty prompt or completion (line {}).".format(line_number))
                 train_count += 1
-        expected = manifest.get("partitions", {}).get("train", {})
+        expected = manifest.get("partitions", {}).get("train", {}) if not trusted else {}
         if not train_count or train_count != expected.get("count") or _sha256(train_dataset) != expected.get("dataset_sha256"):
             raise ValueError("Train partition no longer matches its trusted frozen manifest.")
+    elif trusted:
+        if train_dataset != dataset:
+            raise ValueError("Trusted train path is inconsistent.")
     return {"manifest": manifest, "dataset_sha256": dataset_hash, "row_count": row_count,
             "dataset_path": dataset, "train_dataset_path": train_dataset, "gate": gate}
 
 
 def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike,
-                  train_dataset_path: Optional[PathLike] = None) -> TrainingResult:
+                  train_dataset_path: Optional[PathLike] = None,
+                  trusted_manifest_path: Optional[PathLike] = None) -> TrainingResult:
     validated = validate_training_request(dataset_path, config, gate_path=gate_path,
-                                          train_dataset_path=train_dataset_path)
+                                          train_dataset_path=train_dataset_path,
+                                          trusted_manifest_path=trusted_manifest_path)
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     try:
         from datasets import load_dataset
@@ -193,6 +224,7 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
             "packages": {"trl": trl_version, "peft": peft_version, "transformers": transformers_version,
                          "datasets": datasets_version, "accelerate": accelerate_version, "torch": torch_version},
             "final_metrics": metrics,
+            "adapter_artifacts_sha256": _artifact_tree_sha256(staging),
             "telemetry": "disabled",
             "hub_upload": False,
         }
@@ -205,4 +237,5 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
         shutil.rmtree(staging, ignore_errors=True)
         raise
     adapter_files = tuple(path for path in config.output_dir.rglob("*") if path.is_file())
-    return TrainingResult(config.output_dir, metadata["base_model_ref"], validated["dataset_sha256"], adapter_files, metrics)
+    return TrainingResult(config.output_dir, metadata["base_model_ref"], validated["dataset_sha256"],
+                          adapter_files, metrics, metadata["adapter_artifacts_sha256"])
