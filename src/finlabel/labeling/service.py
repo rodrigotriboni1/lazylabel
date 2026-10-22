@@ -9,6 +9,7 @@ import tempfile
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional, Union
 from uuid import uuid4
@@ -121,6 +122,57 @@ def _selected_digest(values: dict) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _same_scalar(left, right) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        try:
+            left_number = Decimal(str(left))
+            right_number = Decimal(str(right))
+            return left_number.is_finite() and right_number.is_finite() and left_number == right_number
+        except (InvalidOperation, ValueError, TypeError):
+            return False
+    return type(left) is type(right) and left == right
+
+
+def _rules_match(rules, selected_values: dict) -> bool:
+    """Evaluate the policy's closed, declarative rule set without code execution."""
+    if not rules:
+        return False
+    for rule in rules:
+        field = rule["field"]
+        operator = rule["operator"]
+        value = selected_values.get(field)
+        if operator == "not_empty":
+            valid = value is not None and (not isinstance(value, str) or bool(value.strip()))
+        elif operator == "equals":
+            valid = _same_scalar(value, rule["value"])
+        elif operator == "one_of":
+            valid = any(_same_scalar(value, allowed) for allowed in rule["values"])
+        elif operator == "number_between":
+            try:
+                if isinstance(value, bool) or value is None:
+                    raise InvalidOperation
+                number = Decimal(str(value).strip())
+                valid = number.is_finite()
+                if "minimum" in rule:
+                    valid = valid and number >= Decimal(str(rule["minimum"]))
+                if "maximum" in rule:
+                    valid = valid and number <= Decimal(str(rule["maximum"]))
+            except (InvalidOperation, ValueError, TypeError):
+                valid = False
+        else:
+            # Defensive fail-closed path if a policy object bypassed validation.
+            return False
+        if not valid:
+            return False
+    return True
+
+
+def _too_stale(reason: str, row_started: float, policy: LabelingPolicy) -> str:
+    return "stale_source" if time.monotonic() - row_started > policy.max_staleness_seconds else reason
+
+
 def _record_ref(source_name: str, record_id: str) -> str:
     # The source identifier is used only in memory and never written to artifacts.
     material = "{}\0{}".format(source_name, record_id).encode("utf-8")
@@ -229,13 +281,14 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
         policy is not None
         and policy.task_id == task.task_id
         and set(policy.allowed_labels) == set(task.labels)
+        and bool(policy.rules)
+        and all(rule["field"] in task.input_columns for rule in policy.rules)
     )
     outcomes = []
     keys_to_positions = {}
     outcome_keys = []
     first_snapshot = {}
     conflicting_refs = set()
-    observed_at = {}
 
     for row_number, record in enumerate(source.iter_records(task.input_columns), start=1):
         selected_values = {
@@ -260,7 +313,6 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
         first_snapshot[row_key] = input_digest
         keys_to_positions[row_key] = len(outcomes)
         outcome_keys.append(row_key)
-        observed_at[opaque_ref] = time.monotonic()
 
         invalid_selected_columns = set(selected_values) != set(task.input_columns)
         reported_digest = getattr(record, "input_digest", None)
@@ -292,6 +344,15 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             ))
             continue
 
+        if not _rules_match(policy.rules, selected_values):
+            outcomes.append(_outcome(
+                run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
+                task=task, policy=policy, model_ref=model_ref, label=None,
+                reason_code="rule_conflict",
+            ))
+            continue
+
+        row_started = time.monotonic()
         try:
             if not callable(getattr(backend, "predict", None)):
                 raise RuntimeError("Backend does not implement structured prediction.")
@@ -300,6 +361,7 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             )
         except PredictionError as exc:
             reason = exc.reason_code if exc.reason_code in {"unknown_label", "invalid_output"} else "invalid_output"
+            reason = _too_stale(reason, row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
@@ -307,33 +369,37 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             ))
             continue
         except Exception:
+            reason = _too_stale("backend_error", row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
-                reason_code="backend_error",
+                reason_code=reason,
             ))
             continue
 
         if not isinstance(prediction, Prediction) or prediction.label is None:
+            reason = _too_stale("invalid_output", row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
-                reason_code="invalid_output",
+                reason_code=reason,
             ))
             continue
         if prediction.label not in task.labels:
             # Do not persist arbitrary model text as a label; it could echo input data.
+            reason = _too_stale("unknown_label", row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
-                reason_code="unknown_label",
+                reason_code=reason,
             ))
             continue
         if prediction.label not in policy.allowed_labels:
+            reason = _too_stale("rule_conflict", row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
-                reason_code="rule_conflict",
+                reason_code=reason,
             ))
             continue
 
@@ -346,6 +412,10 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             reason = "below_threshold"
         else:
             reason = None
+        if reason is not None:
+            reason = _too_stale(reason, row_started, policy)
+        elif time.monotonic() - row_started > policy.max_staleness_seconds:
+            reason = "stale_source"
         outcomes.append(_outcome(
             run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
             task=task, policy=policy, model_ref=model_ref,
@@ -353,40 +423,26 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             reason_code=reason, confidence=confidence,
         ))
 
-    # Re-read the exact selected columns. A changed, removed, added, or
-    # conflicting source identity makes this batch stale before publication.
-    current_snapshot, current_conflicts = _snapshot(source, task.input_columns)
-    source_changed = (
-        current_snapshot != first_snapshot
-        or bool(current_conflicts)
-        or bool(conflicting_refs)
-    )
-    if source_changed:
-        for index, outcome in enumerate(outcomes):
+    def revalidate_before_publish(staged_outcomes):
+        # Re-read selected values after artifacts are staged and directly
+        # before metadata/atomic publication. No source lock is available.
+        current_snapshot, current_conflicts = _snapshot(source, task.input_columns)
+        checked = []
+        for index, outcome in enumerate(staged_outcomes):
             key = outcome_keys[index]
-            source_ref = _record_ref(source_name, key) if key is not None else outcome.record_ref
+            source_ref = _record_ref(source_name, key)
             changed = (
                 current_snapshot.get(key) != first_snapshot.get(key)
                 or source_ref in current_conflicts
                 or source_ref in conflicting_refs
             )
-            # Added/removed rows change the run snapshot too; fail closed for
-            # every row because the source no longer matches the processed batch.
-            changed = changed or (set(current_snapshot) != set(first_snapshot))
             if changed:
-                outcomes[index] = replace(
+                outcome = replace(
                     outcome, state="quarantined", reason_code="stale_source",
                     predicted_label=None, confidence=None, created_at=utc_now(),
                 )
-
-    if policy_is_valid:
-        checked_at = time.monotonic()
-        for index, outcome in enumerate(outcomes):
-            if checked_at - observed_at[outcome.record_ref] > policy.max_staleness_seconds:
-                outcomes[index] = replace(
-                    outcome, state="quarantined", reason_code="stale_source",
-                    predicted_label=None, confidence=None, created_at=utc_now(),
-                )
+            checked.append(outcome)
+        return tuple(checked)
 
     return write_label_run(
         workspace_dir,
@@ -396,4 +452,5 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
         model_ref=model_ref,
         started_at=started_at,
         outcomes=outcomes,
+        before_publish=revalidate_before_publish,
     )
