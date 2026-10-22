@@ -302,7 +302,6 @@ class ModelRegistry:
         if candidate.get("status") != "evaluated":
             reasons = ["candidate_not_evaluated"]
             previous = self.active(policy.task_id)
-            evaluation_hash = hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
             event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, "reject", reasons,
                                    previous.get("model_ref") if previous else None,
                                    previous.get("model_ref") if previous else None, policy.policy_sha256,
