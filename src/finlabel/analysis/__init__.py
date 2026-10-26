@@ -8,7 +8,7 @@ from finlabel.analysis.planner import (
     plan_highlights,
     render_highlight,
 )
-from finlabel.analysis.schema import (
+from finlabel.domain.analysis.schema import (
     AnalysisPlan,
     AnalysisResult,
     FilterSpec,

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Mapping, Optional, Protocol, Sequence
 
-from finlabel.profile import ColumnProfile
+from finlabel.domain.projects import ColumnProfile
 
 
 @dataclass(frozen=True)

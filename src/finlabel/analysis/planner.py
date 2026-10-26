@@ -6,9 +6,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Mapping, Sequence
 
-from finlabel.analysis.schema import AnalysisPlan, AnalysisResult, plan_from_dict, validate_analysis_plan
+from finlabel.domain.analysis.schema import AnalysisPlan, AnalysisResult, plan_from_dict, validate_analysis_plan
 from finlabel.models.text_generation import TextGenerationBackend
-from finlabel.profile import ColumnProfile
+from finlabel.domain.projects import ColumnProfile
 
 OBSERVATIONS = {"highest", "lowest", "largest_share", "smallest_share", "overall_increase", "overall_decrease", "notable"}
 

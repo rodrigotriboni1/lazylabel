@@ -14,7 +14,7 @@ from finlabel.profile import inspect_csv
 from finlabel.project import init_project, load_project, open_source, save_project
 from finlabel.sources.base import ProjectConfig, SourceSpec
 from finlabel.monitor import capture_schema, load_schema_baseline, monitor_source, save_schema_baseline
-from finlabel.analysis.schema import plan_from_dict
+from finlabel.domain.analysis.schema import plan_from_dict
 from finlabel.analysis.service import analyze_source
 
 

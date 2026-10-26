@@ -3,36 +3,15 @@
 import csv
 import math
 from collections import Counter
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+
+from finlabel.domain.projects import ColumnProfile, DatasetProfile
 
 
 PathLike = Union[str, Path]
 _TYPE_SAMPLE_LIMIT = 1000
 _MISSING = {"", "null", "none"}
-
-
-@dataclass(frozen=True)
-class ColumnProfile:
-    name: str
-    inferred_type: str
-    missing_count: int
-    non_missing_count: int
-
-
-@dataclass(frozen=True)
-class DatasetProfile:
-    source_name: str
-    row_count: int
-    columns: List[ColumnProfile]
-    target_name: Optional[str] = None
-    target_counts: Optional[Dict[str, int]] = None
-
-    def to_dict(self) -> Dict[str, object]:
-        """Return a JSON-serializable summary without source records."""
-        result = asdict(self)
-        return result
 
 
 def inspect_csv(path: PathLike, target: Optional[str] = None) -> DatasetProfile:
