@@ -22,7 +22,11 @@ class SourceRecord:
 
 
 class ReadOnlySource(Protocol):
-    """Source view exposes reads only; it has no mutation operation."""
+    """Source view exposes declared metadata and reads, with no mutation operation."""
+
+    name: str
+    kind: str
+    schema: Mapping[str, str]
 
     def capabilities(self) -> SourceCapabilities: ...
 

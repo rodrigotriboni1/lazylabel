@@ -38,16 +38,18 @@ class WorkspaceApplication:
 
     def health(self):
         config = self.workspace.project(self.project_reference)
-        return {"status": "ok", "project": config.path.parent.parent.name, "sources": len(config.sources)}
+        metadata = self.workspace.project_metadata(config)
+        return {"status": "ok", "project": metadata.name, "sources": len(metadata.source_names)}
 
     def sources(self):
         config = self.workspace.project(self.project_reference)
+        metadata = self.workspace.project_metadata(config)
         result = []
-        for name in sorted(config.sources):
+        for name in sorted(metadata.source_names):
             source = self.workspace.source(config, name)
-            result.append({"name": name, "kind": source.spec.kind, "columns": [{
+            result.append({"name": name, "kind": source.kind, "columns": [{
                 "name": column.name, "inferred_type": column.inferred_type,
-                "mapped_type": source.spec.schema.get(column.name),
+                "mapped_type": source.schema.get(column.name),
                 "missing_count": column.missing_count, "non_missing_count": column.non_missing_count,
             } for column in source.columns()]})
         return {"sources": result}
@@ -100,7 +102,7 @@ class WorkspaceApplication:
                                                      device=device, output=output, use_configured_model=use_configured_model)
         try:
             return analyze_source(source, question, planner, store, runtime, plan,
-                                  source_name=source_name, explicit_types=source.spec.schema)
+                                  source_name=source_name, explicit_types=source.schema)
         except PersistenceError as exc:
             raise exc.__cause__ from exc
 
@@ -166,7 +168,7 @@ class WorkspaceApplication:
 
     def training_status(self, job_id):
         config = self.workspace.project(self.project_reference)
-        return self.workspace.training_jobs(config.workspace_dir).get(job_id)
+        return self.workspace.training_status(config, job_id)
 
     def analysis_result(self, run_id):
         return self.queries.analysis_result(self.workspace.project(self.project_reference), run_id)

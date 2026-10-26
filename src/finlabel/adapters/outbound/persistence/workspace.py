@@ -28,6 +28,10 @@ class FileWorkspace:
     def project(self, project):
         return load_project(project)
 
+    def project_metadata(self, config):
+        from finlabel.application.ports.projects import ProjectMetadata
+        return ProjectMetadata(config.path.parent.parent.name, tuple(config.sources))
+
     def source(self, config, name):
         return open_source(config, name)
 
@@ -120,6 +124,9 @@ class FileWorkspace:
         if self.jobs is None:
             self.jobs = self.jobs_factory(workspace)
         return self.jobs
+
+    def training_status(self, config, job_id):
+        return self.training_jobs(config.workspace_dir).get(job_id)
 
     def model_status(self, config, task_id):
         registry = self.registry_factory(config.workspace_dir)
