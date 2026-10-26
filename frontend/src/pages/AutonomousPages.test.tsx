@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import LabelingPage from './LabelingPage'
 import TrainingPage from './TrainingPage'
 import { FinLabelClientProvider } from '@/application/FinLabelClientProvider'
@@ -14,11 +14,28 @@ const overview: AutonomyOverview = {
 const show = (page: React.ReactNode, client = new FinLabelMemoryClient()) => render(<FinLabelClientProvider client={client}>{page}</FinLabelClientProvider>)
 
 describe('autonomous pages using the in-memory client', () => {
-  afterEach(cleanup)
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
   it('runs the full local cycle and presents applied and quarantined aggregates', async () => {
-    const client = new FinLabelMemoryClient({ responses: { getAutonomyOverview: overview, runAutonomousCycle: {
-      run_id: '1234567890abcdef1234567890abcdef', task_id: 'risk', source: 'portfolio',
+    class RecordingClient extends FinLabelMemoryClient {
+      readonly cycleCalls: Parameters<FinLabelMemoryClient['runAutonomousCycle']>[] = []
+      constructor(options: ConstructorParameters<typeof FinLabelMemoryClient>[0]) {
+        super(options)
+        const runInMemory = this.runAutonomousCycle
+        this.runAutonomousCycle = (...args) => {
+          this.cycleCalls.push(args)
+          return runInMemory(...args)
+        }
+      }
+    }
+    const key = '00000000-0000-4000-8000-000000000001'
+    const nextKey = '00000000-0000-4000-8000-000000000002'
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(key)
+    const client = new RecordingClient({ responses: { getAutonomyOverview: { ...overview,
+      sources: [...overview.sources, { ...overview.sources[0], name: 'ledger' }],
+      tasks: [...overview.tasks, { ...overview.tasks[0], task_id: 'sector' }],
+    }, runAutonomousCycle: {
+      run_id: '1234567890abcdef1234567890abcdef', task_id: 'sector', source: 'ledger',
       started_at: '2026-10-25T12:00:00Z', finished_at: '2026-10-25T12:00:01Z',
       labeling: { run_id: 'a'.repeat(32), model_ref: 'local/model', applied_count: 1, quarantined_count: 2,
         outcome_count: 3, reason_counts: { uncalibrated: 2 } },
@@ -27,8 +44,15 @@ describe('autonomous pages using the in-memory client', () => {
     } } })
     show(<LabelingPage />, client)
     expect(await screen.findByText(/Sem política calibrada/)).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fonte de dados' }), { target: { value: 'ledger' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Tarefa de rotulagem' }), { target: { value: 'sector' } })
+    // Unrelated refresh/rerenders may request new UUIDs, but must keep the selected cycle's key.
+    uuid.mockReturnValue(nextKey)
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Tarefa de rotulagem' })).toHaveValue('sector'))
     fireEvent.click(screen.getByRole('button', { name: /Executar ciclo autônomo/ }))
     expect(await screen.findByText('Ciclo concluído')).toBeInTheDocument()
+    expect(client.cycleCalls).toEqual([['ledger', 'sector', key]])
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.getByText('blocked')).toBeInTheDocument()
