@@ -15,7 +15,7 @@ Full verification branch: `codex/finlabel-full-verification`
 | Compatibilidade do modelo local | `codex/finlabel-local-model-compat` | `28c116d` |
 | Painel autônomo React/FastAPI | `codex/finlabel-autonomous-panel` | `25d8783` |
 | Análise e privacidade end-to-end | `codex/finlabel-analysis-e2e` | `bb282f5` |
-| Verificação e relatório finais | `codex/finlabel-full-verification` | `e9386a6` |
+| Verificação e relatório finais | `codex/finlabel-full-verification` | branch HEAD |
 
 ## Automated checks
 
