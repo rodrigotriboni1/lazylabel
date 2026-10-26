@@ -181,11 +181,11 @@ Move responsibilities from current mixed modules; existing paths become facades 
 
 **Files:** adapt legacy paths and `tests/architecture/test_layer_dependencies.py`; change `pyproject.toml` only if package discovery requires it (no runtime dependency).
 
-- [ ] Move internal imports to canonical paths; keep compatibility modules as re-export-only facades.
-- [ ] Remove transitional AST allowlist; enforce domain → stdlib/domain-local only, application → domain/application ports, adapters → application/domain, bootstrap → all layers.
-- [ ] Assert old public symbols map to canonical behavior and base/package/CLI imports do not load `torch`, `transformers`, `peft`, or FastAPI unless selected.
-- [ ] Run `python -m pytest tests/architecture tests/compatibility -q`; expected: all pass.
-- [ ] Commit: `test: enforce clean architecture and compatibility facades`.
+- [x] Move internal imports to canonical paths; keep compatibility modules as re-export-only facades.
+- [x] Remove transitional AST allowlist; enforce domain → stdlib/domain-local only, application → domain/application ports, adapters → application/domain, bootstrap → all layers.
+- [x] Assert old public symbols map to canonical behavior and base/package/CLI imports do not load `torch`, `transformers`, `peft`, or FastAPI unless selected.
+- [x] Run `python -m pytest tests/architecture tests/compatibility -q`; result: 96 passed; full Python suite: 405 passed + 17 subtests before final review fixes.
+- [x] Commit: `test: enforce clean architecture and compatibility facades` (`7e336a6`).
 
 ### Task 13: Documentation and integrated validation
 
@@ -196,7 +196,7 @@ Move responsibilities from current mixed modules; existing paths become facades 
 - [x] Run `npm --prefix frontend test -- --run && npm --prefix frontend run build && npm --prefix frontend run lint`; result: 51 tests passed, build/lint exited 0 with the existing bundle and five React warnings.
 - [x] Run `/tmp/finlabel-clean-hexagonal-venv/bin/python -m compileall -q src tests` and `git diff --check`; no diagnostics.
 - [x] Start the local app with isolated synthetic data; verify direct navigation/reload for all six routes, check the seven-step workflow and source hash. Browser was available at 1280x682; exact 1440x900 and 390x844 could not be set in the subagent CUA session, recorded in `task-13-report.md`.
-- [ ] Obtain an independent architecture/code review against the approved spec and resolve findings.
+- [x] Obtain an independent architecture/code review against the approved spec and resolve findings; scoped re-review approved both fixes. Final integrated Python suite: 407 passed + 17 subtests; frontend: 51 passed.
 - [x] Commit: `docs: document FinLabel clean architecture`.
 
 ## Branch and review sequence

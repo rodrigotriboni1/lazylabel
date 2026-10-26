@@ -54,7 +54,7 @@ No plan conflict blocks execution. No tests assert vacuously by design; each nam
 - [x] Task 1 — baseline and import contract inventory
 - [x] Task 2 — analysis and project value types
 - [x] Task 3 — labeling and monitoring domain
-- [ ] Task 4 — training and promotion domain
+- [x] Task 4 — training and promotion domain
 - [x] Task 5 — project/source and monitoring use cases
 - [x] Task 6 — analysis and labeling use cases
 - [x] Task 7 — training lifecycle use case
@@ -63,7 +63,7 @@ No plan conflict blocks execution. No tests assert vacuously by design; each nam
 - [x] Task 10 — frontend client ports/adapters
 - [x] Task 11 — React presentation boundary
 - [x] Task 12 — compatibility and dependency enforcement
-- [ ] Task 13 — documentation and integrated validation
+- [x] Task 13 — documentation and integrated validation (exact 1440x900 and 390x844 viewports remain unverified; see report)
 
 Task 1: minor (deferred): Public-import test does not yet isolate optional dependencies; Task 12 explicitly adds lazy import assertions.
 
@@ -143,7 +143,7 @@ Task 12: complete (commit `7e336a6`, reviewed and integrated at `cd54ef2`; archi
 
 Ruling: The subagent CUA browser exposes no viewport override and native-window resizing was unavailable because the Mac app inventory reported the computer locked. Record the exact 1440x900 and 390x844 checks as unverified, while completing direct-route/reload, navigation, visual review and seven-step training workflow at the available 1280x682 viewport; the root controller can repeat exact viewports if its browser supports the capability — cost if wrong: a responsive-only issue may remain undiscovered.
 
-Task 13: implementation complete on `codex/finlabel-architecture-m6-documentation`; docs, full suites, HTTP/browser checks at available viewport, chunked/Host variants, and source immutability are recorded in `task-13-report.md`. Exact 1440x900 / 390x844 viewport QA remains unverified; independent root review is pending.
+Task 13: implementation complete on `codex/finlabel-architecture-m6-documentation`; docs, full suites, HTTP/browser checks at available viewport, chunked/Host variants, and source immutability are recorded in `task-13-report.md`. Exact 1440x900 / 390x844 viewport QA remains unverified because this locked CUA session has no viewport override.
 
 Final whole-branch review (base `2b11cca`, head `d02b9ed`):
 - Important finding: `finlabel serve` callback is shadowed by argparse subparser and invocation raises TypeError. Fix wave required; add injected-callback regression.
@@ -153,4 +153,5 @@ Final whole-branch review (base `2b11cca`, head `d02b9ed`):
 - Final viewport limitation: exact 1440x900 and 390x844 not verified because CUA cannot set viewport in this locked desktop session. Browser verification at 1280x682 is recorded in Task 13 report.
 - Final reviewer declined to judge real model execution, generated bundle line-level inspection, baseline lint/bundle warnings, existing monitoring request races/loading transitions, retired manual training operations, and historical 500 mapping; reasons are recorded in the review report.
 
-Task 13 final-review fix round 1/5 (2 addressed, 0 open — CLI serve callback shadowing; workspace application concrete project/source/job-manager dependencies; commit pending). Regressions observed failing on the original CLI bug / missing contract, then focused suite 2 passed; app/adapters/CLI/web/architecture/compatibility 235 passed + 9 subtests; full Python suite 407 passed + 17 subtests; compileall and diff-check clean. Independent scoped re-review pending controller.
+Task 13 final-review fix round 1/5 (2 addressed, 0 open — CLI serve callback shadowing; workspace application concrete project/source/job-manager dependencies; commits `d02b9ed`..`21a3f47`). Regressions observed failing on the original CLI bug / missing contract, then focused suite 2 passed; app/adapters/CLI/web/architecture/compatibility 235 passed + 9 subtests; full Python suite 407 passed + 17 subtests; compileall and diff-check clean. Independent scoped re-review approved both findings with no new breakage.
+Task 13: complete and integrated on `codex/finlabel-autonomous-mvp` (`7a28e43`); final review fixes merged, integrated suites rerun (Python 407 + 17 subtests, frontend 51), build/lint/compileall/diff-check pass. Remaining verification limitation: exact 1440x900 and 390x844 viewport QA.

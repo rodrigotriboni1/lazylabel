@@ -69,3 +69,15 @@ Exact verification from this fix branch:
 | `git diff --check` | Passed with no diagnostics |
 
 Both findings are implemented and regression-covered; independent scoped re-review of this fix diff remains with the controller. No model or ML dependencies were installed and no model training/inference was run in this fix wave.
+
+## Final integrated verification
+
+After merging Task 13 documentation and the final review fixes into `codex/finlabel-autonomous-mvp` at `7a28e43`, the controller reran:
+
+- `/tmp/finlabel-clean-hexagonal-venv/bin/python -m pytest -q` — **407 passed, 17 subtests passed**.
+- `npm --prefix frontend test -- --run` — **8 files, 51 tests passed**.
+- `npm --prefix frontend run build` — passed; existing 712.01 kB minified chunk warning remains.
+- `npm --prefix frontend run lint` — exit 0; the same five existing React warnings remain.
+- `/tmp/finlabel-clean-hexagonal-venv/bin/python -m compileall -q src tests` and `git diff --check` — passed without diagnostics.
+
+Independent whole-branch review found two Important issues; both were fixed in commit `21a3f47` and the scoped re-review marked both ADDRESSED with no new breakage. Exact 1440x900 and 390x844 browser checks remain unverified for the CUA viewport limitation described above. The integration branch remains local; `main` was not changed.
