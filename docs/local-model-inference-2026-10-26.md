@@ -4,24 +4,24 @@
 
 O smoke foi executado pela implementação `TransformersTextGenerationBackend` do FinLabel, com o adapter Qwen LoRA existente e os 24 exemplos reservados sintéticos. A geração usa o chat template salvo no tokenizer do adapter, o prompt comum da tarefa e decodificação gulosa. O script salva apenas índice e rótulos de referência/previsão; não copia as descrições dos exemplos para o resultado.
 
-Execute a partir da raiz `Documents/ChatGPT/TCC`:
+Reproduzido em 26/10/2026 a partir da branch integrada `codex/finlabel-autonomous-mvp`. Execute a partir da raiz `Documents/ChatGPT/TCC`:
 
 ```bash
 EXP="$PWD/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20"
-REPO="$PWD/codigo/finlabel/.worktrees/local-model-compat-integration"
+REPO="$PWD/codigo/finlabel/.worktrees/autonomous-mvp"
 HF_HOME="$EXP/model-cache" HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
 PYTHONPATH="$REPO/src" "$EXP/.venv/bin/python" \
   "$REPO/scripts/evaluate_synthetic_backend.py" \
   --experiment "$EXP" \
-  --output "$EXP/results/live-inference-2026-10-26-integrated.json" \
+  --output "$EXP/results/live-inference-2026-10-26-integration-final.json" \
   --device mps
 ```
 
 - Python 3.12.14; Transformers 5.20.2; PEFT 0.21.2; PyTorch 2.14.1; Datasets 5.1.0; TRL 1.16.0.
 - Modelo `Qwen/Qwen2.5-0.5B-Instruct`, revisão `7ae557604adf67be50417f59c2c2f167def9a775`.
 - Dispositivo Apple MPS; `do_sample=false`; `max_new_tokens=64`.
-- Resultado: 24 previsões válidas em 24; acurácia exata 17/24 (70,83%); macro-F1 0,7056; duração 10,169 s.
-- JSON de previsões sem texto de origem: `.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/results/live-inference-2026-10-26-integrated.json`.
+- Resultado reproduzido na integração: 24 previsões válidas em 24; acurácia exata 17/24 (70,83%); macro-F1 0,7056; duração 12,099 s.
+- JSON de previsões sem texto de origem: `.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/results/live-inference-2026-10-26-integration-final.json`.
 
 ## Limites e identidade
 

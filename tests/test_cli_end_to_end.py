@@ -121,6 +121,20 @@ class AutonomousCliEndToEndTests(unittest.TestCase):
             status = main(arguments)
         return status, output.getvalue() + errors.getvalue()
 
+    def test_model_status_reports_local_active_model_and_lifecycle_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            init_project(root)
+
+            status, output = self.run_cli(["model-status", "risk", "--project", str(root)])
+
+            self.assertEqual(status, 0, output)
+            summary = json.loads(output)
+            self.assertEqual(summary["task_id"], "risk")
+            self.assertIsNone(summary["active_model"])
+            self.assertEqual(summary["events"], [])
+            self.assertNotIn(str(root), output)
+
     def test_run_and_status_quarantine_without_policy_and_link_blocked_training(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

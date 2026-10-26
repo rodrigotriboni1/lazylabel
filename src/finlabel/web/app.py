@@ -6,6 +6,10 @@ import ipaddress
 import json
 import re
 import secrets
+import os
+import tempfile
+import fcntl
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Optional, Union
 from urllib.parse import urlsplit
@@ -62,6 +66,33 @@ def _baseline_path(workspace: Path, source_name: str) -> Path:
     else:
         filename = hashlib.sha256(source_name.encode("utf-8")).hexdigest() + ".json"
     return workspace / "schemas" / filename
+
+
+@contextmanager
+def _idempotency_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_json(path: Path, payload: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=str(path.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 async def _read_json(request):
@@ -128,6 +159,7 @@ def create_app(
         raise RuntimeError("Install finlabel-local[web] to run the local panel.") from exc
 
     package_dir = Path(__file__).parent
+    react_index = package_dir / "static" / "app" / "index.html"
     template_environment = Environment(
         loader=FileSystemLoader(str(package_dir / "templates")),
         autoescape=select_autoescape(("html", "htm", "xml")),
@@ -136,6 +168,16 @@ def create_app(
     app = FastAPI(title="FinLabel local", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     training_jobs = None
+
+    def react_page(request):
+        if not react_index.is_file():
+            return PlainTextResponse("FinLabel React assets are missing. Build the frontend first.", status_code=503)
+        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
+        response = HTMLResponse(react_index.read_text(encoding="utf-8"))
+        if not request.cookies.get(CSRF_COOKIE):
+            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False,
+                                samesite="strict", path="/")
+        return response
 
     def get_training_jobs(workspace):
         nonlocal training_jobs
@@ -213,77 +255,229 @@ def create_app(
 
     @app.get("/labeling", response_class=HTMLResponse)
     async def labeling_page(request: Request):
-        config = load_project(project_path)
-        sources = sorted(config.sources)
-        tasks = []
-        for task_path in sorted((config.workspace_dir / "tasks").glob("*.json")):
-            try:
-                raw = json.loads(task_path.read_text(encoding="utf-8"))
-                if isinstance(raw, dict) and isinstance(raw.get("task_id"), str):
-                    tasks.append({"task_id": raw["task_id"], "labels": raw.get("labels", [])})
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                continue
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request, name="labeling.html",
-            context={"sources": sources, "tasks": tasks, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
-        )
-        if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
-        return response
+        return react_page(request)
 
     @app.get("/training", response_class=HTMLResponse)
     async def training_page(request: Request):
-        config = load_project(project_path)
-        datasets = []
-        training_dir = config.workspace_dir / "training"
-        for path in sorted(training_dir.glob("*.jsonl")):
-            manifest_path = path.with_suffix(path.suffix + ".manifest.json")
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                if isinstance(manifest, dict) and isinstance(manifest.get("model_ref"), str):
-                    datasets.append({
-                        "name": path.name, "model_ref": manifest["model_ref"],
-                        "task_id": manifest.get("task_id", ""), "row_count": manifest.get("row_count", 0),
-                        "dataset_sha256": manifest.get("dataset_sha256", ""),
-                    })
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                continue
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request, name="training.html",
-            context={"datasets": datasets, "csrf_token": token},
-        )
-        if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False, samesite="strict", path="/")
-        return response
+        return react_page(request)
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
+        return react_page(request)
+
+    @app.get("/analysis", response_class=HTMLResponse)
+    @app.get("/monitor", response_class=HTMLResponse)
+    @app.get("/review", response_class=HTMLResponse)
+    async def react_routes(request: Request):
+        return react_page(request)
+
+    @app.get("/api/health")
+    async def health():
         config = load_project(project_path)
-        sources = []
-        for name in config.sources:
-            try:
+        return JSONResponse({
+            "status": "ok",
+            "project": config.path.parent.parent.name,
+            "sources": len(config.sources),
+        })
+
+    @app.get("/api/sources")
+    async def sources():
+        """Expose source names and schema metadata without returning source rows."""
+        try:
+            config = load_project(project_path)
+            result = []
+            for name in sorted(config.sources):
+                source = open_source(config, name)
+                result.append({
+                    "name": name,
+                    "kind": source.spec.kind,
+                    "columns": [{
+                        "name": column.name,
+                        "inferred_type": column.inferred_type,
+                        "mapped_type": source.spec.schema.get(column.name),
+                        "missing_count": column.missing_count,
+                        "non_missing_count": column.non_missing_count,
+                    } for column in source.columns()],
+                })
+            response_payload = {"sources": result}
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Source metadata exceeds the local response limit."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/autonomy/overview")
+    async def autonomy_overview():
+        try:
+            config = load_project(project_path)
+            sources = []
+            for name, spec in sorted(config.sources.items()):
                 columns = open_source(config, name).columns()
                 sources.append({
                     "name": name,
-                    "columns": [{"name": column.name, "inferred_type": column.inferred_type} for column in columns],
-                    "error": None,
+                    "kind": spec.kind,
+                    "columns": [{
+                        "name": column.name,
+                        "inferred_type": column.inferred_type,
+                        "mapped_type": spec.schema.get(column.name),
+                    } for column in columns],
                 })
-            except (OSError, ValueError, KeyError) as exc:
-                sources.append({"name": name, "columns": [], "error": str(exc)})
-        token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-        response = templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={"sources": sources, "csrf_token": token, "max_page_rows": MAX_PAGE_ROWS},
-        )
-        if not request.cookies.get(CSRF_COOKIE):
-            response.set_cookie(
-                CSRF_COOKIE, token, max_age=7200, httponly=False, secure=False,
-                samesite="strict", path="/",
-            )
-        return response
+            from finlabel.labeling.task import load_task, task_file_path
+            tasks = []
+            for task_path in sorted((config.workspace_dir / "tasks").glob("*.json")):
+                try:
+                    task = load_task(task_path)
+                    tasks.append({
+                        "task_id": task.task_id,
+                        "input_columns": list(task.input_columns),
+                        "labels": list(task.labels),
+                        "model_ref": task.model_id + ("@" + task.model_revision if task.model_revision else ""),
+                        "policy_configured": task.policy_path is not None,
+                    })
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
+                    continue
+
+            from finlabel.cli import _verified_pipeline_run
+            runs = []
+            pipeline_root = config.workspace_dir / "pipeline-runs"
+            for run_dir in sorted(pipeline_root.iterdir(), key=lambda path: path.stat().st_mtime, reverse=True) if pipeline_root.exists() else []:
+                if len(runs) >= 20 or not run_dir.is_dir() or not RUN_ID_PATTERN.fullmatch(run_dir.name):
+                    continue
+                try:
+                    runs.append(_verified_pipeline_run(config.workspace_dir, run_dir.name))
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                    continue
+            for run in runs:
+                run.pop("artifacts", None)
+
+            from finlabel.training.registry import ModelRegistry
+            registry = ModelRegistry(config.workspace_dir)
+            active_models = []
+            for task_id in sorted({task["task_id"] for task in tasks}):
+                active = registry.active(task_id)
+                if isinstance(active, dict):
+                    active_models.append({
+                        "task_id": task_id,
+                        "model_ref": active.get("model_ref"),
+                        "candidate_id": active.get("candidate_id"),
+                    })
+            cycles = []
+            cycles_root = config.workspace_dir / "training" / "cycles"
+            from finlabel.training.autopipeline import _valid_cycle_digest
+            for cycle_path in sorted(cycles_root.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True) if cycles_root.exists() else []:
+                if len(cycles) >= 20:
+                    break
+                try:
+                    cycle = json.loads(cycle_path.read_text(encoding="utf-8"))
+                    if isinstance(cycle, dict) and isinstance(cycle.get("cycle_id"), str) and _valid_cycle_digest(cycle):
+                        summary = {key: cycle.get(key) for key in (
+                            "cycle_id", "task_id", "state", "reason_codes", "candidate_id",
+                            "evaluation_id", "promotion_action", "active_model_ref", "created_at",
+                        )}
+                        summary["evaluation"] = None
+                        candidate_id = cycle.get("candidate_id")
+                        evaluation_id = cycle.get("evaluation_id")
+                        if isinstance(candidate_id, str) and isinstance(evaluation_id, str):
+                            try:
+                                candidate = registry.candidate(candidate_id)
+                                evaluation_path = registry.root / "evaluations" / (evaluation_id + ".json")
+                                evaluation_bytes = evaluation_path.read_bytes()
+                                evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+                                if (candidate.get("evaluation_id") == evaluation_id
+                                        and hashlib.sha256(evaluation_bytes).hexdigest() == candidate.get("evaluation_sha256")
+                                        and evaluation.get("evaluation_id") == evaluation_id
+                                        and evaluation.get("task_id") == cycle.get("task_id")
+                                        and evaluation.get("candidate_id") == candidate_id
+                                        and evaluation.get("same_frozen_holdout") is True):
+                                    summary["evaluation"] = {
+                                        "holdout_count": evaluation.get("holdout_count"),
+                                        "candidate_metrics": evaluation.get("candidate_metrics"),
+                                        "incumbent_metrics": evaluation.get("incumbent_metrics"),
+                                        "same_frozen_holdout": True,
+                                    }
+                            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                                pass
+                        cycles.append(summary)
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+            events = [{key: event.get(key) for key in (
+                "event_id", "task_id", "action", "reason_codes", "active_model_ref",
+                "rollback_from", "created_at",
+            )} for event in registry.history()[-40:]]
+            response_payload = {
+                "sources": sources, "tasks": tasks, "runs": runs,
+                "active_models": active_models, "training_cycles": cycles,
+                "model_events": events,
+            }
+            if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse({"error": "Autonomy overview exceeds the local web response limit."}, status_code=422)
+            return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/autonomy/run")
+    async def autonomy_run(request: Request):
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if set(payload) != {"source", "task"} or not isinstance(payload.get("source"), str) or not isinstance(payload.get("task"), str):
+            return JSONResponse({"error": "source and task are required; extra fields are not accepted."}, status_code=400)
+        idempotency_key = request.headers.get("idempotency-key", "")
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", idempotency_key):
+            return JSONResponse({"error": "A valid Idempotency-Key header is required."}, status_code=400)
+        config = load_project(project_path)
+        body_digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        key_digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        idempotency_root = config.workspace_dir / "idempotency"
+        result_path = idempotency_root / (key_digest + ".json")
+        try:
+            with _idempotency_lock(idempotency_root / (key_digest + ".lock")):
+                if result_path.is_file():
+                    previous = json.loads(result_path.read_text(encoding="utf-8"))
+                    if previous.get("request_sha256") != body_digest:
+                        return JSONResponse({"error": "Idempotency-Key was already used with a different request."}, status_code=409)
+                    saved = previous.get("response")
+                    expected = hashlib.sha256(json.dumps(saved, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+                    if previous.get("response_sha256") != expected or not isinstance(saved, dict):
+                        return JSONResponse({"error": "Stored idempotency result failed integrity verification."}, status_code=409)
+                    return JSONResponse(saved)
+                from finlabel.cli import run_autonomous_pipeline
+                result = run_autonomous_pipeline(project_path, payload["source"], payload["task"])
+                response_payload = {
+                    "run_id": result["run_id"],
+                    "task_id": result["task_id"],
+                    "source": result["source"],
+                    "started_at": result["started_at"],
+                    "finished_at": result["finished_at"],
+                    "labeling": {
+                        "run_id": result["label_run_id"],
+                        "model_ref": result["label_model_ref"],
+                        "applied_count": result["labels"]["applied"],
+                        "quarantined_count": result["labels"]["quarantined"],
+                        "outcome_count": result["labels"]["applied"] + result["labels"]["quarantined"],
+                        "reason_counts": result["labels"]["reason_counts"],
+                    },
+                    "training": result["training"],
+                }
+                response_digest = hashlib.sha256(json.dumps(response_payload, sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":")).encode("utf-8")).hexdigest()
+                _atomic_json(result_path, {"request_sha256": body_digest, "response": response_payload,
+                                           "response_sha256": response_digest})
+                return JSONResponse(response_payload)
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError, json.JSONDecodeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/autonomy/runs/{run_id}")
+    async def autonomy_run_status(run_id: str):
+        if not RUN_ID_PATTERN.fullmatch(run_id):
+            return JSONResponse({"error": "Autonomous run not found."}, status_code=404)
+        try:
+            from finlabel.cli import _verified_pipeline_run
+            result = _verified_pipeline_run(load_project(project_path).workspace_dir, run_id)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return JSONResponse({"error": "Autonomous run not found or failed integrity verification."}, status_code=404)
+        result.pop("artifacts", None)
+        return JSONResponse(result)
 
     @app.post("/api/schema/capture")
     async def schema_capture(request: Request):
@@ -431,30 +625,7 @@ def create_app(
 
     @app.post("/api/label/start")
     async def label_start(request: Request):
-        payload, error = await _read_json(request)
-        if error:
-            return JSONResponse({"error": error}, status_code=400)
-        source_name, task_id = payload.get("source"), payload.get("task")
-        if not isinstance(source_name, str) or not isinstance(task_id, str):
-            return JSONResponse({"error": "source and task are required"}, status_code=400)
-        try:
-            from finlabel.labeling.service import suggest_labels
-            from finlabel.labeling.task import load_task, task_file_path
-
-            config = load_project(project_path)
-            source = open_source(config, source_name)
-            task = load_task(task_file_path(config.workspace_dir, task_id),
-                             available_columns=tuple(column.name for column in source.columns()))
-            backend = get_backend(config, role="labeling", model_id=task.model_id, revision=task.model_revision)
-            if backend is None:
-                return JSONResponse({"error": "No local model backend is available for this task."}, status_code=400)
-            run = suggest_labels(source, task, backend, workspace_dir=config.workspace_dir)
-        except (OSError, ValueError, KeyError, RuntimeError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
-        return JSONResponse({
-            "run_id": run.run_id, "source": run.source_name, "task": run.task_id,
-            "suggestions": run.row_count, "invalid": run.invalid_count,
-        })
+        return JSONResponse({"error": "Per-record suggestion runs are retired. Use /api/autonomy/run."}, status_code=410)
 
     @app.get("/api/label/suggestions")
     async def label_suggestions(run_id: str):
@@ -497,55 +668,9 @@ def create_app(
 
     @app.post("/api/label/review")
     async def label_review(request: Request):
-        payload, error = await _read_json(request)
-        if error:
-            return JSONResponse({"error": error}, status_code=400)
-        required = ("run_id", "suggestion_id", "record_id", "input_digest", "idempotency_key", "action")
-        if any(not isinstance(payload.get(key), str) for key in required):
-            return JSONResponse({"error": "review provenance and action are required"}, status_code=400)
-        if not re.fullmatch(r"[0-9a-f]{32}", payload["idempotency_key"]):
-            return JSONResponse({"error": "Invalid review idempotency key."}, status_code=400)
-        try:
-            from finlabel.labeling.task import load_task, task_file_path, validate_label
-            from finlabel.review import ReviewAction, ReviewLog
-
-            config = load_project(project_path)
-            _, metadata, suggestions = read_label_run(config, payload["run_id"])
-            item = next((row for row in suggestions if row["suggestion_id"] == payload["suggestion_id"]), None)
-            if item is None or item["record_id"] != payload["record_id"] or item["input_digest"] != payload["input_digest"]:
-                return JSONResponse({"error": "Suggestion provenance does not match this review."}, status_code=409)
-            source = open_source(config, metadata["source_name"])
-            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
-                             available_columns=tuple(column.name for column in source.columns()))
-            record = next((row for row in source.iter_records(task.input_columns)
-                           if row.record_id == item["record_id"]), None)
-            if record is None or record.input_digest != item["input_digest"]:
-                return JSONResponse({"error": "Source row changed; this suggestion is stale."}, status_code=409)
-            log = ReviewLog(config.workspace_dir / "review.jsonl")
-            prior = log.read()
-            duplicate = next((event for event in prior if event.idempotency_key == payload["idempotency_key"]), None)
-            if duplicate:
-                if duplicate.run_id != payload["run_id"] or duplicate.suggestion_id != payload["suggestion_id"]:
-                    return JSONResponse({"error": "Idempotency key was already used for another review."}, status_code=409)
-                return JSONResponse({"event_id": duplicate.event_id, "duplicate": True})
-            action_name = payload["action"]
-            if action_name == "accepted":
-                action, final_label = ReviewAction.ACCEPTED, item["label"]
-            elif action_name == "corrected":
-                action, final_label = ReviewAction.CORRECTED, validate_label(task, payload.get("final_label"))
-            elif action_name == "rejected":
-                action, final_label = ReviewAction.REJECTED, None
-            else:
-                return JSONResponse({"error": "action must be accepted, corrected, or rejected"}, status_code=400)
-            event = log.record(
-                item["record_id"], item["label"], action, final_label, item["model_ref"],
-                run_id=payload["run_id"], source_name=metadata["source_name"], task_id=task.task_id,
-                input_digest=item["input_digest"], suggestion_id=item["suggestion_id"],
-                idempotency_key=payload["idempotency_key"],
-            )
-            return JSONResponse({"event_id": event.event_id, "duplicate": False})
-        except (OSError, ValueError, KeyError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({
+            "error": "Per-record human review is retired. Uncertain outcomes are quarantined automatically."
+        }, status_code=410)
 
     @app.post("/api/dataset/prepare")
     async def dataset_prepare(request: Request):
@@ -621,16 +746,7 @@ def create_app(
     async def analysis_page(request: Request, run_id: str):
         if not RUN_ID_PATTERN.fullmatch(run_id):
             return PlainTextResponse("Analysis run not found.", status_code=404)
-        config = load_project(project_path)
-        run_dir = config.workspace_dir / "analyses" / run_id
-        if not (run_dir / "result.json").is_file():
-            return PlainTextResponse("Analysis run not found.", status_code=404)
-        result = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
-        return templates.TemplateResponse(
-            request=request,
-            name="analysis.html",
-            context={"run_id": run_id, "result": result, "max_page_rows": MAX_PAGE_ROWS},
-        )
+        return react_page(request)
 
     @app.get("/api/analyses/{run_id}")
     async def analysis_result(run_id: str):

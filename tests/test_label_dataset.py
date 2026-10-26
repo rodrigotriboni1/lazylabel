@@ -2,9 +2,8 @@ import json
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
 
 from finlabel.labeling.service import suggest_labels
 from finlabel.labeling.task import LabelTask, save_task
@@ -26,7 +25,7 @@ class FixedBackend:
 
 
 class LabelDatasetTests(unittest.TestCase):
-    def test_legacy_review_and_dataset_commands_remain_available(self):
+    def test_historical_review_artifacts_remain_exportable(self):
         from finlabel.cli import main
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -37,26 +36,32 @@ class LabelDatasetTests(unittest.TestCase):
             config = load_project(root)
             config.sources["ledger"] = SourceSpec("ledger", "csv", source_path, schema={"id": "string"})
             save_project(config, config.path)
-            task_path = root / "risk.json"
-            task_path.write_text(json.dumps({
-                "task_id": "risk", "instructions": "Classify risk", "input_columns": ["amount"],
-                "labels": ["low", "high"], "model_id": "mock-local", "model_revision": None,
-            }), encoding="utf-8")
-            self.assertEqual(main(["task", "add", str(task_path), "--project", str(root)]), 0)
             backend = FixedBackend()
             task = LabelTask("risk", "Classify risk", ("amount",), ("low", "high"), "mock-local")
+            save_task(task, config.workspace_dir / "tasks" / "risk.json")
             run = suggest_labels(CsvSource(config.sources["ledger"]), task, backend,
                                  workspace_dir=config.workspace_dir)
-            run_id = run.run_id
-            with patch("builtins.input", side_effect=["accept", "reject"]), redirect_stdout(io.StringIO()):
-                self.assertEqual(main(["review", run_id, "--project", str(root)]), 0)
+            suggestions = [json.loads(line) for line in run.suggestion_path.read_text().splitlines()]
+            legacy = ReviewLog(config.workspace_dir / "review.jsonl")
+            legacy.record(suggestions[0]["record_id"], suggestions[0]["label"], ReviewAction.ACCEPTED,
+                          suggestions[0]["label"], suggestions[0]["model_ref"], run_id=run.run_id,
+                          source_name="ledger", task_id="risk", input_digest=suggestions[0]["input_digest"],
+                          suggestion_id=suggestions[0]["suggestion_id"])
             output = root / ".finlabel" / "training" / "cli.jsonl"
             with redirect_stdout(io.StringIO()):
-                self.assertEqual(main(["dataset", "prepare", run_id, "--output", str(output), "--project", str(root)]), 0)
+                self.assertEqual(main(["dataset", "prepare", run.run_id, "--output", str(output), "--project", str(root)]), 0)
             rows = [json.loads(line) for line in output.read_text().splitlines()]
             self.assertEqual(len(rows), 1)
             self.assertEqual(json.loads(rows[0]["completion"])["label"], "low")
             self.assertNotIn("SECRET", output.read_text())
+
+    def test_interactive_review_cli_command_is_retired(self):
+        from finlabel.cli import main
+
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                main(["review", "a" * 32])
+        self.assertEqual(error.exception.code, 2)
 
     def test_export_includes_only_latest_accepted_or_corrected_review_and_selected_fields(self):
         from finlabel.training.dataset import prepare_training_dataset

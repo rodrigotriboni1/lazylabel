@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, BarChart3, CircleHelp, Database, FlaskConical, LayoutDashboard, ListChecks, ShieldCheck } from 'lucide-react'
+import { Activity, BarChart3, Database, FlaskConical, LayoutDashboard, ListChecks, ShieldCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,6 @@ import OverviewPage from '@/pages/OverviewPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import MonitorPage from '@/pages/MonitorPage'
 import LabelingPage from '@/pages/LabelingPage'
-import ReviewPage from '@/pages/ReviewPage'
 import TrainingPage from '@/pages/TrainingPage'
 
 const navigation = [
@@ -21,7 +20,7 @@ const navigation = [
 
 function pageName(path: string) {
   if (path.startsWith('/analysis/')) return 'Análise salva'
-  if (path === '/review') return 'Revisão humana'
+  if (path === '/review') return 'Histórico local'
   return navigation.find((item) => item.path === path)?.label ?? 'Visão geral'
 }
 
@@ -70,14 +69,7 @@ export default function App() {
         </header>
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
-          {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' ? <LabelingPage /> : path === '/review' ? <ReviewPage /> : path === '/training' ? <TrainingPage /> : <>
-          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-            <div><p className="mb-2 text-sm font-medium text-[#47805f]">FINLABEL / LOCAL</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Seu espaço de trabalho</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#718077]">Análise, revisão humana e preparação de dados em um único ambiente privado.</p></div>
-            <Button variant="outline" className="gap-2 border-[#dce5de] bg-white text-[#34493a]"><CircleHelp size={16} />Ajuda</Button>
-          </div>
-
-          {error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível conectar</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : <OverviewPage />}
-          </>}
+          {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' || path === '/review' ? <LabelingPage /> : path === '/training' ? <TrainingPage /> : error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível conectar</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : <OverviewPage />}
         </section>
         <footer className="px-5 pb-8 text-center text-xs text-[#94a097] md:px-10">FinLabel · ambiente de processamento local</footer>
       </main>

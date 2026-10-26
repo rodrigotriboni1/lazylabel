@@ -1,6 +1,6 @@
 # Verified local training cycle
 
-The finlabel run command uses the configured task policy to label the current read-only source, then runs one local training cycle. The cycle:
+The `finlabel run` command uses the configured task policy to label the current read-only source, then runs one local training cycle. Labels that do not pass policy, rule, freshness, and calibration checks are quarantined. Trusted labels are a separate configured source and are the only target values used for the train/calibration/holdout partitions. The cycle:
 
 1. Loads the one explicitly registered trusted-label source for the task. A changed source snapshot requires the existing explicit supervision refresh action.
 2. Reuses or creates the immutable train, calibration, and holdout partitions under .finlabel/trusted-datasets/<task>/<snapshot-sha256>/.
@@ -60,6 +60,10 @@ An unhealthy report is saved under `.finlabel/models/health-evaluations/<evaluat
 
 This evidence is verified inside the local workspace trust boundary. Hashes detect accidental or uncoordinated edits and make journal replay deterministic, but they do not prove who ran the evaluator or prevent a workspace owner from rewriting evidence and recomputing hashes. The rollback interface does not claim an external cryptographic evaluator attestation.
 
+## CLI and panel status
+
+`finlabel run-status <run_id>` verifies and displays the aggregate pipeline result. `finlabel model-status <task_id>` displays the active model reference and validated promotion, rejection, and rollback history without exposing adapter paths. The local panel uses the same run service and shows cycle state, frozen holdout metrics, and lifecycle events; it has no per-record decision controls or manual promotion action.
+
 ## Manual validation boundary
 
-compileall and git diff --check validate source syntax and patch formatting. No weights were downloaded and no real trusted dataset was evaluated as part of this implementation. Promotion evidence is therefore not claimed until a project runs the configured local cycle.
+The integrated branch was exercised with synthetic CSV data through the CLI and web API. The model smoke in `docs/local-model-inference-2026-10-26.md` ran Qwen2.5-0.5B-Instruct inference on 24 reserved synthetic examples: 24 valid outputs, 70.83% accuracy, macro-F1 0.7056, and 10.169 seconds on Apple MPS. This does not show financial performance or validate the historical adapter for promotion. No real financial source was used, and no candidate was promoted using a real trusted dataset. Promotion evidence must be produced by a project running its configured local cycle.

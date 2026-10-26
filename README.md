@@ -2,7 +2,7 @@
 
 Biblioteca em desenvolvimento para análise local e rotulagem autônoma de dados financeiros. Inclui conectores somente de leitura para CSV e SQLite, monitoramento de esquema, análises determinísticas, gráficos offline, painel web e fluxos locais de calibração e treino.
 
-O contrato de fine-tuning PEFT/LoRA está implementado. A execução com pesos reais permanece bloqueada até registrar e autorizar modelo, licença, hardware, política de dados e protocolo de avaliação no projeto. Nenhum peso é carregado implicitamente.
+Inferência local usa Transformers quando o modelo é selecionado. O fine-tuning PEFT/LoRA e a promoção automática exigem política, rótulos confiáveis, evidência de avaliação e gates específicos da tarefa. Pesos só são baixados quando uma execução local explicitamente selecionada precisa deles.
 
 ## Instalação local
 
@@ -19,7 +19,7 @@ finlabel source add-sqlite carteira ./dados/carteira.db --table contratos --id-c
 finlabel source set-type vendas valor decimal --project ./meu-projeto
 ```
 
-A configuração fica em `.finlabel/project.json`. Caminhos relativos são resolvidos a partir da pasta do projeto. CSV e SQLite são abertos somente para leitura. Agregações SQLite não exigem ID; revisão persistente exige uma coluna única e não nula. CSV usa a posição lógica do registro e um digest dos campos selecionados. O contrato `DataSource` descreve IDs, leitura, streaming e seleção de colunas.
+A configuração fica em `.finlabel/project.json`. Caminhos relativos são resolvidos a partir da pasta do projeto. CSV e SQLite são abertos somente para leitura. Análises agregadas não exigem ID; fluxos que comparam registros usam referências opacas e digests dos campos selecionados. O contrato `DataSource` descreve IDs, leitura, streaming e seleção de colunas.
 
 ## Captura e monitoramento de esquema
 
@@ -47,11 +47,11 @@ python -m pip install -e '.[web]'
 finlabel serve --project ./meu-projeto --host 127.0.0.1 --port 8765
 ```
 
-Abra `http://127.0.0.1:8765`. O serviço só faz bind em loopback, valida `Host`, `Origin` e CSRF, limita requisições e usa templates escapados. A captura de esquema não salva até confirmação explícita. Gráficos têm CSP sandbox ao serem exibidos no painel.
+Abra `http://127.0.0.1:8765`. O serviço só faz bind em loopback, valida `Host`, `Origin` e CSRF e limita requisições. O painel React local mostra fontes e resultados agregados. A captura de esquema não salva até confirmação explícita. Gráficos têm CSP sandbox ao serem exibidos no painel.
 
-Use `/labeling` para gerar e revisar rótulos; `/training` lista datasets preparados e oferece envio explícito de trabalho LoRA depois que o gate do projeto estiver completo.
+Use `/labeling` para executar rotulagem, quarentena e ciclo de treino; `/training` mostra as etapas, avaliação congelada, estado do modelo, promoção, rejeição e rollback automáticos. Não há decisão manual por registro nem botão manual de promoção.
 
-## Tarefas e rotulagem assistida
+## Tarefas e rotulagem autônoma
 
 Uma tarefa declarativa define instruções, colunas permitidas, rótulos e o modelo local. Salve este JSON como `risk.json`:
 
@@ -75,10 +75,9 @@ finlabel label-run RUN_ID --project ./meu-projeto
 
 O modelo recebe somente `input_columns` serializadas como dados, nunca a linha completa. A biblioteca aplica automaticamente apenas previsões com política válida, regras satisfeitas, origem atual e confiança calibrada acima do limite configurado. Registros inválidos, incertos ou sem evidência compatível de calibração vão para quarentena com um código de motivo. Os resultados são imutáveis e guardam somente referências opacas, digests, rótulos permitidos, confiança calibrada e proveniência; não gravam prompts, valores da fonte ou justificativas livres.
 
-`finlabel label-run` verifica o hash de `outcomes.jsonl` e confere os totais antes de exibir somente metadados agregados. Não é necessário revisar cada linha para concluir uma execução. O comando histórico `finlabel review` continua disponível para consultar execuções antigas baseadas em sugestões, mas não faz parte do fluxo autônomo.
+`finlabel label-run` verifica o hash de `outcomes.jsonl` e confere os totais antes de exibir somente metadados agregados. O comando de revisão por registro foi retirado; artefatos antigos de revisão podem ser lidos como histórico e não alimentam o novo ciclo.
 
-Para executar uma rodada única de rotulagem seguida da checagem de elegibilidade
-do ciclo de treino confiável:
+Para executar uma rodada única de rotulagem seguida do ciclo local de treino:
 
 ```bash
 finlabel run --task risk --source carteira --project ./meu-projeto
@@ -86,14 +85,13 @@ finlabel run-status RUN_ID --project ./meu-projeto
 ```
 
 `run` salva um manifesto combinado em `.finlabel/pipeline-runs/` que referencia
-os artefatos de rotulagem e o manifesto do ciclo de treino por ID e hash. O
-resumo contém contagens aplicadas/em quarentena, motivos, estado do treino,
-ação de promoção, modelo ativo e caminhos dos artefatos; linhas, prompts e
-justificativas não são incluídos. `run-status` verifica os hashes e a identidade
-dos artefatos antes de mostrar o resumo. A execução é iniciada pelo operador e
-não instala um daemon. A promoção permanece bloqueada até existir avaliação
-verificável de calibração e holdout; nesse caso o motivo explícito é
-`verifiable_calibration_and_holdout_evaluator_unavailable`.
+os artefatos de rotulagem e o ciclo de treino por ID e hash. O resumo contém
+contagens aplicadas/em quarentena, motivos, estado do treino, ação de promoção e
+modelo ativo; não inclui linhas nem prompts. `run-status` verifica os hashes e a
+identidade dos artefatos antes de mostrar o resumo. `model-status risk` mostra o
+modelo ativo e o histórico local de promoção/rejeição/rollback. A execução é
+iniciada pelo operador e não instala um daemon. Política ou evidência ausentes
+bloqueiam o treino ou a promoção e mantêm o modelo ativo sem alteração.
 
 ## Política de rotulagem autônoma (contrato de configuração)
 
@@ -160,18 +158,9 @@ um lock comum ao serviço: uma alteração posterior à última releitura ainda 
 possível. Consumidores devem recalcular o digest da linha atual e só tratar o
 rótulo aplicado como atual quando ele corresponder ao `input_digest` do resultado.
 
-## Preparação do dataset e fine-tuning
+## Rótulos confiáveis e ciclo de fine-tuning
 
-Para o fluxo de treino autônomo, registre uma coluna de referência externa, separada
-das previsões e dos logs do FinLabel. A fonte CSV ou SQLite permanece somente para
-leitura; o registro em `.finlabel/project.json` guarda proveniência, contagem e
-hash do snapshot, sem copiar linhas ou rótulos para logs. Esse arquivo é a única
-fonte de verdade da configuração e do snapshot. `trust_kind` e `provenance` são
-declarações do operador: FinLabel valida formato, mapeamento e origem configurada,
-mas não autentica criptograficamente quem produziu ou aprovou os rótulos. A coluna de rótulo nunca pode entrar em
-`input_columns` da tarefa.
-
-Exemplo quando a coluna já usa os rótulos da tarefa:
+Para treinar, registre uma coluna de referência externa, separada das previsões e dos logs do FinLabel. CSV ou SQLite continua somente para leitura. `.finlabel/project.json` guarda proveniência, contagem e hash do snapshot, sem copiar linhas ou rótulos para logs. `trust_kind` e `provenance` são declarações do operador: FinLabel valida formato, mapeamento e origem, mas não autentica criptograficamente quem produziu ou aprovou os rótulos. A coluna de rótulo nunca pode entrar em `input_columns` da tarefa.
 
 ```bash
 finlabel supervision add carteira \
@@ -182,36 +171,9 @@ finlabel supervision add carteira \
   --project ./meu-projeto
 ```
 
-Se os valores tiverem outra taxonomia, informe o mapeamento explicitamente:
+Os tipos aceitos são `provided_ground_truth` e `validated_rule`. Use `--label-map` quando a taxonomia da fonte diferir dos rótulos da tarefa. Uma alteração posterior na fonte bloqueia a carga; depois de confirmar a proveniência da nova versão, repita o comando com `--refresh`.
 
-```bash
-finlabel supervision add carteira \
-  --task risk \
-  --label-column reference_label \
-  --label-map '{"baixo":"low","medio":"medium","alto":"high"}' \
-  --provenance regra-validada-v1 \
-  --trust-kind validated_rule \
-  --project ./meu-projeto
-```
-
-Os únicos tipos aceitos são `provided_ground_truth` e `validated_rule`.
-Fontes dentro de `.finlabel` e fontes identificáveis como saídas de modelo,
-sugestões, resultados de execução ou logs de revisão são rejeitadas. O registro
-valida IDs estáveis, rótulos conhecidos, colunas selecionadas e leitura somente
-antes de gravar atomicamente a configuração e o digest do snapshot.
-Uma alteração posterior na fonte bloqueia a carga; depois de confirmar que a nova
-versão conserva a proveniência declarada, repita o mesmo comando com `--refresh`
-para registrar o novo snapshot.
-
-Só uma ação explícita prepara exemplos. O JSONL contém prompt com as colunas escolhidas e completion em JSON com o rótulo humano final (o mesmo contrato estruturado esperado na inferência):
-
-```bash
-finlabel dataset prepare RUN_ID --output ./meu-projeto/.finlabel/training/reviewed.jsonl --project ./meu-projeto
-```
-
-Aceitos e corrigidos entram; rejeitados, sem revisão e linhas desatualizadas ficam de fora. O manifesto ao lado lista eventos/sugestões incluídos, colunas, contagens excluídas, snapshot e hashes. CSV é hasheado antes/depois da leitura; SQLite é percorrido por um cursor local de leitura.
-
-Antes de permitir treino, registre os cinco itens acordados em `.finlabel/training-gate.json`:
+Antes do ciclo, registre os itens autorizados em `.finlabel/training-gate.json`:
 
 ```json
 {
@@ -219,44 +181,28 @@ Antes de permitir treino, registre os cinco itens acordados em `.finlabel/traini
   "license": "licença verificada para este uso",
   "hardware": "hardware e limites de memória disponíveis",
   "data_policy": "política aprovada para estes exemplos locais",
-  "evaluation_protocol": "avaliação acadêmica e separação de validação definidas",
+  "evaluation_protocol": "protocolo e partições de validação definidos",
   "authorized": true
 }
 ```
 
-`authorized: true` só deve ser gravado depois que modelo, licença, hardware, política de dados e protocolo acadêmico estiverem decididos e a pessoa responsável autorizar a execução. O CLI e o painel recusam treino antes desse gate e verificam que o modelo coincide com o manifesto do dataset. Só o comando explícito pode carregar pesos e baixá-los quando necessário:
+Configure também a política de rotulagem da tarefa e os gates de promoção versionados em `.finlabel/models/promotion-policies/<task>.json`. Então inicie o ciclo completo:
 
 ```bash
-python -m pip install -e '.[train]'
-finlabel train ./meu-projeto/.finlabel/training/reviewed.jsonl \
-  --model-id REFERENCIA-EXATA-APROVADA \
-  --output ./meu-projeto/.finlabel/models/adapters/risk-v1 \
-  --project ./meu-projeto
+finlabel run --task risk --source carteira --project ./meu-projeto
+finlabel run-status RUN_ID --project ./meu-projeto
+finlabel model-status risk --project ./meu-projeto
 ```
 
-O backend usa TRL `SFTTrainer` com PEFT `LoraConfig`, não publica adapters e desativa integrações de telemetria do trainer. FinLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, compatibilidade do modelo, memória disponível e protocolo de avaliação. Consulte a documentação oficial de [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). Esta branch validou configuração e manifestos com dados sintéticos, sem baixar pesos ou treinar.
+O ciclo valida a fonte confiável, congela partições disjuntas de treino/calibração/holdout, treina um candidato local com PEFT/LoRA, compara candidato e incumbente no mesmo holdout e aplica os gates configurados. Um candidato só é promovido quando todas as evidências e regras passam. Ausência de política, rótulos confiáveis, artefatos ou gates bloqueia o ciclo e mantém o modelo ativo. O CLI e o painel mostram o histórico de promoção, rejeição e rollback; nenhuma aprovação por linha é necessária.
 
-## API Python de revisão
+O comando `finlabel train` continua disponível como backend explícito de fine-tuning, mas não promove um modelo nem substitui o ciclo verificado. `ReviewLog` e artefatos de revisão anteriores permanecem legíveis por compatibilidade histórica; não fazem parte da rotulagem autônoma atual.
 
-```python
-from finlabel import ReviewAction, ReviewLog
-
-log = ReviewLog(".finlabel/review.jsonl")
-log.record(
-    record_id="row-00042",  # use referência opaca, nunca CPF/CNPJ ou dado bruto
-    suggested_label="high",
-    action=ReviewAction.CORRECTED,
-    final_label="medium",
-    model_ref="local-model-name@revision",
-)
-decisions = log.read()
-```
-
-O log não guarda linha, prompt ou notas livres. O MVP é para um processo escritor local; retenção, controle de acesso e compliance normativo não estão implementados.
+O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica adapters e desativa telemetria do trainer. FinLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, memória disponível e protocolo de avaliação. Consulte [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). O smoke real local do Qwen com exemplos sintéticos está em `docs/local-model-inference-2026-10-26.md`; não demonstra desempenho financeiro e o adapter histórico não pode ser promovido pelo ciclo atual.
 
 ## Contrato de previsão local estruturada
 
-Backends autônomos implementam `predict(selected_values, *, task, max_new_tokens)`
+Backends locais implementam `predict(selected_values, *, task, max_new_tokens)`
 e retornam `finlabel.labeling.prediction.Prediction`, um objeto imutável com rótulo,
 justificativa opcional, evidência por classe, método e digest SHA-256 da resposta.
 O mapa de evidência também é imutável. JSON inválido recebe `PredictionError`
@@ -281,9 +227,9 @@ justificativa e não permitem aplicar um rótulo sozinhos. Esse cálculo exige u
 passagem adicional do modelo por classe e pode custar memória/tempo em tarefas
 com muitas classes.
 
-O backend sempre devolve `calibrated_confidence=None` e `calibration_ref=None`.
-O serviço autônomo só pode preencher confiança com um artefato de calibração
-validado para política, tarefa, modelo e método. Sem evidência/calibrador,
-o resultado permanece em quarentena. A construção de `Prediction` rejeita
+O backend Transformers bruto devolve `calibrated_confidence=None` e
+`calibration_ref=None`. O caminho de inferência ativo pode anexar confiança de
+um artefato de calibração validado para política, tarefa, modelo e método. Sem
+essa evidência/calibrador, o resultado permanece em quarentena. A construção de `Prediction` rejeita
 NaN, infinitos, escores booleanos e confiança fora de `[0, 1]`; sua validação
 estrutural não substitui a verificação da origem do calibrador pelo serviço.

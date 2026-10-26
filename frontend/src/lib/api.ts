@@ -4,6 +4,34 @@ export interface Health {
   sources: number
 }
 
+export interface AutonomySource { name: string; kind: string; columns: { name: string; inferred_type: string; mapped_type: string | null }[] }
+export interface AutonomyTask { task_id: string; input_columns: string[]; labels: string[]; model_ref: string; policy_configured: boolean }
+export interface AutonomyRun {
+  run_id: string; task_id: string; source: string; started_at: string; finished_at: string
+  label_run_id: string; label_model_ref: string
+  labels: { applied: number; quarantined: number; reason_counts: Record<string, number> }
+  training: { state: string; reason_codes: string[]; candidate_id: string | null; evaluation_id: string | null
+    promotion_action: string | null; active_model_ref: string | null }
+}
+export interface AutonomyOverview {
+  sources: AutonomySource[]; tasks: AutonomyTask[]; runs: AutonomyRun[]
+  active_models: { task_id: string; model_ref: string | null; candidate_id: string | null }[]
+  training_cycles: { cycle_id: string; task_id: string; state: string; reason_codes: string[]
+    candidate_id: string | null; evaluation_id: string | null; promotion_action: string | null
+    active_model_ref: string | null; created_at: string | null; evaluation: {
+      holdout_count: number; candidate_metrics: Record<string, number>; incumbent_metrics: Record<string, number>
+      same_frozen_holdout: true
+    } | null }[]
+  model_events: { event_id: string; task_id: string; action: string; reason_codes: string[]
+    active_model_ref: string | null; rollback_from: string | null; created_at: string }[]
+}
+export interface AutonomousRunResult {
+  run_id: string; task_id: string; source: string; started_at: string; finished_at: string
+  labeling: { run_id: string; model_ref: string | null; applied_count: number; quarantined_count: number
+    outcome_count: number; reason_counts: Record<string, number> }
+  training: AutonomyRun['training']
+}
+
 export interface SourceColumn {
   name: string
   inferred_type: string
@@ -16,15 +44,6 @@ export interface SourceInfo {
   name: string
   kind: string
   columns: SourceColumn[]
-}
-
-export interface LabelTask {
-  task_id: string
-  instructions: string
-  input_columns: string[]
-  labels: string[]
-  model_ref: string
-  min_examples_per_label: Record<string, number>
 }
 
 export interface TrainingGate { authorized: boolean; missing: string[]; model_id: string | null }
@@ -93,54 +112,6 @@ export function transitionTrainingVersion(body: { action: 'activate' | 'reject' 
   return postJson<{ version: TrainingVersion; active_version: string | null }, typeof body>('/api/train/transition', body)
 }
 
-export interface LabelSuggestion {
-  suggestion_id: string
-  record_id: string
-  input_digest: string
-  suggested_label: string
-  rationale: string | null
-  labels: string[]
-  stale: boolean
-  review_action: 'accepted' | 'corrected' | 'rejected' | 'skipped' | null
-  final_label: string | null
-}
-
-export interface LabelRunSuggestions {
-  run_id: string
-  task_id: string
-  suggestions: LabelSuggestion[]
-  total: number
-  truncated: boolean
-}
-
-export function getLabelTasks() {
-  return request<{ tasks: LabelTask[]; sources: string[] }>('/api/label/tasks')
-}
-
-export function startLabelRun(source: string, task: string) {
-  return request<{ run_id: string; source: string; task: string; suggestions: number; invalid: number }>('/api/label/start', {
-    method: 'POST', body: JSON.stringify({ source, task }),
-  })
-}
-
-export function getLabelSuggestions(runId: string) {
-  return request<LabelRunSuggestions>(`/api/label/suggestions?run_id=${encodeURIComponent(runId)}`)
-}
-
-export function getLabelSuggestionDetail(runId: string, suggestionId: string) {
-  return request<{ fields: Record<string, unknown> | null; stale: boolean }>(`/api/label/suggestion?run_id=${encodeURIComponent(runId)}&suggestion_id=${encodeURIComponent(suggestionId)}`)
-}
-
-export type ReviewAction = 'accepted' | 'corrected' | 'rejected' | 'skipped'
-export function submitLabelReview(body: {
-  run_id: string; suggestion_id: string; record_id: string; input_digest: string
-  idempotency_key: string; action: ReviewAction; final_label?: string
-}) {
-  return request<{ event_id: string; duplicate: boolean }>('/api/label/review', {
-    method: 'POST', body: JSON.stringify(body),
-  })
-}
-
 export interface AnalysisPlan {
   version: number
   metric: { operation: string; column?: string | null; denominator_scope?: string[] | null }
@@ -206,6 +177,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function getHealth(): Promise<Health> {
   return request<Health>('/api/health')
+}
+
+export function getAutonomyOverview(): Promise<AutonomyOverview> {
+  return request('/api/autonomy/overview')
+}
+
+export function runAutonomousCycle(source: string, task: string, idempotencyKey: string): Promise<AutonomousRunResult> {
+  return request('/api/autonomy/run', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify({ source, task }) })
 }
 
 export function getSources(): Promise<{ sources: SourceInfo[] }> {

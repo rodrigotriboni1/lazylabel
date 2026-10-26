@@ -226,6 +226,72 @@ def _write_pipeline_run(workspace_dir: Path, run_id: str, payload: dict) -> Path
     return final_dir / "run.json"
 
 
+def run_autonomous_pipeline(project_path, source_name: str, task_id: str, *, device: str = "auto") -> dict:
+    """Run the same autonomous label-and-train cycle used by the CLI and web panel."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from finlabel.labeling.service import run_labeling
+    from finlabel.labeling.task import load_task, load_task_policy, task_file_path
+    from finlabel.training.autopipeline import run_training_cycle
+
+    config = load_project(project_path)
+    source = open_source(config, source_name)
+    task = load_task(
+        task_file_path(config.workspace_dir, task_id),
+        available_columns=tuple(column.name for column in source.columns()),
+    )
+    policy = load_task_policy(task)
+    backend = None
+    calibrator = None
+    if policy is not None:
+        from finlabel.training.active_model import active_inference
+        backend, calibrator = active_inference(config, task, policy, device=device)
+    run_started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    label_run = run_labeling(
+        source, task, policy, backend, workspace_dir=config.workspace_dir, calibrator=calibrator
+    )
+    label_metadata = _verified_label_run(config.workspace_dir, label_run.run_id)
+    try:
+        cycle = run_training_cycle(config.path, task.task_id)
+        training = {
+            "cycle_id": cycle.cycle_id,
+            "cycle_sha256": hashlib.sha256(Path(cycle.manifest_path).read_bytes()).hexdigest(),
+            "state": cycle.state,
+            "reason_codes": list(cycle.reason_codes),
+            "candidate_id": cycle.candidate_id,
+            "evaluation_id": cycle.evaluation_id,
+            "promotion_action": cycle.promotion_action,
+            "active_model_ref": cycle.active_model_ref,
+        }
+    except Exception as exc:
+        training = {
+            "cycle_id": None,
+            "cycle_sha256": None,
+            "state": "blocked",
+            "reason_codes": ["training_cycle_failed:" + type(exc).__name__],
+            "candidate_id": None,
+            "evaluation_id": None,
+            "promotion_action": None,
+            "active_model_ref": None,
+        }
+    run_id = uuid4().hex
+    payload = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "task_id": task.task_id,
+        "source_name": source_name,
+        "started_at": run_started,
+        "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "label_run_id": label_run.run_id,
+        "label_model_ref": label_metadata["model_ref"],
+        "label_outcomes_sha256": label_metadata["outcomes_sha256"],
+        "training": training,
+    }
+    _write_pipeline_run(config.workspace_dir, run_id, payload)
+    result = _verified_pipeline_run(config.workspace_dir, run_id)
+    return result
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="finlabel")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -297,9 +363,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     label_run = commands.add_parser("label-run", help="show privacy-safe summary of an autonomous labeling run")
     label_run.add_argument("run_id")
     label_run.add_argument("--project", default=".")
-    review = commands.add_parser("review", help="interactively review suggestions in a local run")
-    review.add_argument("run_id")
-    review.add_argument("--project", default=".")
+    model_status = commands.add_parser("model-status", help="show active model and promotion/rollback history")
+    model_status.add_argument("task_id")
+    model_status.add_argument("--project", default=".")
     dataset = commands.add_parser("dataset", help="prepare an explicit local training dataset")
     dataset_commands = dataset.add_subparsers(dest="dataset_command", required=True)
     dataset_prepare = dataset_commands.add_parser("prepare", help="export reviewed examples as JSONL")
@@ -567,67 +633,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "run":
-            from datetime import datetime, timezone
-            from uuid import uuid4
-            from finlabel.labeling.service import run_labeling
-            from finlabel.labeling.task import load_task, load_task_policy, task_file_path
-            from finlabel.training.autopipeline import run_training_cycle
-
-            config = load_project(args.project)
-            source = open_source(config, args.source)
-            task = load_task(
-                task_file_path(config.workspace_dir, args.task),
-                available_columns=tuple(column.name for column in source.columns()),
-            )
-            policy = load_task_policy(task)
-            backend = None
-            calibrator = None
-            if policy is not None:
-                from finlabel.training.active_model import active_inference
-                backend, calibrator = active_inference(config, task, policy, device=args.device)
-            run_started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            label_run = run_labeling(source, task, policy, backend, workspace_dir=config.workspace_dir,
-                                     calibrator=calibrator)
-            label_metadata = _verified_label_run(config.workspace_dir, label_run.run_id)
-            try:
-                cycle = run_training_cycle(config.path, task.task_id)
-                training = {
-                    "cycle_id": cycle.cycle_id,
-                    "cycle_sha256": hashlib.sha256(Path(cycle.manifest_path).read_bytes()).hexdigest(),
-                    "state": cycle.state,
-                    "reason_codes": list(cycle.reason_codes),
-                    "candidate_id": cycle.candidate_id,
-                    "evaluation_id": cycle.evaluation_id,
-                    "promotion_action": cycle.promotion_action,
-                    "active_model_ref": cycle.active_model_ref,
-                }
-            except Exception as exc:
-                # Keep diagnostics privacy-safe; never serialize arbitrary exception text.
-                training = {
-                    "cycle_id": None,
-                    "cycle_sha256": None,
-                    "state": "blocked",
-                    "reason_codes": ["training_cycle_failed:" + type(exc).__name__],
-                    "candidate_id": None,
-                    "evaluation_id": None,
-                    "promotion_action": None,
-                    "active_model_ref": None,
-                }
-            run_id = uuid4().hex
-            payload = {
-                "schema_version": 1,
-                "run_id": run_id,
-                "task_id": task.task_id,
-                "source_name": args.source,
-                "started_at": run_started,
-                "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "label_run_id": label_run.run_id,
-                "label_model_ref": label_metadata["model_ref"],
-                "label_outcomes_sha256": label_metadata["outcomes_sha256"],
-                "training": training,
-            }
-            _write_pipeline_run(config.workspace_dir, run_id, payload)
-            print(json.dumps(_verified_pipeline_run(config.workspace_dir, run_id), ensure_ascii=False, indent=2))
+            result = run_autonomous_pipeline(args.project, args.source, args.task, device=args.device)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "run-status":
             config = load_project(args.project)
@@ -637,47 +644,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             config = load_project(args.project)
             print(json.dumps(_verified_label_run(config.workspace_dir, args.run_id), ensure_ascii=False, indent=2))
             return 0
-        if args.command == "review":
-            from finlabel.labeling.task import load_task, task_file_path, validate_label
-            from finlabel.labeling.suggestions import verify_suggestions_file
-            from finlabel.review import ReviewAction, ReviewLog
+        if args.command == "model-status":
+            from finlabel.training.registry import ModelRegistry
 
             config = load_project(args.project)
-            run_dir = config.workspace_dir / "runs" / args.run_id
-            metadata = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-            verify_suggestions_file(run_dir / "suggestions.jsonl", metadata.get("suggestions_sha256"))
-            source = open_source(config, metadata["source_name"])
-            task = load_task(task_file_path(config.workspace_dir, metadata["task_id"]),
-                             available_columns=tuple(column.name for column in source.columns()))
-            suggestions = [json.loads(line) for line in (run_dir / "suggestions.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-            source_records = iter(source.iter_records(task.input_columns))
-            log = ReviewLog(config.workspace_dir / "review.jsonl")
-            for suggestion in suggestions:
-                record = next(source_records, None)
-                while record is not None and record.record_id != suggestion["record_id"]:
-                    record = next(source_records, None)
-                print(json.dumps({"suggested_label": suggestion["label"], "fields": dict(record.values) if record else None,
-                                  "stale": record is None or record.input_digest != suggestion["input_digest"]}, ensure_ascii=False))
-                action_text = input("accept / edit LABEL / reject / skip> ").strip()
-                if action_text == "skip":
-                    continue
-                if not record or record.input_digest != suggestion["input_digest"]:
-                    print("Source row changed; this suggestion cannot be reviewed.", file=sys.stderr)
-                    continue
-                parts = action_text.split(maxsplit=1)
-                if parts == ["accept"]:
-                    action, final_label = ReviewAction.ACCEPTED, suggestion["label"]
-                elif len(parts) == 2 and parts[0] == "edit":
-                    action, final_label = ReviewAction.CORRECTED, validate_label(task, parts[1])
-                elif parts == ["reject"]:
-                    action, final_label = ReviewAction.REJECTED, None
-                else:
-                    raise ValueError("Review action must be accept, edit LABEL, reject, or skip.")
-                log.record(
-                    suggestion["record_id"], suggestion["label"], action, final_label, suggestion["model_ref"],
-                    run_id=args.run_id, source_name=metadata["source_name"], task_id=task.task_id,
-                    input_digest=suggestion["input_digest"], suggestion_id=suggestion["suggestion_id"],
-                )
+            registry = ModelRegistry(config.workspace_dir)
+            active = registry.active(args.task_id)
+            safe_active = None
+            if active is not None:
+                safe_active = {
+                    key: active.get(key)
+                    for key in ("model_ref", "candidate_id", "evaluation_id", "previous_model_ref", "rollback_from")
+                    if active.get(key) is not None
+                }
+            events = [
+                {
+                    key: event.get(key)
+                    for key in ("event_id", "candidate_id", "evaluation_id", "task_id", "action",
+                                "reason_codes", "previous_model_ref", "active_model_ref", "rollback_from", "created_at")
+                    if event.get(key) is not None
+                }
+                for event in registry.history(args.task_id)
+            ]
+            print(json.dumps({"task_id": args.task_id, "active_model": safe_active, "events": events},
+                             ensure_ascii=False, indent=2))
             return 0
         if args.command == "dataset" and args.dataset_command == "prepare":
             from finlabel.training.dataset import prepare_training_dataset

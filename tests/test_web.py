@@ -72,17 +72,18 @@ class WebPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return self.client.cookies.get("finlabel_csrf")
 
-    def test_home_escapes_metadata_and_does_not_render_source_rows(self):
+    def test_home_serves_react_shell_without_source_metadata_or_rows(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("sales", response.text)
-        self.assertIn("amount", response.text)
+        self.assertIn('/static/app/assets/index.js', response.text)
+        self.assertNotIn("sales", response.text)
+        self.assertNotIn("amount", response.text)
         self.assertNotIn("SECRET_ROW_VALUE", response.text)
         self.assertEqual(response.cookies.get("finlabel_csrf") is not None, True)
         self.assertIn("SameSite=strict", response.headers.get("set-cookie", ""))
 
-    def test_rejects_non_loopback_bind_and_escapes_untrusted_source_names(self):
+    def test_rejects_non_loopback_bind_and_does_not_embed_untrusted_source_names(self):
         with self.assertRaisesRegex(ValueError, "loopback"):
             self.web_app.create_app(self.root, backend_factory=lambda config: None, host="0.0.0.0", port=8765)
         config = load_project(self.root)
@@ -94,7 +95,8 @@ class WebPanelTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("<script>alert(1)</script>", response.text)
-        self.assertIn("&lt;script&gt;", response.text)
+        self.assertNotIn("&lt;script&gt;", response.text)
+        self.assertIn('/static/app/assets/index.js', response.text)
 
     def test_rejects_untrusted_host_origin_missing_csrf_and_oversized_body(self):
         token = self.csrf()
@@ -162,7 +164,7 @@ class WebPanelTests(unittest.TestCase):
         self.assertIn("15", payload["highlights"][0])
         page = self.client.get(payload["analysis_url"])
         self.assertEqual(page.status_code, 200)
-        self.assertIn('sandbox="allow-scripts"', page.text)
+        self.assertIn('/static/app/assets/index.js', page.text)
         saved = self.client.get(f"/api/analyses/{payload['run_id']}")
         self.assertEqual(saved.status_code, 200, saved.text)
         self.assertEqual(saved.json()["valid_row_count"], 2)
@@ -172,90 +174,30 @@ class WebPanelTests(unittest.TestCase):
         self.assertIn("sandbox allow-scripts", chart.headers.get("content-security-policy", ""))
         self.assertFalse(any((self.root / ".finlabel" / "analyses").glob("*/source.csv")))
 
-    def test_web_label_review_and_dataset_prepare_use_shared_local_state(self):
-        config = load_project(self.root)
-        save_task(
-            LabelTask("risk", "Classify financial risk", ("amount",), ("low", "high"), "test-local-model"),
-            config.workspace_dir / "tasks" / "risk.json",
-        )
-        self.backend.responses = ['{"label":"low"}', '{"label":"high"}']
-        token = self.csrf()
-        headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": token}
-
+    def test_web_retires_per_record_label_review_endpoints(self):
+        headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": self.csrf()}
         page = self.client.get("/labeling")
         self.assertEqual(page.status_code, 200)
-        started = self.client.post("/api/label/start", json={"source": "sales", "task": "risk"}, headers=headers)
-        self.assertEqual(started.status_code, 200, started.text)
-        run_id = started.json()["run_id"]
-        suggestions = self.client.get("/api/label/suggestions", params={"run_id": run_id})
-        self.assertEqual(suggestions.status_code, 200)
-        first = suggestions.json()["suggestions"][0]
-        self.assertEqual(first["fields"], {"amount": "10"})
-        self.assertNotIn("SECRET_ROW_VALUE", suggestions.text)
-        self.assertEqual(first["stale"], False)
-
-        review_payload = {
-            "run_id": run_id, "suggestion_id": first["suggestion_id"], "record_id": first["record_id"],
-            "input_digest": first["input_digest"], "idempotency_key": "a" * 32, "action": "accepted",
-        }
-        review = self.client.post("/api/label/review", json=review_payload, headers=headers)
-        self.assertEqual(review.status_code, 200, review.text)
-        duplicate = self.client.post("/api/label/review", json=review_payload, headers=headers)
-        self.assertEqual(duplicate.status_code, 200)
-        self.assertTrue(duplicate.json()["duplicate"])
-        reused_key = dict(review_payload)
-        reused_key.update({key: second_value for key, second_value in {
-            "suggestion_id": suggestions.json()["suggestions"][1]["suggestion_id"],
-            "record_id": suggestions.json()["suggestions"][1]["record_id"],
-            "input_digest": suggestions.json()["suggestions"][1]["input_digest"],
-        }.items()})
-        key_conflict = self.client.post("/api/label/review", json=reused_key, headers=headers)
-        self.assertEqual(key_conflict.status_code, 409)
-        self.assertEqual(len(ReviewLog(config.workspace_dir / "review.jsonl").read()), 1)
-
-        dataset = self.client.post(
-            "/api/dataset/prepare", json={"run_id": run_id, "output_name": "reviewed.jsonl"}, headers=headers,
-        )
-        self.assertEqual(dataset.status_code, 200, dataset.text)
-        self.assertEqual(dataset.json()["rows"], 1)
+        self.assertIn("/static/app/assets/index.js", page.text)
+        start = self.client.post("/api/label/start", json={"source": "sales", "task": "risk"}, headers=headers)
+        self.assertEqual(start.status_code, 410, start.text)
+        review = self.client.post("/api/label/review", json={"action": "accepted"}, headers=headers)
+        self.assertEqual(review.status_code, 410, review.text)
+        config = load_project(self.root)
+        self.assertFalse((config.workspace_dir / "review.jsonl").exists())
         training_page = self.client.get("/training")
         self.assertEqual(training_page.status_code, 200)
-        self.assertIn("reviewed.jsonl", training_page.text)
-        unconfirmed = self.client.post("/api/train/submit", json={
-            "confirmed": False, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
-        }, headers=headers)
-        self.assertEqual(unconfirmed.status_code, 400)
-        gate_rejected = self.client.post("/api/train/submit", json={
-            "confirmed": True, "dataset_name": "reviewed.jsonl", "model_id": "test-local-model",
-        }, headers=headers)
-        self.assertEqual(gate_rejected.status_code, 400)
-        self.assertIn("training gate", gate_rejected.json()["error"])
-        self.assertFalse((config.workspace_dir / "training" / "jobs").exists())
+        self.assertIn("/static/app/assets/index.js", training_page.text)
 
-    def test_web_rejects_tampered_suggestions_before_review(self):
-        config = load_project(self.root)
-        save_task(
-            LabelTask("risk", "Classify financial risk", ("amount",), ("low", "high"), "test-local-model"),
-            config.workspace_dir / "tasks" / "risk.json",
-        )
-        self.backend.responses = ['{"label":"low"}', '{"label":"high"}']
-        self.backend.prompts = []
+    def test_web_does_not_accept_human_review_for_legacy_artifacts(self):
         headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": self.csrf()}
-        started = self.client.post("/api/label/start", json={"source": "sales", "task": "risk"}, headers=headers)
-        self.assertEqual(started.status_code, 200, started.text)
-        run_id = started.json()["run_id"]
-        run_dir = config.workspace_dir / "runs" / run_id
-        suggestion_path = run_dir / "suggestions.jsonl"
-        suggestion_path.write_text(suggestion_path.read_text(encoding="utf-8").replace('"low"', '"high"'), encoding="utf-8")
-
-        listed = self.client.get("/api/label/suggestions", params={"run_id": run_id})
-        self.assertEqual(listed.status_code, 400)
-        review = self.client.post("/api/label/review", json={
-            "run_id": run_id, "suggestion_id": "a" * 32, "record_id": "row-1",
-            "input_digest": "b" * 64, "idempotency_key": "c" * 32, "action": "accepted",
+        response = self.client.post("/api/label/review", json={
+            "run_id": "a" * 32, "suggestion_id": "b" * 32, "record_id": "row-1",
+            "input_digest": "c" * 64, "idempotency_key": "d" * 32, "action": "accepted",
         }, headers=headers)
-        self.assertEqual(review.status_code, 400)
-        self.assertEqual(ReviewLog(config.workspace_dir / "review.jsonl").read(), [])
+        self.assertEqual(response.status_code, 410)
+        config = load_project(self.root)
+        self.assertFalse((config.workspace_dir / "review.jsonl").exists())
 
 
 if __name__ == "__main__":

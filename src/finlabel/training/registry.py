@@ -122,6 +122,13 @@ class ModelRegistry:
     def active(self, task_id):
         return self._read(self.active_path, {}).get(task_id)
 
+    def history(self, task_id=None):
+        """Return validated lifecycle events, optionally scoped to one task."""
+        events = self._read_events()
+        if task_id is None:
+            return events
+        return [event for event in events if event.get("task_id") == task_id]
+
     def candidate(self, candidate_id):
         value = self._read(self.candidates_path, {}).get(candidate_id)
         if value is None:
