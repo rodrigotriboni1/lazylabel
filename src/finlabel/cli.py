@@ -5,14 +5,7 @@ from finlabel.adapters.outbound.persistence.pipeline_runs import (
 )
 
 
-def run_autonomous_pipeline(project_path, source_name, task_id, *, device="auto"):
-    from finlabel.bootstrap.application import build_application
-    return build_application(project_path).pipeline(source_name, task_id, device=device)
-
-
-def main(argv=None, *, application=None):
-    from finlabel.bootstrap.cli import run
-    return run(argv, application=application)
+from finlabel.bootstrap.cli import run as main, run_autonomous_pipeline
 
 
 if __name__ == "__main__":

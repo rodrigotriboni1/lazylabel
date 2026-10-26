@@ -15,3 +15,8 @@ def serve(project, *, host, port):
 
 def run(argv=None, *, application=None):
     return main(argv, application=application, application_factory=build_application, serve=serve)
+
+
+def run_autonomous_pipeline(project_path, source_name, task_id, *, device="auto"):
+    """Compose and execute the historical library-facing pipeline command."""
+    return build_application(project_path).pipeline(source_name, task_id, device=device)

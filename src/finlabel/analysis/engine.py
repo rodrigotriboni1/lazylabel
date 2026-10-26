@@ -1,17 +1,6 @@
-"""Compatibility bridge from legacy sources to the pure analysis engine."""
+"""Compatibility alias preserving the legacy source-analysis interface."""
 
-from finlabel.domain.analysis.engine import (
-    DATE_TYPES, NUMERIC_TYPES, Decimal, asdict_filter, required_fields,
-    run_analysis as calculate_analysis,
-)
-from finlabel.domain.analysis.schema import AnalysisPlan, AnalysisResult
+import sys
+from finlabel.adapters.outbound.sources import analysis as _implementation
 
-
-def run_analysis(source, plan: AnalysisPlan) -> AnalysisResult:
-    profiles = source.columns()
-
-    def records():
-        for record in source.iter_records(required_fields(plan)):
-            yield record.values
-
-    return calculate_analysis(plan, profiles, source.spec.schema, records())
+sys.modules[__name__] = _implementation
