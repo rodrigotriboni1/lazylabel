@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence, Union
 
-from finlabel.labeling.suggestions import parse_suggestion
+from finlabel.domain.labeling.suggestions import parse_suggestion
 from finlabel.labeling.task import load_task, task_file_path
 from finlabel.project import open_source
 from finlabel.review import ReviewAction, ReviewLog

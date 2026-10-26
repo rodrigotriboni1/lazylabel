@@ -15,9 +15,9 @@ from typing import Callable, Optional, Union
 from urllib.parse import urlsplit
 
 from finlabel.analysis.planner import AnalysisClarificationError, plan_analysis
-from finlabel.analysis.schema import plan_from_dict, plan_to_dict
+from finlabel.domain.analysis.schema import plan_from_dict, plan_to_dict
 from finlabel.analysis.service import analyze_source, result_to_dict
-from finlabel.analysis.charts import MAX_CHART_POINTS
+from finlabel.domain.analysis.charts import MAX_CHART_POINTS
 from finlabel.monitor import (
     QualityFinding,
     SchemaBaseline,

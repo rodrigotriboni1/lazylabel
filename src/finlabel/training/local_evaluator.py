@@ -7,11 +7,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from finlabel.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
-from finlabel.labeling.prediction import Prediction, PredictionError
-from finlabel.labeling.service import _rules_match
+from finlabel.domain.labeling.prediction import Prediction, PredictionError
+from finlabel.domain.labeling.decisions import rules_match as _rules_match
 from finlabel.training.backend import _artifact_tree_sha256
-from finlabel.training.evaluation import fit_calibrator, labeling_policy_sha256
-from finlabel.training.task_spec import task_spec_sha256
+from finlabel.training.evaluation import fit_calibrator
+from finlabel.domain.training.evaluation import labeling_policy_sha256
+from finlabel.domain.training.task_spec import task_spec_sha256
+from finlabel.domain.training.metrics import _metrics
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -126,61 +128,6 @@ def _score(rows, backend, task, policy, *, apply_rules=False):
                        else None, "confidence": None, "applied": False})
     return result
 
-def _metrics(scored, calibrator, task, policy, model_ref):
-    abstain = "__finlabel_abstain__"
-    while abstain in task.labels:
-        abstain += "_"
-    confusion = {label: {other: 0 for other in (*task.labels, abstain)} for label in task.labels}
-    confidences, correct = [], []
-    for row in scored:
-        pred, target = row["prediction"], row["target"]
-        if pred is None:
-            confusion[target][abstain] += 1
-            row["applied"] = False
-            row["confidence"] = None
-            continue
-        try:
-            confidence = calibrator.calibrate(pred, task=task, policy=policy, model_ref=model_ref).confidence
-        except Exception:
-            row["prediction"] = None
-            row["reason_code"] = "calibration_error"
-            row["applied"] = False
-            row["confidence"] = None
-            confusion[target][abstain] += 1
-            continue
-        confusion[target][pred.label] += 1
-        confidences.append(confidence)
-        is_correct = float(pred.label == target)
-        correct.append(is_correct)
-        if row["reason_code"] is None and confidence >= policy.min_calibrated_confidence:
-            row["applied"] = True
-            row["reason_code"] = None
-        elif row["reason_code"] is None:
-            row["reason_code"] = "below_threshold"
-        row["confidence"] = confidence
-    total = len(scored)
-    per_label, f1s = {}, []
-    for label in task.labels:
-        tp = confusion[label][label]
-        fp = sum(confusion[truth][label] for truth in task.labels if truth != label)
-        fn = sum(confusion[label][guess] for guess in (*task.labels, abstain) if guess != label)
-        precision = tp / (tp + fp) if tp + fp else 0.0
-        recall = tp / (tp + fn) if tp + fn else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-        per_label[label] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
-        f1s.append(f1)
-    accuracy = sum(correct) / total
-    brier = sum((p - y) ** 2 for p, y in zip(confidences, correct)) / len(correct) if correct else 1.0
-    ece = 0.0
-    for index in range(10):
-        bucket = [(p, y) for p, y in zip(confidences, correct)
-                  if index / 10 <= p < ((index + 1) / 10 if index < 9 else 1.0000001)]
-        if bucket:
-            ece += len(bucket) / len(confidences) * abs(sum(y for _, y in bucket) / len(bucket) -
-                                               sum(p for p, _ in bucket) / len(bucket))
-    coverage = sum(bool(row["applied"]) for row in scored) / total
-    return ({"accuracy": accuracy, "macro_f1": sum(f1s) / len(f1s), "brier_score": brier,
-             "calibration_error": ece if correct else 1.0, "coverage": coverage}, per_label, confusion)
 
 def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumbent_adapter, *,
                        workspace_dir, candidate_id, training_gate_path, training_gate_sha256):

@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterator, Sequence
 
-from finlabel.profile import ColumnProfile
+from finlabel.domain.projects import ColumnProfile
 from finlabel.sources.base import SourceCapabilities, SourceRecord, SourceSpec
 
 

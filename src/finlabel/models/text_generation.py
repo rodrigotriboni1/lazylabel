@@ -3,8 +3,8 @@
 import json
 from typing import Mapping, Optional, Protocol
 
-from finlabel.labeling.prediction import Prediction
-from finlabel.labeling.task import LabelTask
+from finlabel.domain.labeling.prediction import Prediction
+from finlabel.domain.labeling.task import LabelTask
 
 
 # v2 scores the tokenizer's joint prompt+JSON encoding. v1 concatenated two

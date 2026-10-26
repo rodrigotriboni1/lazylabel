@@ -14,7 +14,7 @@ from finlabel.profile import inspect_csv
 from finlabel.project import init_project, load_project, open_source, save_project
 from finlabel.sources.base import ProjectConfig, SourceSpec
 from finlabel.monitor import capture_schema, load_schema_baseline, monitor_source, save_schema_baseline
-from finlabel.analysis.schema import plan_from_dict
+from finlabel.domain.analysis.schema import plan_from_dict
 from finlabel.analysis.service import analyze_source
 
 
@@ -29,7 +29,7 @@ def _canonical_digest(payload: dict) -> str:
 
 def _verified_label_run(workspace_dir: Path, run_id: str) -> dict:
     """Verify an autonomous run artifact and return aggregate metadata only."""
-    from finlabel.labeling.outcomes import LabelOutcome
+    from finlabel.domain.labeling.outcomes import LabelOutcome
 
     if not isinstance(run_id, str) or not _LABEL_RUN_ID.fullmatch(run_id):
         raise ValueError("run_id must be a 32-character lowercase hexadecimal identifier.")

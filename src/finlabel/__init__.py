@@ -1,6 +1,7 @@
 """Local-first financial data labeling tools."""
 
-from finlabel.profile import ColumnProfile, DatasetProfile, inspect_csv
+from finlabel.domain.projects import ColumnProfile, DatasetProfile
+from finlabel.profile import inspect_csv
 from finlabel.project import init_project, load_project, save_project
 from finlabel.review import ReviewAction, ReviewDecision, ReviewLog
 from finlabel.sources.base import DataSource, ProjectConfig, SourceCapabilities, SourceRecord, SourceSpec

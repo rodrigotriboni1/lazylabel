@@ -2,14 +2,18 @@ import hashlib
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from finlabel.labeling.policy import LabelingPolicy
 from finlabel.labeling.prediction import Prediction, PredictionError
-from finlabel.labeling.task import LabelTask
+from finlabel.labeling.task import LabelTask, save_task
+from finlabel.training.backend import _artifact_tree_sha256
 from finlabel.training.dataset import prepare_trusted_dataset
+from finlabel.training.evaluation import CalibrationArtifact, fit_calibrator, labeling_policy_sha256
 from finlabel.training.local_evaluator import _metrics, _read_partition, _score
-from finlabel.training.registry import PromotionPolicy, _derive_holdout_metrics, _promotion_reasons, _validate_holdout_row_binding
+from finlabel.training.registry import ModelRegistry, PromotionPolicy, _derive_holdout_metrics, _digest, _promotion_reasons, _validate_holdout_row_binding
+from finlabel.training.task_spec import task_spec_sha256
 from finlabel.training.trusted_labels import TrustedLabelBatch, TrustedLabelRecord
 from finlabel.models.text_generation import RAW_SCORE_METHOD
 
@@ -138,6 +142,148 @@ class LocalEvaluatorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "incumbent_holdout_rows_do_not_match"):
                 _validate_holdout_row_binding(manifest.manifest_path, manifest.manifest_sha256, len(rows),
                     self.task, self.task.labels, rows, reordered)
+
+    def _verified_promotion_artifacts(self, root):
+        """Persist real task, frozen rows, fitted calibrators and evaluator evidence."""
+        self.policy = replace(self.policy, rules=({"field": "amount", "operator": "not_empty"},))
+        policy_path = root / "risk-policy.json"
+        policy_path.write_text(json.dumps({
+            "policy_id": self.policy.policy_id, "task_id": self.policy.task_id,
+            "allowed_labels": list(self.policy.allowed_labels), "rules_version": self.policy.rules_version,
+            "calibration_ref": self.policy.calibration_ref,
+            "min_calibrated_confidence": self.policy.min_calibrated_confidence,
+            "max_staleness_seconds": self.policy.max_staleness_seconds,
+            "rules": [dict(rule) for rule in self.policy.rules],
+        }), encoding="utf-8")
+        task = replace(self.task, policy_path=str(policy_path))
+        task_path = save_task(task, root / "risk.json")
+        records = []
+        for index in range(28):
+            features = {"amount": index}
+            records.append(TrustedLabelRecord(_digest(index), features,
+                "low" if index < 14 else "high", _digest(features)))
+        batch = TrustedLabelBatch("labels", task.task_id, "advisor-ground-truth", "provided_ground_truth",
+                                  task.input_columns, "class", records, "a" * 64)
+        manifest = prepare_trusted_dataset(batch, task, workspace_dir=root)
+        raw, holdout, holdout_rows = _read_partition(manifest, "holdout")
+        _, _, calibration_rows = _read_partition(manifest, "calibration")
+        registry = ModelRegistry(root)
+        adapter = registry.root / "adapters" / "candidate"
+        adapter.mkdir(parents=True)
+        (adapter / "adapter_model.safetensors").write_bytes(b"local candidate weights")
+        adapter_digest = _artifact_tree_sha256(adapter)
+        candidate_ref = task.model_id + "+peft:" + adapter_digest
+        gate_path = root / "training-gate.json"
+        gate_path.write_text("{}", encoding="utf-8")
+        gate_digest = hashlib.sha256(gate_path.read_bytes()).hexdigest()
+        gates = PromotionPolicy("risk", "v1", {"accuracy": 0.5}, 0.5,
+            {"low": 0.1, "high": 0.1}, 0.2, {"accuracy": 0.2}, 2)
+        models = []
+        for role, model_ref in (("candidate", candidate_ref), ("incumbent", task.model_id)):
+            predictions = []
+            labels = {}
+            for index, (ref, _, _, target) in enumerate(calibration_rows):
+                correct = index % 2 == 0
+                predicted = target if correct else next(label for label in task.labels if label != target)
+                top = (-0.1 if correct else -4.0) + index * 0.001
+                scores = {label: top if label == predicted else top - 1 for label in task.labels}
+                predictions.append({"record_ref": ref, "prediction": Prediction(
+                    predicted, None, scores, None, None, RAW_SCORE_METHOD, ref)})
+                labels[ref] = target
+            fitted = fit_calibrator(predictions, labels, method=RAW_SCORE_METHOD,
+                dataset_manifest=manifest, task=task, policy=self.policy,
+                model_ref=model_ref, calibration_ref=self.policy.calibration_ref)
+            calibrator_path = fitted.save(registry.root / "calibrators" / (role + ".json"))
+            scored = [{"record_ref": ref, "input_digest": input_digest, "target": target,
+                "prediction": _prediction(target), "confidence": None, "applied": False, "reason_code": None}
+                for ref, input_digest, _, target in holdout_rows]
+            metrics, per_label, confusion = _metrics(scored, fitted, task, self.policy, model_ref)
+            evidence = [{**row, "prediction": row["prediction"].label,
+                         "scores": dict(row["prediction"].confidence_evidence)} for row in scored]
+            models.append({"role": role, "model_ref": model_ref, "adapter_sha256": adapter_digest,
+                "calibrator_path": str(calibrator_path),
+                "calibrator_sha256": hashlib.sha256(calibrator_path.read_bytes()).hexdigest(),
+                "metrics": metrics, "per_label": per_label, "confusion": confusion,
+                "holdout_records": evidence, "holdout_scores_sha256": _digest(evidence)})
+        candidate = registry.create_candidate("candidate", {
+            "task_id": task.task_id, "model_ref": candidate_ref,
+            "incumbent_model_ref": task.model_id, "expected_active_model_ref": task.model_id,
+            "task_path": str(task_path), "trusted_manifest_path": str(manifest.manifest_path),
+            "task_labels": list(task.labels), "labeling_policy_min_confidence": self.policy.min_calibrated_confidence,
+            "labeling_policy_sha256": labeling_policy_sha256(self.policy),
+            "training_gate_path": str(gate_path), "training_gate_sha256": gate_digest,
+        })
+        registry.transition(candidate["candidate_id"], "training")
+        registry.transition(candidate["candidate_id"], "evaluated")
+        result = {"schema_version": 1, "evaluation_id": "verified-evaluation",
+            "evaluator": "finlabel-local-transformers-peft-v1", "score_method": RAW_SCORE_METHOD,
+            "task_id": task.task_id, "task_spec_sha256": task_spec_sha256(task),
+            "policy_id": self.policy.policy_id, "policy_sha256": gates.policy_sha256,
+            "labeling_policy_sha256": labeling_policy_sha256(self.policy),
+            "candidate_id": candidate["candidate_id"], "candidate_model_ref": candidate_ref,
+            "incumbent_model_ref": task.model_id, "candidate_adapter_path": str(adapter),
+            "candidate_calibrator_path": models[0]["calibrator_path"], "models": models,
+            "same_frozen_holdout": True, "holdout_count": len(holdout_rows),
+            "dataset_manifest_sha256": manifest.manifest_sha256,
+            "holdout_sha256": holdout["sha256"], "holdout_dataset_sha256": holdout["dataset_sha256"],
+            "training_gate_sha256": gate_digest,
+            "trusted_label_provenance": {field: raw[field] for field in (
+                "source_name", "provenance_id", "trust_kind", "snapshot_sha256")},
+            "candidate_metrics": models[0]["metrics"], "incumbent_metrics": models[1]["metrics"],
+            "candidate_per_label": {label: values["f1"] for label, values in models[0]["per_label"].items()},
+            "incumbent_per_label": {label: values["f1"] for label, values in models[1]["per_label"].items()},
+            "coverage": models[0]["metrics"]["coverage"],
+            "calibration_error": models[0]["metrics"]["calibration_error"]}
+        return registry, result, gates
+
+    def _persist_evaluation(self, registry, result):
+        unsigned = {key: value for key, value in result.items() if key != "evaluation_sha256"}
+        result["evaluation_sha256"] = _digest(unsigned)
+        path = registry.root / "evaluations" / (result["evaluation_id"] + ".json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(result), encoding="utf-8")
+
+    def test_verified_candidate_reaches_promotion_decision_with_labeling_policy_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            registry, result, gates = self._verified_promotion_artifacts(Path(temporary))
+            self._persist_evaluation(registry, result)
+            event = registry.promote_if_eligible(result["candidate_id"], result["evaluation_id"], gates)
+            self.assertEqual(event.action, "promote", event.reason_codes)
+            self.assertEqual(event.reason_codes, ())
+            self.assertEqual(registry.active("risk")["model_ref"], result["candidate_model_ref"])
+            self.assertEqual(registry.candidate(result["candidate_id"])["status"], "promoted")
+            self.assertEqual([row["action"] for row in registry.history("risk")], ["promote"])
+
+    def test_calibrator_for_another_labeling_policy_is_rejected_with_verified_hashes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            registry, result, gates = self._verified_promotion_artifacts(Path(temporary))
+            model = result["models"][0]
+            path = Path(model["calibrator_path"])
+            artifact = replace(CalibrationArtifact.load(path), policy_id="other-labeling-policy")
+            path.unlink()
+            artifact.save(path)
+            model["calibrator_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            self._persist_evaluation(registry, result)
+            event = registry.promote_if_eligible(result["candidate_id"], result["evaluation_id"], gates)
+            self.assertEqual(event.action, "reject")
+            self.assertIn("holdout_metric_evidence_invalid", event.reason_codes)
+            self.assertIn("candidate_model_or_calibrator_artifact_mismatch", event.reason_codes)
+            self.assertIsNone(registry.active("risk"))
+            self.assertEqual(registry.candidate(result["candidate_id"])["status"], "rejected")
+            self.assertEqual([row["action"] for row in registry.history("risk")], ["reject"])
+
+    def test_missing_labeling_policy_rejects_verified_candidate_without_pointer_change(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            registry, result, gates = self._verified_promotion_artifacts(root)
+            (root / "risk-policy.json").unlink()
+            self._persist_evaluation(registry, result)
+            event = registry.promote_if_eligible(result["candidate_id"], result["evaluation_id"], gates)
+            self.assertEqual(event.action, "reject")
+            self.assertIn("holdout_metric_evidence_invalid", event.reason_codes)
+            self.assertIn("candidate_model_or_calibrator_artifact_mismatch", event.reason_codes)
+            self.assertIsNone(registry.active("risk"))
+            self.assertEqual([row["action"] for row in registry.history("risk")], ["reject"])
 
 
 if __name__ == "__main__":

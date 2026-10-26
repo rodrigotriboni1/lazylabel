@@ -11,9 +11,9 @@ from typing import Optional, Sequence, Union
 from uuid import uuid4
 
 from finlabel.analysis.charts import render_chart
-from finlabel.analysis.engine import run_analysis
+from finlabel.domain.analysis import required_fields, run_analysis
 from finlabel.analysis.planner import HighlightRef, plan_analysis, plan_highlights, render_highlight
-from finlabel.analysis.schema import AnalysisPlan, AnalysisResult, plan_to_dict, validate_analysis_plan
+from finlabel.domain.analysis.schema import AnalysisPlan, AnalysisResult, plan_to_dict, validate_analysis_plan
 from finlabel.models.text_generation import TextGenerationBackend
 
 PathLike = Union[str, Path]
@@ -79,7 +79,12 @@ def analyze_source(
         plan = plan_analysis(question, source.columns(), backend)
     else:
         plan = validate_analysis_plan(plan_override, source.columns())
-    result = run_analysis(source, plan)
+
+    def records():
+        for record in source.iter_records(required_fields(plan)):
+            yield record.values
+
+    result = run_analysis(plan, source.columns(), source.spec.schema, records())
     highlights = plan_highlights(question, result, backend) if backend is not None and result.rows else ()
     rendered = tuple(render_highlight(result, item) for item in highlights)
     chart_html = render_chart(result)

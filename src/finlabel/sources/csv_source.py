@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from typing import Iterator, Sequence
 
-from finlabel.profile import ColumnProfile, inspect_csv
+from finlabel.domain.projects import ColumnProfile
+from finlabel.profile import inspect_csv
 from finlabel.sources.base import SourceCapabilities, SourceRecord, SourceSpec
 
 

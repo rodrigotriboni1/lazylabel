@@ -3,13 +3,12 @@
 import json
 import hashlib
 import re
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from uuid import uuid4
 
-from finlabel.labeling.prediction import Prediction, PredictionError
+from finlabel.domain.labeling.prediction import Prediction, PredictionError
+from finlabel.domain.labeling.suggestions import LabelSuggestion, parse_suggestion
 
 
 _RUN_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -31,23 +30,6 @@ def verify_suggestions_file(path: Path, expected_sha256: str) -> None:
 
 
 @dataclass(frozen=True)
-class LabelSuggestion:
-    suggestion_id: str
-    run_id: str
-    source_name: str
-    record_id: str
-    input_digest: str
-    task_id: str
-    label: str
-    rationale: Optional[str]
-    model_ref: str
-    created_at: str
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
 class LabelRun:
     run_id: str
     source_name: str
@@ -56,25 +38,6 @@ class LabelRun:
     suggestion_path: Path
     row_count: int
     invalid_count: int
-
-
-def parse_suggestion(raw: str, *, valid_labels) -> tuple:
-    try:
-        payload = json.loads(raw)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise PredictionError("Model output is not valid JSON.") from exc
-    if not isinstance(payload, dict) or set(payload) - {"label", "rationale"}:
-        raise PredictionError("Model output must contain only label and optional rationale fields.")
-    label = payload.get("label")
-    if not isinstance(label, str):
-        raise PredictionError("Model output requires a string label.")
-    if label not in valid_labels:
-        raise PredictionError("Model output contains a label outside the configured task labels.",
-                              reason_code="unknown_label")
-    rationale = payload.get("rationale")
-    if rationale is not None and (not isinstance(rationale, str) or len(rationale) > 1000):
-        raise PredictionError("Model rationale must be a string of at most 1000 characters.")
-    return label, rationale
 
 
 def parse_prediction(raw: str, *, valid_labels, confidence_evidence=None,
