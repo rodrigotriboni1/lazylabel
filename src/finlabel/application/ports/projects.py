@@ -12,6 +12,14 @@ class ProjectDescriptor:
     source_names: Sequence[str]
 
 
+@dataclass(frozen=True)
+class ProjectMetadata:
+    """Application-visible project identity and available source names."""
+
+    name: str
+    source_names: Sequence[str]
+
+
 class ProjectLookup(Protocol):
     """Look up a local project through an injected persistence adapter."""
 

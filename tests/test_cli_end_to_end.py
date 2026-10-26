@@ -9,6 +9,7 @@ from pathlib import Path
 
 from finlabel.analysis.schema import AnalysisPlan, MetricSpec, TimeAxis, plan_to_dict
 from finlabel.cli import main
+from finlabel.adapters.inbound.cli.commands import main as inbound_cli_main
 from finlabel.project import init_project, load_project, save_project
 from finlabel.sources.base import SourceSpec
 
@@ -190,3 +191,17 @@ class AutonomousCliEndToEndTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServeCliTests(unittest.TestCase):
+    def test_serve_calls_injected_server_with_project_host_and_port(self):
+        calls = []
+
+        status = inbound_cli_main(
+            ["serve", "--project", "./demo-project", "--host", "127.0.0.1", "--port", "9123"],
+            application_factory=lambda _project: object(),
+            serve=lambda project, **options: calls.append((project, options)),
+        )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, [("./demo-project", {"host": "127.0.0.1", "port": 9123})])

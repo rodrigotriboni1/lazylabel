@@ -24,6 +24,18 @@ class CsvSource:
         self.path = Path(spec.path).expanduser()
 
     @property
+    def name(self):
+        return self.spec.name
+
+    @property
+    def kind(self):
+        return self.spec.kind
+
+    @property
+    def schema(self):
+        return self.spec.schema
+
+    @property
     def explicit_types(self):
         return self.spec.schema
 
