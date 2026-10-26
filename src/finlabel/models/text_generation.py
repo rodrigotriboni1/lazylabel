@@ -12,6 +12,15 @@ from finlabel.labeling.task import LabelTask
 RAW_SCORE_METHOD = "label_json_mean_log_likelihood_v2"
 
 
+def render_model_prompt(prompt: str, tokenizer) -> str:
+    """Use the model's chat template, or preserve plain text for base models without one."""
+    if getattr(tokenizer, "chat_template", None):
+        return tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}], tokenize=False, add_generation_prompt=True
+        )
+    return prompt
+
+
 class TextGenerationBackend(Protocol):
     def generate(self, prompt: str, *, max_new_tokens: int) -> str: ...
 
@@ -23,7 +32,8 @@ class PredictionBackend(Protocol):
 
 class TransformersTextGenerationBackend:
     def __init__(self, model_id: str, revision: Optional[str] = None, device: str = "auto",
-                 adapter_path: Optional[str] = None, model_ref: Optional[str] = None):
+                 adapter_path: Optional[str] = None, model_ref: Optional[str] = None,
+                 generation_config: Optional[Mapping] = None):
         if not model_id or not model_id.strip():
             raise ValueError("model_id must be a non-empty local model reference.")
         self.model_id = model_id
@@ -31,6 +41,7 @@ class TransformersTextGenerationBackend:
         self.device = device
         self.adapter_path = adapter_path
         self.model_ref = model_ref or ("{}@{}".format(model_id, revision) if revision else model_id)
+        self.generation_config = dict(generation_config) if generation_config is not None else None
         self._model = None
         self._tokenizer = None
 
@@ -45,7 +56,12 @@ class TransformersTextGenerationBackend:
         if self.device == "auto":
             kwargs["device_map"] = "auto"
             kwargs["torch_dtype"] = "auto"
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, **kwargs)
+        if self.adapter_path:
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.adapter_path, trust_remote_code=False, local_files_only=True
+            )
+        else:
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, **kwargs)
         self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
         if self.adapter_path:
             try:
@@ -62,12 +78,11 @@ class TransformersTextGenerationBackend:
             raise ValueError("prompt must be a non-empty string.")
         if max_new_tokens < 1 or max_new_tokens > 8192:
             raise ValueError("max_new_tokens must be between 1 and 8192.")
+        if self.generation_config is not None and max_new_tokens != self.generation_config.get("max_new_tokens"):
+            raise ValueError("Requested generation length does not match the verified model metadata.")
         self._load()
         if getattr(self._tokenizer, "chat_template", None):
-            prompt = self._tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}], tokenize=False,
-                add_generation_prompt=True,
-            )
+            prompt = render_model_prompt(prompt, self._tokenizer)
             inputs = self._tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
         else:
             inputs = self._tokenizer(prompt, return_tensors="pt")
@@ -91,10 +106,7 @@ class TransformersTextGenerationBackend:
 
         has_template = bool(getattr(self._tokenizer, "chat_template", None))
         if has_template:
-            prompt = self._tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}], tokenize=False,
-                add_generation_prompt=True,
-            )
+            prompt = render_model_prompt(prompt, self._tokenizer)
         boundary = len(prompt)
         scores = {}
         with torch.inference_mode():

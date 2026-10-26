@@ -2,9 +2,10 @@
 import json
 from pathlib import Path
 
-from finlabel.models.text_generation import TransformersTextGenerationBackend
+from finlabel.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
 from finlabel.training.backend import _artifact_tree_sha256
-from finlabel.training.evaluation import CalibrationArtifact
+from finlabel.training.evaluation import CalibrationArtifact, labeling_policy_sha256
+from finlabel.training.task_spec import task_spec_sha256
 
 
 def active_inference(project, task, policy, *, device="auto"):
@@ -34,10 +35,21 @@ def active_inference(project, task, policy, *, device="auto"):
             or metadata.get("adapter_artifacts_sha256") != adapter_digest
             or active.get("model_ref") != "{}+peft:{}".format(base_ref, adapter_digest)):
         raise ValueError("active_adapter_digest_or_base_model_mismatch")
+    generation = metadata.get("generation")
+    if (not isinstance(generation, dict) or generation.get("do_sample") is not False
+            or generation.get("max_new_tokens") != 256
+            or generation.get("raw_score_method") != RAW_SCORE_METHOD):
+        raise ValueError("active_adapter_generation_contract_mismatch")
     calibrator = CalibrationArtifact.load(calibrator_path)
     model_ref = active.get("model_ref")
-    if calibrator.model_ref != model_ref or calibrator.task_id != task.task_id:
+    if (calibrator.model_ref != model_ref or calibrator.task_id != task.task_id
+            or calibrator.task_spec_sha256 != task_spec_sha256(task)
+            or tuple(calibrator.labels) != tuple(task.labels)
+            or calibrator.policy_id != policy.policy_id
+            or calibrator.calibration_ref != policy.calibration_ref
+            or calibrator.source_hashes.get("labeling_policy_sha256") != labeling_policy_sha256(policy)):
         raise ValueError("active_adapter_calibrator_identity_mismatch")
     backend = TransformersTextGenerationBackend(task.model_id, task.model_revision, device,
-                                                 adapter_path=str(adapter), model_ref=model_ref)
+                                                 adapter_path=str(adapter), model_ref=model_ref,
+                                                 generation_config=generation)
     return backend, calibrator
