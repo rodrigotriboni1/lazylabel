@@ -419,6 +419,7 @@ def create_app(
             "chart_url": "/analysis/{}/chart".format(run.run_id),
             "rows": payload["rows"][:MAX_PAGE_ROWS],
             "total_rows": len(payload["rows"]),
+            "valid_row_count": payload["valid_row_count"],
             "highlights": [item["text"] for item in payload["highlights"]],
             "plan": payload["plan"],
             "formula_metadata": payload["formula_metadata"],
@@ -630,6 +631,35 @@ def create_app(
             name="analysis.html",
             context={"run_id": run_id, "result": result, "max_page_rows": MAX_PAGE_ROWS},
         )
+
+    @app.get("/api/analyses/{run_id}")
+    async def analysis_result(run_id: str):
+        if not RUN_ID_PATTERN.fullmatch(run_id):
+            return JSONResponse({"error": "Analysis run not found."}, status_code=404)
+        config = load_project(project_path)
+        result_path = config.workspace_dir / "analyses" / run_id / "result.json"
+        if not result_path.is_file():
+            return JSONResponse({"error": "Analysis run not found."}, status_code=404)
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return JSONResponse({"error": "Analysis result is unavailable."}, status_code=404)
+        rows = payload.get("rows")
+        if not isinstance(rows, list) or len(rows) > MAX_CHART_POINTS:
+            return JSONResponse({"error": "Analysis result is unavailable."}, status_code=404)
+        response_payload = {
+            "run_id": run_id,
+            "rows": rows[:MAX_PAGE_ROWS],
+            "total_rows": len(rows),
+            "valid_row_count": payload.get("valid_row_count", 0),
+            "highlights": [item.get("text", "") for item in payload.get("highlights", []) if isinstance(item, dict)],
+            "plan": payload.get("plan", {}),
+            "formula_metadata": payload.get("formula_metadata", {}),
+            "invalid_value_counts": payload.get("invalid_value_counts", {}),
+        }
+        if len(json.dumps(response_payload, ensure_ascii=False).encode("utf-8")) > MAX_API_RESPONSE_BYTES:
+            return JSONResponse({"error": "Analysis result exceeds the local web response limit."}, status_code=422)
+        return JSONResponse(response_payload)
 
     @app.get("/analysis/{run_id}/chart")
     async def chart_file(run_id: str):
