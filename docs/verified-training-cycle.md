@@ -52,6 +52,14 @@ Coverage is the fraction of holdout rows actually applied after task rules, succ
 
 The promoted active pointer stores the adapter reference and its matching calibrator path. The next label or run command loads that adapter over the task's exact base model. The current run labels first and trains second, so a promotion affects subsequent runs.
 
+## Post-promotion health rollback
+
+`evaluate_post_promotion_health(project, task_id, health_evaluation)` passes a privacy-minimized local report to the same locked registry used for promotion. The report must bind the current active model and promotion evaluation, the exact previous promoted model, the currently configured promotion-policy digest, and the current explicitly registered trusted-label snapshot. Its row evidence contains only opaque `record_ref`, selected-input digest, trusted target, predicted label or abstention, score map, calibrated confidence, application flag, and fixed reason code. Each row is checked against a freshly loaded trusted source; duplicate, unknown, stale, or changed rows fail closed. The registry recomputes accuracy, macro-F1, Brier score, calibration error, and coverage from the row evidence and uses the configured `rollback_monitor_limits` only. Accuracy, macro-F1, and coverage violate a limit below it; Brier score and calibration error violate a limit above it. A healthy report leaves the active pointer and event journal unchanged.
+
+An unhealthy report is saved under `.finlabel/models/health-evaluations/<evaluation-id>.json`. Under the registry file lock, FinLabel verifies the active promotion event and both candidate and previous model artifacts, appends one hash-bound rollback event, then atomically replaces the active pointer with the previous model's verified adapter and calibrator. Registry recovery replays this event and verifies the saved health-evaluation hash. Replaying the same health evaluation fails with `rollback_already_applied`; it does not add another event. A first promoted model without an earlier promoted version has no rollback target and fails closed.
+
+This evidence is verified inside the local workspace trust boundary. Hashes detect accidental or uncoordinated edits and make journal replay deterministic, but they do not prove who ran the evaluator or prevent a workspace owner from rewriting evidence and recomputing hashes. The rollback interface does not claim an external cryptographic evaluator attestation.
+
 ## Manual validation boundary
 
 compileall and git diff --check validate source syntax and patch formatting. No weights were downloaded and no real trusted dataset was evaluated as part of this implementation. Promotion evidence is therefore not claimed until a project runs the configured local cycle.

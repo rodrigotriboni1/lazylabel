@@ -14,6 +14,7 @@ from typing import Mapping, Optional, Sequence
 
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
+_EVALUATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 def _digest(value):
@@ -209,6 +210,9 @@ class ModelRegistry:
                            else ("candidate_id", "evaluation_id") + (("active_model_ref",) if action == "promote" else ()))
         if any(not isinstance(event.get(key), str) or not event[key] for key in identity_fields):
             raise ValueError("Registry journal model or candidate identity is malformed.")
+        if any(_EVALUATION_ID.fullmatch(event[key]) is None
+               for key in ("task_id", "candidate_id", "evaluation_id")):
+            raise ValueError("Registry journal contains an unsafe task or evaluation identity.")
         if action != "rollback" and event.get("previous_model_ref") is not None and not isinstance(event["previous_model_ref"], str):
             raise ValueError("Registry journal previous model reference is malformed.")
         if action == "reject" and event.get("active_model_ref") is not None and not isinstance(event["active_model_ref"], str):
@@ -260,7 +264,8 @@ class ModelRegistry:
         active = self._read(self.active_path, {})
         candidates = self._read(self.candidates_path, {})
         changed_active = changed_candidates = False
-        for event in self._read_events():
+        events = self._read_events()
+        for event_index, event in enumerate(events):
             if event.get("action") == "promote":
                 evaluation_path = self.root / "evaluations" / (event["evaluation_id"] + ".json")
                 evaluation_bytes = evaluation_path.read_bytes()
@@ -280,8 +285,25 @@ class ModelRegistry:
             elif event.get("action") == "reject" and event.get("candidate_id") in candidates:
                 candidates[event["candidate_id"]].update(status="rejected", decision_event_id=event["event_id"], rejection_reasons=event.get("reason_codes", [])); changed_candidates = True
             elif event.get("action") == "rollback":
-                active[event["task_id"]] = {"model_ref": event["active_model_ref"], "previous_model_ref": None,
-                    "rollback_from": event["rollback_from"], "health_sha256": event["health_sha256"]}; changed_active = True
+                health_path = self.root / "health-evaluations" / (event["evaluation_id"] + ".json")
+                health_bytes = health_path.read_bytes()
+                if hashlib.sha256(health_bytes).hexdigest() != event["health_sha256"]:
+                    raise ValueError("Registry rollback health evidence changed after commit.")
+                health = json.loads(health_bytes.decode("utf-8"))
+                if (health.get("evaluation_id") != event["evaluation_id"]
+                        or health.get("task_id") != event["task_id"]
+                        or health.get("active_model_ref") != event["rollback_from"]
+                        or health.get("previous_model_ref") != event["active_model_ref"]):
+                    raise ValueError("Registry rollback evidence does not match its journal event.")
+                prior_promotions = [row for row in events[:event_index]
+                                    if row.get("action") == "promote" and row.get("task_id") == event["task_id"]]
+                target_event = self._promotion_for_model(event["task_id"], event["active_model_ref"],
+                                                         prior_promotions)
+                restored = self._pointer_from_promotion(target_event)
+                restored.update({"rollback_from": event["rollback_from"],
+                                 "health_sha256": event["health_sha256"]})
+                active[event["task_id"]] = restored
+                changed_active = True
         if changed_active: self._write_atomic(self.active_path, active)
         if changed_candidates: self._write_atomic(self.candidates_path, candidates)
 
@@ -351,7 +373,221 @@ class ModelRegistry:
         return self._repair_and_read_events()
 
     def rollback_if_unhealthy(self, task_id, health_evaluation):
-        raise ValueError("trusted_health_evaluator_attestation_unavailable")
+        with self._locked():
+            self._recover_unlocked()
+            return self._rollback_if_unhealthy_locked(task_id, health_evaluation)
+
+    def _rollback_if_unhealthy_locked(self, task_id, health_evaluation):
+        if not isinstance(task_id, str) or not task_id:
+            raise ValueError("health_evaluation_identity_mismatch")
+        if _EVALUATION_ID.fullmatch(task_id) is None:
+            raise ValueError("health_evaluation_identity_mismatch")
+        if not isinstance(health_evaluation, Mapping):
+            raise ValueError("health_evaluation_schema_invalid")
+        fields = {"schema_version", "evaluation_id", "task_id", "active_model_ref", "previous_model_ref",
+                  "promotion_evaluation_id", "policy_sha256", "trusted_snapshot_sha256", "evaluated_count",
+                  "row_evidence", "metrics", "health_sha256"}
+        if (set(health_evaluation) != fields or isinstance(health_evaluation.get("schema_version"), bool)
+                or health_evaluation.get("schema_version") != 1):
+            raise ValueError("health_evaluation_schema_invalid")
+        evaluation_id = health_evaluation.get("evaluation_id")
+        if not isinstance(evaluation_id, str) or _EVALUATION_ID.fullmatch(evaluation_id) is None:
+            raise ValueError("health_evaluation_schema_invalid")
+        health_payload = {key: value for key, value in health_evaluation.items() if key != "health_sha256"}
+        expected_health_digest = _digest(health_payload)
+        if health_evaluation.get("health_sha256") != expected_health_digest:
+            raise ValueError("health_evaluation_integrity_mismatch")
+
+        events = self._read_events()
+        if any(row.get("action") == "rollback" and row.get("evaluation_id") == evaluation_id
+               for row in events):
+            raise ValueError("rollback_already_applied")
+        active = self.active(task_id)
+        if active is None:
+            raise ValueError("active_model_missing")
+        if (health_evaluation.get("task_id") != task_id
+                or health_evaluation.get("active_model_ref") != active.get("model_ref")
+                or health_evaluation.get("previous_model_ref") != active.get("previous_model_ref")
+                or health_evaluation.get("promotion_evaluation_id") != active.get("evaluation_id")):
+            raise ValueError("health_evaluation_identity_mismatch")
+        previous_ref = active.get("previous_model_ref")
+        if not isinstance(previous_ref, str) or not previous_ref:
+            raise ValueError("rollback_target_missing")
+
+        policy_path = self.root / "promotion-policies" / (task_id + ".json")
+        policy = PromotionPolicy.load(policy_path, task_id=task_id)
+        if health_evaluation.get("policy_sha256") != policy.policy_sha256:
+            raise ValueError("health_evaluation_identity_mismatch")
+
+        try:
+            from finlabel.project import load_project
+            from finlabel.labeling.task import load_task, load_task_policy, task_file_path
+            from finlabel.training.trusted_labels import load_trusted_labels
+            project = load_project(self.root.parent / "project.json")
+            task = load_task(task_file_path(project.workspace_dir, task_id))
+            labeling_policy = load_task_policy(task)
+            trusted_batch = load_trusted_labels(project, task)
+        except Exception as exc:
+            raise ValueError("trusted_labels_unavailable_or_stale") from exc
+        if (labeling_policy is None or trusted_batch.task_id != task_id
+                or trusted_batch.trust_kind not in {"provided_ground_truth", "validated_rule"}
+                or not isinstance(trusted_batch.snapshot_sha256, str)
+                or not _SHA.fullmatch(trusted_batch.snapshot_sha256)
+                or health_evaluation.get("trusted_snapshot_sha256") != trusted_batch.snapshot_sha256):
+            raise ValueError("trusted_labels_unavailable_or_stale")
+
+        rows = health_evaluation.get("row_evidence")
+        count = health_evaluation.get("evaluated_count")
+        if (not isinstance(rows, list) or isinstance(count, bool)
+                or not isinstance(count, int) or count != len(rows)):
+            raise ValueError("health_row_evidence_invalid")
+        if count < policy.min_holdout_count:
+            raise ValueError("health_evaluation_too_small")
+        trusted = {row.record_ref: row for row in trusted_batch.records}
+        seen = set()
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("health_row_evidence_invalid")
+            reference = row.get("record_ref")
+            source_row = trusted.get(reference)
+            if (source_row is None or reference in seen
+                    or row.get("input_digest") != source_row.input_digest
+                    or row.get("target") != source_row.label):
+                raise ValueError("health_row_evidence_invalid")
+            seen.add(reference)
+        try:
+            recomputed = _derive_holdout_metrics(rows, list(task.labels),
+                                                labeling_policy.min_calibrated_confidence)["metrics"]
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError("health_row_evidence_invalid") from exc
+        if not _metrics_equal(health_evaluation.get("metrics"), recomputed):
+            raise ValueError("health_metrics_do_not_match_row_evidence")
+
+        current_promotion = next((event for event in reversed(events)
+                                  if event.get("action") == "promote"
+                                  and event.get("task_id") == task_id
+                                  and event.get("candidate_id") == active.get("candidate_id")
+                                  and event.get("evaluation_id") == active.get("evaluation_id")), None)
+        if current_promotion is None:
+            raise ValueError("active_model_promotion_evidence_missing")
+        if (current_promotion.get("policy_sha256") != policy.policy_sha256
+                or self.candidate(active["candidate_id"]).get("policy_sha256") != policy.policy_sha256):
+            raise ValueError("health_evaluation_identity_mismatch")
+        current_pointer = self._pointer_from_promotion(current_promotion)
+        if any(current_pointer.get(key) != active.get(key)
+               for key in ("model_ref", "candidate_id", "evaluation_id", "adapter_path", "calibrator_path")):
+            raise ValueError("active_model_promotion_evidence_mismatch")
+        prior_events = [event for event in events if event.get("action") == "promote"
+                        and event.get("task_id") == task_id
+                        and events.index(event) < events.index(current_promotion)]
+        previous_promotion = self._promotion_for_model(task_id, previous_ref, prior_events)
+        restored = self._pointer_from_promotion(previous_promotion)
+
+        reasons = []
+        for metric, limit in policy.rollback_monitor_limits.items():
+            value = recomputed.get(metric)
+            if metric not in {"accuracy", "macro_f1", "coverage", "brier_score", "calibration_error"}:
+                raise ValueError("health_metric_unsupported:{}".format(metric))
+            if not _finite(value):
+                raise ValueError("health_metric_missing_or_invalid:{}".format(metric))
+            violated = value > limit if metric in {"brier_score", "calibration_error"} else value < limit
+            if violated:
+                reasons.append("rollback_limit_violated:{}".format(metric))
+        if not reasons:
+            raise ValueError("health_gates_passed")
+
+        health_dir = self.root / "health-evaluations"
+        health_dir.mkdir(parents=True, exist_ok=True)
+        health_path = health_dir / (evaluation_id + ".json")
+        encoded = (json.dumps(dict(health_evaluation), sort_keys=True, ensure_ascii=False,
+                              separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+        if health_path.exists():
+            if health_path.read_bytes() != encoded:
+                raise ValueError("health_evaluation_id_conflict")
+        else:
+            descriptor = os.open(str(health_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                self._fsync_dir(health_dir)
+            except BaseException:
+                health_path.unlink(missing_ok=True)
+                raise
+
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        event = {"event_id": "", "candidate_id": active["candidate_id"],
+                 "evaluation_id": evaluation_id, "task_id": task_id, "action": "rollback",
+                 "reason_codes": sorted(reasons), "active_model_ref": previous_ref,
+                 "rollback_from": active["model_ref"], "health_sha256": hashlib.sha256(encoded).hexdigest(),
+                 "policy_sha256": policy.policy_sha256, "created_at": now}
+        event["event_id"] = _digest({key: value for key, value in event.items()
+                                     if key not in {"event_id", "created_at"}})
+        self._append_event(event)
+        restored.update({"rollback_from": active["model_ref"], "health_sha256": event["health_sha256"]})
+        active_models = self._read(self.active_path, {})
+        active_models[task_id] = restored
+        self._write_atomic(self.active_path, active_models)
+        return PromotionEvent(event["event_id"], event["candidate_id"], event["evaluation_id"],
+            event["task_id"], event["action"], tuple(event["reason_codes"]), event["rollback_from"],
+            event["active_model_ref"], event["policy_sha256"], event["health_sha256"], event["created_at"])
+
+    def _promotion_for_model(self, task_id, model_ref, promotion_events):
+        matches = [event for event in promotion_events
+                   if event.get("task_id") == task_id and event.get("active_model_ref") == model_ref]
+        if not matches:
+            raise ValueError("rollback_target_missing")
+        return matches[-1]
+
+    def _pointer_from_promotion(self, event):
+        if (_EVALUATION_ID.fullmatch(str(event.get("candidate_id", ""))) is None
+                or _EVALUATION_ID.fullmatch(str(event.get("evaluation_id", ""))) is None
+                or _EVALUATION_ID.fullmatch(str(event.get("task_id", ""))) is None):
+            raise ValueError("promotion_evaluation_evidence_mismatch")
+        evaluation_path = self.root / "evaluations" / (event["evaluation_id"] + ".json")
+        try:
+            evaluation_bytes = evaluation_path.read_bytes()
+            evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("promotion_evaluation_evidence_unavailable") from exc
+        if (hashlib.sha256(evaluation_bytes).hexdigest() != event.get("evaluation_sha256")
+                or evaluation.get("evaluation_id") != event.get("evaluation_id")
+                or evaluation.get("task_id") != event.get("task_id")
+                or evaluation.get("policy_sha256") != event.get("policy_sha256")
+                or evaluation.get("candidate_id") != event.get("candidate_id")
+                or evaluation.get("candidate_model_ref") != event.get("active_model_ref")):
+            raise ValueError("promotion_evaluation_evidence_mismatch")
+        candidate = self.candidate(event["candidate_id"])
+        if (candidate.get("task_id") != event.get("task_id")
+                or candidate.get("model_ref") != event.get("active_model_ref")):
+            raise ValueError("promotion_candidate_evidence_mismatch")
+        models = evaluation.get("models")
+        candidate_model = next((row for row in models if row.get("role") == "candidate"), None) \
+            if isinstance(models, list) else None
+        if candidate_model is not None:
+            adapter_path = Path(candidate_model.get("adapter_path", "")).expanduser().resolve()
+            calibrator_path = Path(candidate_model.get("calibrator_path", "")).expanduser().resolve()
+            try:
+                adapter_path.relative_to(self.root.resolve())
+                calibrator_path.relative_to(self.root.resolve())
+            except ValueError as exc:
+                raise ValueError("promoted_model_artifact_missing_or_mismatched") from exc
+            if (adapter_path != Path(evaluation.get("candidate_adapter_path", "")).expanduser().resolve()
+                    or calibrator_path != Path(evaluation.get("candidate_calibrator_path", "")).expanduser().resolve()
+                    or not adapter_path.is_dir() or any(item.is_symlink() for item in adapter_path.rglob("*"))
+                    or not calibrator_path.is_file()):
+                raise ValueError("promoted_model_artifact_missing_or_mismatched")
+            from finlabel.training.backend import _artifact_tree_sha256
+            if (_artifact_tree_sha256(adapter_path) != candidate_model.get("adapter_sha256")
+                    or hashlib.sha256(calibrator_path.read_bytes()).hexdigest()
+                       != candidate_model.get("calibrator_sha256")):
+                raise ValueError("promoted_model_artifact_missing_or_mismatched")
+            return {"model_ref": event["active_model_ref"],
+                    "previous_model_ref": event.get("previous_model_ref"),
+                    "candidate_id": event["candidate_id"], "evaluation_id": event["evaluation_id"],
+                    "adapter_path": str(adapter_path), "calibrator_path": str(calibrator_path)}
+        raise ValueError("promoted_model_artifact_missing_or_mismatched")
 
 
 def _promotion_reasons(candidate, result, policy):

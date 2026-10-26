@@ -251,5 +251,9 @@ def promote_if_eligible(candidate_id, evaluation_id, policy, *, registry):
 
 
 def evaluate_post_promotion_health(project, task_id, health_evaluation):
-    """Record and apply configured automatic rollback gates."""
+    """Recompute local trusted health evidence and apply configured rollback gates.
+
+    ModelRegistry owns validation and the locked journal/pointer transition so this
+    entry point cannot bypass the same checks used by other local callers.
+    """
     return ModelRegistry(project.workspace_dir).rollback_if_unhealthy(task_id, health_evaluation)
