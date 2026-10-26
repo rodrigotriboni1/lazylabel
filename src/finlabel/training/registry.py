@@ -532,6 +532,7 @@ class ModelRegistry:
 def _promotion_reasons(candidate, result, policy):
     """Verify local evidence before applying the pure promotion gates."""
     reasons = []
+    labeling_policy = None
     try:
         from finlabel.labeling.task import load_task, load_task_policy
         task = load_task(candidate["task_path"])
@@ -620,7 +621,8 @@ def _promotion_reasons(candidate, result, policy):
         model = next(item for item in result.get("models", []) if item.get("role") == "candidate")
         if (not adapter_path.is_dir() or _artifact_tree_sha256(adapter_path) != model.get("adapter_sha256")
                 or calibration.model_ref != result.get("candidate_model_ref")
-                or calibration.policy_id != policy.policy_id
+                or labeling_policy is None
+                or calibration.policy_id != labeling_policy.policy_id
                 or calibration.task_id != policy.task_id
                 or calibration.task_spec_sha256 != result.get("task_spec_sha256")
                 or calibration.source_hashes.get("labeling_policy_sha256")
