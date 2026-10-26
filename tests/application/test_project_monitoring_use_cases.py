@@ -170,6 +170,21 @@ def test_profile_maps_malformed_source_metadata_to_typed_error(columns):
         profile_project_source(FakeProjects(), FakeSources(FakeSource(columns)), "demo", "ledger")
 
 
+@pytest.mark.parametrize("operation", ["profile", "capture", "monitor"])
+def test_unhashable_inferred_type_maps_to_typed_metadata_error(operation):
+    source = FakeSource([ColumnProfile("amount", [], 0, 1)])
+    projects, sources = FakeProjects(), FakeSources(source)
+
+    with pytest.raises(InvalidSourceMetadata):
+        if operation == "profile":
+            profile_project_source(projects, sources, "demo", "ledger")
+        elif operation == "capture":
+            capture_project_schema(projects, sources, "demo", "ledger")
+        else:
+            baseline = SchemaBaseline({"amount": "number"}, ("amount",), {}, False)
+            monitor_project_source(projects, sources, "demo", "ledger", baseline)
+
+
 def test_monitoring_uses_domain_rules_after_read_only_profile():
     source = FakeSource([
         ColumnProfile("amount", "number", 2, 8),

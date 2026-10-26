@@ -147,7 +147,7 @@ def _validate_columns(columns: Sequence[ColumnProfile]) -> Sequence[ColumnProfil
             raise InvalidSourceMetadata("Source profile contains an invalid column.")
         if not isinstance(column.name, str) or not column.name.strip():
             raise InvalidSourceMetadata("Source column names must be non-empty strings.")
-        if column.inferred_type not in _PROFILE_TYPES:
+        if not isinstance(column.inferred_type, str) or column.inferred_type not in _PROFILE_TYPES:
             raise InvalidSourceMetadata("Source column has an unsupported inferred type.")
         if any(
             isinstance(count, bool) or not isinstance(count, int) or count < 0
