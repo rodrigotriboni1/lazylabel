@@ -191,13 +191,13 @@ Move responsibilities from current mixed modules; existing paths become facades 
 
 **Files:** create `docs/architecture/clean-hexagonal.md`; update README/module map only if entrypoint guidance changes.
 
-- [ ] Document layers, dependency rules, port ownership, composition roots, adding source/model adapters and facade deprecation; add Mermaid diagram with actual module names.
-- [ ] Run `python -m pytest`; expected: full suite passes.
-- [ ] Run `npm --prefix frontend test -- --run && npm --prefix frontend run build && npm --prefix frontend run lint`; expected: all pass.
-- [ ] Run `python -m compileall -q src tests` and `git diff --check`; expected: no diagnostics.
-- [ ] Start the local app with an isolated temporary project; verify overview, analysis, monitoring, labeling, review and training routes in a browser, and confirm source data remains unchanged.
+- [x] Document layers, dependency rules, port ownership, composition roots, adding source/model adapters and facade deprecation; add Mermaid diagram with actual module names.
+- [x] Run `/tmp/finlabel-clean-hexagonal-venv/bin/python -m pytest -q`; result: 405 passed, 17 subtests passed.
+- [x] Run `npm --prefix frontend test -- --run && npm --prefix frontend run build && npm --prefix frontend run lint`; result: 51 tests passed, build/lint exited 0 with the existing bundle and five React warnings.
+- [x] Run `/tmp/finlabel-clean-hexagonal-venv/bin/python -m compileall -q src tests` and `git diff --check`; no diagnostics.
+- [x] Start the local app with isolated synthetic data; verify direct navigation/reload for all six routes, check the seven-step workflow and source hash. Browser was available at 1280x682; exact 1440x900 and 390x844 could not be set in the subagent CUA session, recorded in `task-13-report.md`.
 - [ ] Obtain an independent architecture/code review against the approved spec and resolve findings.
-- [ ] Commit: `docs: document FinLabel clean architecture`.
+- [x] Commit: `docs: document FinLabel clean architecture`.
 
 ## Branch and review sequence
 
