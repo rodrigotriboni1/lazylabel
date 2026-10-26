@@ -27,3 +27,11 @@ class SourceNotReadOnly(ApplicationError):
 
 class InvalidSourceMetadata(ApplicationError):
     pass
+
+
+class PlannerUnavailable(ApplicationError, ValueError):
+    pass
+
+
+class PersistenceError(ApplicationError):
+    pass

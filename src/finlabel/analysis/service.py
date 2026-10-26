@@ -11,9 +11,8 @@ from typing import Optional, Sequence, Union
 from uuid import uuid4
 
 from finlabel.analysis.charts import render_chart
-from finlabel.domain.analysis import required_fields, run_analysis
 from finlabel.analysis.planner import HighlightRef, plan_analysis, plan_highlights, render_highlight
-from finlabel.domain.analysis.schema import AnalysisPlan, AnalysisResult, plan_to_dict, validate_analysis_plan
+from finlabel.domain.analysis.schema import AnalysisPlan, AnalysisResult, plan_to_dict
 from finlabel.models.text_generation import TextGenerationBackend
 
 PathLike = Union[str, Path]
@@ -73,24 +72,41 @@ def analyze_source(
     output_path: Optional[PathLike] = None,
     output_parent: Optional[PathLike] = None,
 ) -> AnalysisRun:
-    if plan_override is None:
-        if backend is None:
-            raise ValueError("Provide a local model backend or an explicit validated plan.")
-        plan = plan_analysis(question, source.columns(), backend)
-    else:
-        plan = validate_analysis_plan(plan_override, source.columns())
+    # Transitional bridge: concrete wiring moves to bootstrap in the adapter milestone.
+    from finlabel.application.use_cases.analysis import analyze_source as execute
+    from finlabel.application.use_cases.errors import PersistenceError
 
-    def records():
-        for record in source.iter_records(required_fields(plan)):
-            yield record.values
+    class Planner:
+        model_ref = getattr(backend, "model_id", None)
+        def plan(self, question, columns):
+            return plan_analysis(question, columns, backend)
+        def highlights(self, question, result):
+            return plan_highlights(question, result, backend)
 
-    result = run_analysis(plan, source.columns(), source.spec.schema, records())
-    highlights = plan_highlights(question, result, backend) if backend is not None and result.rows else ()
-    rendered = tuple(render_highlight(result, item) for item in highlights)
+    class Identity:
+        def new_id(self):
+            return uuid4().hex
+        def now(self):
+            return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    class Store:
+        def save_run(self, **payload):
+            return _persist_analysis(**payload, output_path=output_path, output_parent=output_parent)
+
+    try:
+        return execute(source, question, Planner() if backend is not None else None, Store(), Identity(),
+                       plan_override, source_name=source.spec.name, explicit_types=source.spec.schema)
+    except PersistenceError as exc:
+        raise exc.__cause__ from exc
+
+
+def _persist_analysis(*, run_id, created_at, source_name, question, model_ref, result,
+                      highlights, rendered_highlights, output_path, output_parent):
+    rendered = rendered_highlights
+    plan = result.plan
     chart_html = render_chart(result)
     result_json = json.dumps(result_to_dict(result, highlights, rendered), ensure_ascii=False, indent=2) + "\n"
     plan_json = json.dumps(_json_safe(plan_to_dict(plan)), ensure_ascii=False, indent=2) + "\n"
-    run_id = uuid4().hex
     if output_path is not None:
         artifact_dir = Path(output_path).expanduser().resolve()
     else:
@@ -100,10 +116,10 @@ def analyze_source(
         raise FileExistsError("Analysis output already exists: {}".format(artifact_dir))
     manifest = {
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "source_name": source.spec.name,
+        "created_at": created_at,
+        "source_name": source_name,
         "question": question,
-        "model_ref": getattr(backend, "model_id", None) if backend is not None else None,
+        "model_ref": model_ref,
         "plan_sha256": hashlib.sha256(plan_json.encode("utf-8")).hexdigest(),
         "result_sha256": hashlib.sha256(result_json.encode("utf-8")).hexdigest(),
         "chart_sha256": hashlib.sha256(chart_html.encode("utf-8")).hexdigest(),
