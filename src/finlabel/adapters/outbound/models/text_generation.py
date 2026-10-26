@@ -57,21 +57,25 @@ class TransformersTextGenerationBackend:
             kwargs["device_map"] = "auto"
             kwargs["torch_dtype"] = "auto"
         if self.adapter_path:
-            self._tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer = AutoTokenizer.from_pretrained(
                 self.adapter_path, trust_remote_code=False, local_files_only=True
             )
         else:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, **kwargs)
-        self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
+            tokenizer = AutoTokenizer.from_pretrained(self.model_id, **kwargs)
+        model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
         if self.adapter_path:
             try:
                 from peft import PeftModel
             except ImportError as exc:
                 raise RuntimeError("Install finlabel-local[train] to load a local PEFT adapter.") from exc
-            self._model = PeftModel.from_pretrained(self._model, self.adapter_path, is_trainable=False)
+            model = PeftModel.from_pretrained(model, self.adapter_path, is_trainable=False)
         if self.device != "auto":
-            self._model.to(self.device)
-        self._model.eval()
+            model.to(self.device)
+        model.eval()
+        # A failed adapter/device/eval initialization must never cache the base
+        # model under the promoted adapter identity. Publish only a ready pair.
+        self._tokenizer = tokenizer
+        self._model = model
 
     def generate(self, prompt: str, *, max_new_tokens: int) -> str:
         if not isinstance(prompt, str) or not prompt.strip():
