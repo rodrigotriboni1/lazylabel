@@ -9,6 +9,25 @@ The `finlabel run` command uses the configured task policy to label the current 
 5. Runs candidate and incumbent Transformers/PEFT inference on the same frozen holdout with label_json_mean_log_likelihood_v2.
 6. Applies every configured task policy gate. A failure leaves .finlabel/models/active-models.json unchanged. Missing or invalid prerequisites record a blocked cycle.
 
+```mermaid
+flowchart LR
+  SRC["CSV / SQLite somente leitura"] --> MON["Monitorar estrutura"]
+  SRC --> INF["Inferência local"]
+  TASK["Política + calibrador válidos"] --> INF
+  INF --> GATE{"Saída válida e confiável?"}
+  GATE -->|sim| APPLY["Aplicar rótulo"]
+  GATE -->|não| QUAR["Quarentena"]
+  TRUST["Rótulos de referência confiáveis"] --> SPLIT["Split congelado: treino / calibração / holdout"]
+  SPLIT --> TRAIN["Treinar candidato local"]
+  TRAIN --> EVAL["Avaliar candidato e ativo no mesmo holdout"]
+  EVAL --> POLICY{"Todos os gates passam?"}
+  POLICY -->|sim| PROMOTE["Promover e registrar evento"]
+  POLICY -->|não| KEEP["Rejeitar; manter modelo ativo"]
+  PROMOTE --> HEALTH["Monitorar saúde após promoção"]
+  HEALTH -->|limite violado| ROLLBACK["Restaurar versão anterior verificada"]
+  HEALTH -->|saudável| ACTIVE["Continuar modelo ativo"]
+```
+
 Before the first promotion, the incumbent is the task's exact base model and revision. Later evaluations use the active adapter as incumbent. A promotion compares both models on identical frozen calibration and holdout rows.
 
 An unchanged trusted snapshot, task specification, labeling policy, training gate, promotion policy, and active incumbent are processed once. A change to any of these identities creates a new cycle. A blocked cycle may be retried after its prerequisite is corrected. Existing partitions are rebuilt from the freshly loaded registered source and compared byte-for-byte with both the manifest and train/calibration/holdout files; an edited artifact is rejected.
