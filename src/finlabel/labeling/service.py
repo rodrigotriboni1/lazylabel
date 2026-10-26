@@ -2,23 +2,28 @@
 
 import json
 import hashlib
-import math
 import os
 import re
 import tempfile
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional, Union
 from uuid import uuid4
 
-from finlabel.labeling.outcomes import LabelOutcome, LabelRunSummary, utc_now, write_label_run
-from finlabel.labeling.policy import LabelingPolicy
-from finlabel.labeling.prediction import Prediction, PredictionError
-from finlabel.labeling.suggestions import LabelRun, LabelSuggestion, parse_suggestion
-from finlabel.labeling.task import LabelTask
+from finlabel.labeling.outcomes import LabelRunSummary, utc_now, write_label_run
+from finlabel.domain.labeling.outcomes import LabelOutcome
+from finlabel.domain.labeling.decisions import (
+    choose_quarantine_reason, rules_match as _rules_match, validate_calibration,
+)
+from finlabel.domain.labeling.policy import policy_matches_task
+from finlabel.domain.labeling.policy import LabelingPolicy
+from finlabel.domain.labeling.prediction import Prediction, PredictionError
+from finlabel.labeling.suggestions import LabelRun
+from finlabel.domain.labeling.suggestions import LabelSuggestion
+from finlabel.domain.labeling.suggestions import parse_suggestion
+from finlabel.domain.labeling.task import LabelTask
 
 
 PathLike = Union[str, Path]
@@ -122,53 +127,6 @@ def _selected_digest(values: dict) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _same_scalar(left, right) -> bool:
-    if isinstance(left, bool) or isinstance(right, bool):
-        return type(left) is type(right) and left == right
-    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-        try:
-            left_number = Decimal(str(left))
-            right_number = Decimal(str(right))
-            return left_number.is_finite() and right_number.is_finite() and left_number == right_number
-        except (InvalidOperation, ValueError, TypeError):
-            return False
-    return type(left) is type(right) and left == right
-
-
-def _rules_match(rules, selected_values: dict) -> bool:
-    """Evaluate the policy's closed, declarative rule set without code execution."""
-    if not rules:
-        return False
-    for rule in rules:
-        field = rule["field"]
-        operator = rule["operator"]
-        value = selected_values.get(field)
-        if operator == "not_empty":
-            valid = value is not None and (not isinstance(value, str) or bool(value.strip()))
-        elif operator == "equals":
-            valid = _same_scalar(value, rule["value"])
-        elif operator == "one_of":
-            valid = any(_same_scalar(value, allowed) for allowed in rule["values"])
-        elif operator == "number_between":
-            try:
-                if isinstance(value, bool) or value is None:
-                    raise InvalidOperation
-                number = Decimal(str(value).strip())
-                valid = number.is_finite()
-                if "minimum" in rule:
-                    valid = valid and number >= Decimal(str(rule["minimum"]))
-                if "maximum" in rule:
-                    valid = valid and number <= Decimal(str(rule["maximum"]))
-            except (InvalidOperation, ValueError, TypeError):
-                valid = False
-        else:
-            # Defensive fail-closed path if a policy object bypassed validation.
-            return False
-        if not valid:
-            return False
-    return True
-
-
 def _too_stale(reason: str, row_started: float, policy: LabelingPolicy) -> str:
     return "stale_source" if time.monotonic() - row_started > policy.max_staleness_seconds else reason
 
@@ -204,20 +162,7 @@ def _calibrated_confidence(calibrator, prediction: Prediction, *, task: LabelTas
         result = calibrator.calibrate(
             prediction, task=task, policy=policy, model_ref=model_ref
         )
-        confidence = result.confidence
-        if (
-            result.task_id != task.task_id
-            or result.policy_id != policy.policy_id
-            or result.model_ref != model_ref
-            or result.confidence_method != prediction.confidence_method
-            or result.calibration_ref != policy.calibration_ref
-            or isinstance(confidence, bool)
-            or not isinstance(confidence, (int, float))
-            or not math.isfinite(confidence)
-            or not 0 <= confidence <= 1
-        ):
-            return None
-        return float(confidence)
+        return validate_calibration(result, prediction, task, policy, model_ref)
     except Exception:
         # Missing, malformed, mismatched, and failing calibration all abstain.
         return None
@@ -280,13 +225,7 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
     started_at = utc_now()
     model_ref = _model_ref_for_prediction(task, backend)
     source_name = source.spec.name
-    policy_is_valid = (
-        policy is not None
-        and policy.task_id == task.task_id
-        and set(policy.allowed_labels) == set(task.labels)
-        and bool(policy.rules)
-        and all(rule["field"] in task.input_columns for rule in policy.rules)
-    )
+    policy_is_valid = policy is not None and policy_matches_task(policy, task)
     outcomes = []
     keys_to_positions = {}
     outcome_keys = []
@@ -380,7 +319,7 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
             ))
             continue
 
-        if not isinstance(prediction, Prediction) or prediction.label is None:
+        if not isinstance(prediction, Prediction):
             reason = _too_stale("invalid_output", row_started, policy)
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
@@ -388,37 +327,22 @@ def run_labeling(source, task: LabelTask, policy: Optional[LabelingPolicy], back
                 reason_code=reason,
             ))
             continue
-        if prediction.label not in task.labels:
-            # Do not persist arbitrary model text as a label; it could echo input data.
-            reason = _too_stale("unknown_label", row_started, policy)
+        if prediction.label is None or prediction.label not in task.labels or prediction.label not in policy.allowed_labels:
+            reason = choose_quarantine_reason(
+                task, policy, prediction.label, None, time.monotonic() - row_started
+            )
             outcomes.append(_outcome(
                 run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
                 task=task, policy=policy, model_ref=model_ref, label=None,
                 reason_code=reason,
             ))
             continue
-        if prediction.label not in policy.allowed_labels:
-            reason = _too_stale("rule_conflict", row_started, policy)
-            outcomes.append(_outcome(
-                run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
-                task=task, policy=policy, model_ref=model_ref, label=None,
-                reason_code=reason,
-            ))
-            continue
-
         confidence = _calibrated_confidence(
             calibrator, prediction, task=task, policy=policy, model_ref=model_ref
         )
-        if confidence is None:
-            reason = "uncalibrated"
-        elif confidence < policy.min_calibrated_confidence:
-            reason = "below_threshold"
-        else:
-            reason = None
-        if reason is not None:
-            reason = _too_stale(reason, row_started, policy)
-        elif time.monotonic() - row_started > policy.max_staleness_seconds:
-            reason = "stale_source"
+        reason = choose_quarantine_reason(
+            task, policy, prediction.label, confidence, time.monotonic() - row_started
+        )
         outcomes.append(_outcome(
             run_id=run_id, record_ref=opaque_ref, input_digest=input_digest,
             task=task, policy=policy, model_ref=model_ref,

@@ -640,7 +640,7 @@ def _promotion_reasons(candidate, result, policy):
         manifest_bytes = manifest_path.read_bytes()
         trusted_manifest = json.loads(manifest_bytes.decode("utf-8"))
         holdout = trusted_manifest["partitions"]["holdout"]
-        from finlabel.labeling.prediction import Prediction
+        from finlabel.domain.labeling.prediction import Prediction
         from finlabel.training.evaluation import CalibrationArtifact
         for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
             model = next(row for row in result["models"] if row.get("role") == role)

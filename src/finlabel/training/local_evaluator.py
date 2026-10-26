@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from finlabel.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
-from finlabel.labeling.prediction import Prediction, PredictionError
+from finlabel.domain.labeling.prediction import Prediction, PredictionError
 from finlabel.labeling.service import _rules_match
 from finlabel.training.backend import _artifact_tree_sha256
 from finlabel.training.evaluation import fit_calibrator, labeling_policy_sha256
