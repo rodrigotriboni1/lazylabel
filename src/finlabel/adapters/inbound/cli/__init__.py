@@ -1,0 +1,1 @@
+"""FinLabel boundary composition."""

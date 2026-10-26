@@ -35,3 +35,13 @@ class PlannerUnavailable(ApplicationError, ValueError):
 
 class PersistenceError(ApplicationError):
     pass
+
+
+class IdempotencyConflict(ValueError):
+    """The same request identity conflicts with recorded verified evidence."""
+
+
+class AnalysisClarificationError(ValueError):
+    def __init__(self, questions: tuple):
+        self.questions = tuple(questions)
+        super().__init__("Analysis needs clarification: {}".format(" ".join(self.questions)))

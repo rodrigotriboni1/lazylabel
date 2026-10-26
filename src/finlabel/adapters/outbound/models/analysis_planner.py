@@ -11,10 +11,7 @@ from finlabel.domain.analysis.highlights import HighlightRef, render_highlight, 
 OBSERVATIONS = {"highest", "lowest", "largest_share", "smallest_share", "overall_increase", "overall_decrease", "notable"}
 
 
-class AnalysisClarificationError(ValueError):
-    def __init__(self, questions: Sequence[str]):
-        self.questions = tuple(questions)
-        super().__init__("Analysis needs clarification: {}".format(" ".join(self.questions)))
+from finlabel.application.use_cases.errors import AnalysisClarificationError
 
 
 def _load_response(text: str):
