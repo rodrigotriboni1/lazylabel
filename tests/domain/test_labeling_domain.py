@@ -2,6 +2,7 @@
 
 import pytest
 from types import SimpleNamespace
+import finlabel.domain.labeling.outcomes as outcome_values
 
 from finlabel.domain.labeling import (
     LabelOutcome, LabelTask, LabelingPolicy, Prediction, PredictionError,
@@ -77,6 +78,10 @@ def test_outcome_rejects_private_reason_text():
     with pytest.raises(ValueError, match="reason_code"):
         LabelOutcome("a" * 32, "b" * 64, "c" * 64, "risk", "risk-v1", "model",
                      None, "quarantined", "raw private value", None, "2026-10-26T00:00:00Z")
+
+
+def test_domain_outcomes_do_not_create_timestamps():
+    assert not hasattr(outcome_values, "utc_now")
 
 
 def test_calibration_evidence_requires_matching_provenance_and_finite_score():

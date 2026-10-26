@@ -13,10 +13,6 @@ _REASON_CODES = {
 }
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 @dataclass(frozen=True)
 class LabelOutcome:
     run_id: str
