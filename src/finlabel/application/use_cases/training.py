@@ -110,7 +110,7 @@ def run_training_cycle(task_id: str, *, configuration: TrainingConfiguration,
         registry.transition(candidate_id, 'evaluated', evaluation_id=evaluation_id)
         current_task = configuration.load_task(task_id)
         current_policy = configuration.load_labeling_policy(current_task)
-        current_promotion = configuration.load_promotion_policy(task_id)
+        current_promotion = configuration.reload_promotion_policy(task_id)
         if (task_spec_sha256(current_task) != task_spec_sha256(task) or current_policy is None
                 or labeling_policy_sha256(current_policy) != labeling_policy_sha256(policy)
                 or current_promotion.policy_sha256 != promotion_policy.policy_sha256):

@@ -139,6 +139,12 @@ class _LocalTrainingPorts:
             raise ValueError("promotion_policy_missing")
         return PromotionPolicy.load(path, task_id=task_id)
 
+    def reload_promotion_policy(self, task_id):
+        # Initial absence has a configuration reason; mid-cycle deletion retains
+        # the loader I/O failure recorded by the original lifecycle.
+        path = self.registry.root / "promotion-policies" / (task_id + ".json")
+        return PromotionPolicy.load(path, task_id=task_id)
+
     def task_reference(self, task_id):
         return str(task_file_path(self.project.workspace_dir, task_id))
 

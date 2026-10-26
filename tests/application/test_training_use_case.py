@@ -40,6 +40,9 @@ class MemoryLifecycle:
     def load_promotion_policy(self, task_id):
         if self.failure == 'config': raise ValueError('promotion_policy_missing')
         return self.promotion
+    def reload_promotion_policy(self, task_id):
+        if self.failure == 'config': raise FileNotFoundError('promotion policy deleted')
+        return self.promotion
     def task_reference(self, task_id): return 'tasks/' + task_id
     def gate_reference(self): return 'gate'
     def gate_digest(self):
@@ -74,6 +77,7 @@ class MemoryLifecycle:
                  gate_reference, gate_sha256):
         self.calls.append(('evaluate', dataset, incumbent_adapter, gate_sha256))
         if self.failure == 'evaluate': raise RuntimeError('evaluation_failed')
+        if self.failure == 'deleted_promotion': self.failure = 'config'
         if self.failure == 'changed_gate': self.gate = 'e'*64
         if self.failure == 'changed_policy': self.policy = replace(policy, rules_version='changed')
         return {'evaluation_id': 'evaluation-1', 'candidate_model_ref': 'local/model+peft:' + 'd'*64,
@@ -203,3 +207,16 @@ def test_invalid_active_adapter_stops_before_training_and_preserves_pointer(acti
     assert result.reason_codes == (reason,)
     assert ports.active_record is active
     assert [call[0] for call in ports.calls] == ['prepare']
+
+
+def test_promotion_policy_deleted_after_evaluation_retains_io_failure_reason():
+    ports = MemoryLifecycle()
+    ports.failure = 'deleted_promotion'
+    result = run(ports)
+    expected = 'cycle_prerequisite_failed:FileNotFoundError'
+    assert result.state == 'blocked'
+    assert result.reason_codes == (expected,)
+    assert ports.candidates[result.candidate_id]['status'] == 'rejected'
+    assert ports.candidates[result.candidate_id]['rejection_reasons'] == [expected]
+    assert ports.cycles[0][1]['reason_codes'] == [expected]
+    assert not any(call[0] == 'promote' for call in ports.calls)
