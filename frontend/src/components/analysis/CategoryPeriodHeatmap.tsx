@@ -1,4 +1,4 @@
-import type { AnalysisResponse } from '@/lib/api'
+import type { AnalysisResponse } from '@/application/ports/FinLabelClient'
 
 const format = (value: unknown) => value === null || value === undefined ? 'ausente' : String(value)
 const fieldSort = (a: unknown, b: unknown) => String(a).localeCompare(String(b), 'pt-BR', { numeric: true })

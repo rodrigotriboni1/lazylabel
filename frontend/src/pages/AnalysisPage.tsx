@@ -4,7 +4,8 @@ import { CartesianGrid, Legend, Line, LineChart, Bar, BarChart, ResponsiveContai
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ApiError, getAnalysisRun, getSources, proposeAnalysis, runAnalysis, type AnalysisPlan, type AnalysisResponse, type SourceInfo } from '@/lib/api'
+import { ApiError, type AnalysisPlan, type AnalysisResponse, type SourceInfo } from '@/application/ports/FinLabelClient'
+import { useFinLabelClient } from '@/application/FinLabelClientContext'
 import { AnalysisSummary } from '@/components/analysis/AnalysisSummary'
 import { CategoryPeriodHeatmap } from '@/components/analysis/CategoryPeriodHeatmap'
 
@@ -13,6 +14,7 @@ const timeGrainNames: Record<string, string> = { day: 'dia', week: 'semana', mon
 const readable = (value: unknown) => value === null || value === undefined ? '—' : String(value)
 
 export default function AnalysisPage({ runId }: { runId?: string }) {
+  const client = useFinLabelClient()
   const [sources, setSources] = useState<SourceInfo[]>([])
   const [source, setSource] = useState('')
   const [question, setQuestion] = useState('')
@@ -24,12 +26,12 @@ export default function AnalysisPage({ runId }: { runId?: string }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getSources().then(({ sources: items }) => { setSources(items); setSource(items[0]?.name ?? '') }).catch((e: Error) => setError(e.message))
+    client.getSources().then(({ sources: items }) => { setSources(items); setSource(items[0]?.name ?? '') }).catch((e: Error) => setError(e.message))
     if (runId) {
       setBusy(true)
-      getAnalysisRun(runId).then(setResult).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
+      client.getAnalysisRun(runId).then(setResult).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
     }
-  }, [runId])
+  }, [client, runId])
   const currentPlan = useMemo(() => {
     try { return JSON.parse(planText) as AnalysisPlan }
     catch { return null }
@@ -39,7 +41,7 @@ export default function AnalysisPage({ runId }: { runId?: string }) {
   async function suggest() {
     setBusy(true); setError(null); setClarifications([]); setNotice(null); setResult(null)
     try {
-      const proposed = await proposeAnalysis(source, question)
+      const proposed = await client.proposeAnalysis(source, question)
       setPlanText(JSON.stringify(proposed.plan, null, 2))
       setNotice('Proposta recebida com todos os campos. Revise o plano completo e execute para calcular no servidor local.')
     } catch (e) {
@@ -52,7 +54,7 @@ export default function AnalysisPage({ runId }: { runId?: string }) {
     setBusy(true); setError(null); setResult(null); setClarifications([]); setNotice(null)
     try {
       const submittedPlan = JSON.parse(planText) as AnalysisPlan
-      setResult(await runAnalysis(source, question || 'Análise definida pelo plano revisado', submittedPlan))
+      setResult(await client.runAnalysis(source, question || 'Análise definida pelo plano revisado', submittedPlan))
     } catch (e) { setError(e instanceof Error ? e.message : 'O plano está malformado ou a análise não pôde ser calculada.') }
     finally { setBusy(false) }
   }

@@ -1,4 +1,4 @@
-import type { AnalysisResponse } from '@/lib/api'
+import type { AnalysisResponse } from '@/application/ports/FinLabelClient'
 
 const display = (value: unknown) => value === null || value === undefined ? '—' : String(value)
 const numeric = (value: unknown) => {

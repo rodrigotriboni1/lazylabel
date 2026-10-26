@@ -1,22 +1,15 @@
-import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
-import { getHealth, getSources } from '@/lib/api'
-
-vi.mock('@/lib/api', () => ({
-  getHealth: vi.fn(),
-  getSources: vi.fn(),
-}))
+import { FinLabelMemoryClient } from '@/adapters/in-memory/FinLabelMemoryClient'
 
 describe('overview shell', () => {
-  beforeEach(() => {
-    vi.mocked(getHealth).mockResolvedValue({ status: 'ok', project: 'synthetic', sources: 1 })
-    vi.mocked(getSources).mockResolvedValue({ sources: [] })
-  })
+  afterEach(cleanup)
 
   it('shows the overview title once', async () => {
-    render(<App />)
+    render(<App client={new FinLabelMemoryClient()} />)
     expect(await screen.findAllByRole('heading', { name: 'Seu espaço de trabalho' })).toHaveLength(1)
+    expect(await screen.findByText('Servidor local ativo')).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Navegação móvel' }).querySelectorAll('a')).toHaveLength(5)
   })
 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { CategoryPeriodHeatmap } from './CategoryPeriodHeatmap'
-import type { AnalysisResponse } from '@/lib/api'
+import type { AnalysisResponse } from '@/application/ports/FinLabelClient'
 
 const result: AnalysisResponse = {
   run_id: 'run', total_rows: 3, valid_row_count: 3,

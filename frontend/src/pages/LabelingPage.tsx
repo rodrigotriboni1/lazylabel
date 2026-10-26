@@ -3,9 +3,11 @@ import { ArrowRight, CircleAlert, Database, Play, RefreshCw, ShieldCheck } from 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getAutonomyOverview, runAutonomousCycle, type AutonomyOverview, type AutonomousRunResult } from '@/lib/api'
+import type { AutonomyOverview, AutonomousRunResult } from '@/application/ports/FinLabelClient'
+import { useFinLabelClient } from '@/application/FinLabelClientContext'
 
 export default function LabelingPage() {
+  const client = useFinLabelClient()
   const [overview, setOverview] = useState<AutonomyOverview | null>(null)
   const [source, setSource] = useState('')
   const [task, setTask] = useState('')
@@ -17,14 +19,14 @@ export default function LabelingPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await getAutonomyOverview()
+      const next = await client.getAutonomyOverview()
       setError(null)
       setOverview(next)
       setSource((current) => next.sources.some((item) => item.name === current) ? current : next.sources[0]?.name ?? '')
       setTask((current) => next.tasks.some((item) => item.task_id === current) ? current : next.tasks[0]?.task_id ?? '')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o estado local.') }
     finally { setLoading(false) }
-  }, [])
+  }, [client])
   useEffect(() => { void refresh() }, [refresh])
 
   const selectedTask = overview?.tasks.find((item) => item.task_id === task)
@@ -32,7 +34,7 @@ export default function LabelingPage() {
     if (!source || !task) return
     setBusy(true); setError(null); setResult(null)
     try {
-      const completed = await runAutonomousCycle(source, task, idempotencyKey.current)
+      const completed = await client.runAutonomousCycle(source, task, idempotencyKey.current)
       setResult(completed)
       idempotencyKey.current = crypto.randomUUID()
       await refresh()
