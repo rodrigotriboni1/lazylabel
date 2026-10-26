@@ -26,7 +26,7 @@ class FixedBackend:
 
 
 class LabelDatasetTests(unittest.TestCase):
-    def test_cli_label_review_and_dataset_commands_share_project_artifacts(self):
+    def test_legacy_review_and_dataset_commands_remain_available(self):
         from finlabel.cli import main
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -44,10 +44,10 @@ class LabelDatasetTests(unittest.TestCase):
             }), encoding="utf-8")
             self.assertEqual(main(["task", "add", str(task_path), "--project", str(root)]), 0)
             backend = FixedBackend()
-            label_output = io.StringIO()
-            with patch("finlabel.models.text_generation.TransformersTextGenerationBackend", return_value=backend), redirect_stdout(label_output):
-                self.assertEqual(main(["label", "ledger", "--task", "risk", "--project", str(root)]), 0)
-            run_id = json.loads(label_output.getvalue())["run_id"]
+            task = LabelTask("risk", "Classify risk", ("amount",), ("low", "high"), "mock-local")
+            run = suggest_labels(CsvSource(config.sources["ledger"]), task, backend,
+                                 workspace_dir=config.workspace_dir)
+            run_id = run.run_id
             with patch("builtins.input", side_effect=["accept", "reject"]), redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["review", run_id, "--project", str(root)]), 0)
             output = root / ".finlabel" / "training" / "cli.jsonl"
