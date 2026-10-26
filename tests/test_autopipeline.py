@@ -106,6 +106,41 @@ class AutonomousTrainingCycleTests(unittest.TestCase):
         candidate = ModelRegistry(self.root / ".finlabel").candidate(summary.candidate_id)
         self.assertEqual(candidate["status"], "rejected")
 
+    def test_deleted_promotion_policy_after_evaluation_preserves_failure_reason(self):
+        models = self.root / ".finlabel" / "models"
+        policy_dir = models / "promotion-policies"
+        policy_dir.mkdir(parents=True, exist_ok=True)
+        promotion_path = policy_dir / "risk.json"
+        promotion_path.write_text(json.dumps(self._promotion_payload()), encoding="utf-8")
+        gate = self.root / ".finlabel" / "training-gate.json"
+        gate.write_text(json.dumps({"authorized": True, "model_id": "local/model", "license": "test",
+            "hardware": "cpu", "data_policy": "synthetic", "evaluation_protocol": "frozen holdout"}), encoding="utf-8")
+
+        def fake_evaluate(task, policy, manifest, candidate_adapter, incumbent_adapter, **kwargs):
+            promotion_path.unlink()
+            path = models / "evaluations" / "fake.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"evaluation_id": "e" * 32,
+                "candidate_model_ref": self.base_ref + "+peft:" + "d" * 64,
+                "incumbent_model_ref": self.previous_ref}), encoding="utf-8")
+            return path
+
+        output = models / "adapters" / "candidate"
+        output.mkdir(parents=True)
+        with patch("finlabel.training.autopipeline.validate_training_request"), \
+             patch("finlabel.training.autopipeline.train_adapter", return_value=TrainingResult(
+                 output, self.base_ref, "f" * 64, (), {}, "d" * 64)), \
+             patch("finlabel.training.autopipeline.evaluate_candidate", side_effect=fake_evaluate):
+            summary = run_training_cycle(self.config_path, "risk")
+        expected = "cycle_prerequisite_failed:FileNotFoundError"
+        self.assertEqual(summary.state, "blocked")
+        self.assertEqual(summary.reason_codes, (expected,))
+        self.assertEqual(ModelRegistry(self.root / ".finlabel").active("risk")["model_ref"], self.previous_ref)
+        candidate = ModelRegistry(self.root / ".finlabel").candidate(summary.candidate_id)
+        self.assertEqual(candidate["status"], "rejected")
+        self.assertEqual(candidate["rejection_reasons"], [expected])
+        self.assertEqual(json.loads(Path(summary.manifest_path).read_text())["reason_codes"], [expected])
+
     def test_changed_promotion_threshold_after_evaluation_blocks_without_pointer_change(self):
         models = self.root / ".finlabel" / "models"
         policy_dir = models / "promotion-policies"
