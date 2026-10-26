@@ -3,7 +3,9 @@ import { Activity, BarChart3, Database, FlaskConical, LayoutDashboard, ListCheck
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getHealth, type Health } from '@/lib/api'
+import type { FinLabelClient, Health } from '@/application/ports/FinLabelClient'
+import { FinLabelClientProvider } from '@/application/FinLabelClientProvider'
+import { useFinLabelClient } from '@/application/FinLabelClientContext'
 import OverviewPage from '@/pages/OverviewPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import MonitorPage from '@/pages/MonitorPage'
@@ -24,7 +26,12 @@ function pageName(path: string) {
   return navigation.find((item) => item.path === path)?.label ?? 'Visão geral'
 }
 
-export default function App() {
+export default function App({ client }: { client: FinLabelClient }) {
+  return <FinLabelClientProvider client={client}><AppShell /></FinLabelClientProvider>
+}
+
+function AppShell() {
+  const client = useFinLabelClient()
   const path = window.location.pathname
   const analysisRunId = /^\/analysis\/([0-9a-f]{32})$/.exec(path)?.[1]
   const activePath = analysisRunId ? '/analysis' : path
@@ -32,10 +39,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getHealth().then(setHealth).catch((cause: unknown) => {
+    client.getHealth().then(setHealth).catch((cause: unknown) => {
       setError(cause instanceof Error ? cause.message : 'Não foi possível consultar o painel local.')
     })
-  }, [])
+  }, [client])
 
   return (
     <div className="min-h-screen bg-[#f5f7f4] text-[#16251f]">
