@@ -73,6 +73,19 @@ def _artifact_tree_sha256(root: Path) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def format_training_example(row: Mapping, tokenizer) -> dict:
+    """Format user input with the selected tokenizer while keeping its target separate."""
+    if not isinstance(row, Mapping) or set(row) != {"prompt", "completion"}:
+        raise ValueError("Training example must contain prompt and completion.")
+    prompt, completion = row["prompt"], row["completion"]
+    if not isinstance(prompt, str) or not prompt.strip() or not isinstance(completion, str) or not completion.strip():
+        raise ValueError("Training prompt and completion must be non-empty strings.")
+    if getattr(tokenizer, "chat_template", None):
+        from finlabel.models.text_generation import render_model_prompt
+        prompt = render_model_prompt(prompt, tokenizer)
+    return {"prompt": prompt, "completion": completion}
+
+
 def validate_training_request(dataset_path: PathLike, config: TrainingConfig, *, gate_path: PathLike,
                               train_dataset_path: Optional[PathLike] = None,
                               trusted_dataset_manifest=None, expected_task_id: Optional[str] = None) -> dict:
@@ -202,6 +215,7 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
         # Ordinary reviewed datasets retain their existing single-file behavior.
         train_path = validated.get("train_dataset_path", validated["dataset_path"])
         examples = load_dataset("json", data_files={"train": str(train_path)}, split="train")
+        examples = examples.map(lambda row: format_training_example(row, tokenizer))
         trainer = SFTTrainer(
             model=model,
             args=SFTConfig(
@@ -231,6 +245,8 @@ def train_adapter(dataset_path: PathLike, config: TrainingConfig, *, gate_path: 
             trl_version = peft_version = transformers_version = datasets_version = accelerate_version = torch_version = "unknown"
         metadata = {
             "base_model_ref": config.model_id + ("@" + config.model_revision if config.model_revision else ""),
+            "generation": {"do_sample": False, "max_new_tokens": 256,
+                           "raw_score_method": "label_json_mean_log_likelihood_v2"},
             "task_id": validated["manifest"].get("task_id"),
             "dataset_sha256": validated["dataset_sha256"],
             "parameters": {"epochs": config.epochs, "batch_size": config.batch_size,
