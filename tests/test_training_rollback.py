@@ -248,12 +248,22 @@ class TrainingRollbackTests(unittest.TestCase):
 
         def attempt(registry):
             try:
-                return self._with_trusted_context(
-                    lambda: registry.rollback_if_unhealthy(self.task_id, health)).action
+                return registry.rollback_if_unhealthy(self.task_id, health).action
             except ValueError as exc:
                 return str(exc)
 
-        with ThreadPoolExecutor(max_workers=2) as workers:
+        trusted_batch = SimpleNamespace(
+            task_id=self.task_id, trust_kind="provided_ground_truth",
+            snapshot_sha256=self.snapshot_sha256, records=self.records,
+        )
+        # Patch shared module lookups once outside the worker threads. Patching
+        # the same globals concurrently can restore mocks out of order and leak
+        # a test double into later CLI tests.
+        with patch("finlabel.project.load_project", return_value=self.workspace), \
+             patch("finlabel.labeling.task.load_task", return_value=self.task), \
+             patch("finlabel.labeling.task.load_task_policy", return_value=self.labeling_policy), \
+             patch("finlabel.training.trusted_labels.load_trusted_labels", return_value=trusted_batch), \
+             ThreadPoolExecutor(max_workers=2) as workers:
             results = list(workers.map(attempt, registries))
 
         self.assertEqual(results.count("rollback"), 1)
