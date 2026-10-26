@@ -116,6 +116,22 @@ def _validate_train_rows(path: Path, expected_count: int) -> None:
         raise ValueError("Training partition row count does not match bundle manifest.")
 
 
+def format_training_example(row: Mapping, tokenizer) -> dict:
+    """Render the prompt with the model chat template while keeping target separate."""
+    if not isinstance(row, Mapping) or set(row) != {"prompt", "completion"}:
+        raise ValueError("Training example must contain prompt and completion.")
+    prompt, completion = row["prompt"], row["completion"]
+    if not isinstance(prompt, str) or not prompt.strip() or not isinstance(completion, str) or not completion.strip():
+        raise ValueError("Training prompt and completion must be non-empty strings.")
+    if getattr(tokenizer, "chat_template", None):
+        rendered = tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}], tokenize=False, add_generation_prompt=True
+        )
+    else:
+        rendered = prompt
+    return {"prompt": rendered, "completion": completion}
+
+
 def validate_training_request(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: PathLike,
                               exploratory_confirmed: bool = False) -> dict:
     """Recheck source, split, quality and authorization before optional ML imports."""
@@ -218,6 +234,7 @@ def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: 
         tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
         model = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, trust_remote_code=False, local_files_only=True)
         examples = load_dataset("json", data_files={"train": str(snapshot_path)}, split="train")
+        examples = examples.map(lambda row: format_training_example(row, tokenizer))
         if _sha256(snapshot_path) != validated["manifest"]["train_sha256"]:
             raise ValueError("Private training snapshot changed while loading examples.")
         trainer = SFTTrainer(
@@ -251,6 +268,7 @@ def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: 
             adapter_digest.update(path.relative_to(staging).as_posix().encode("utf-8"))
             adapter_digest.update(bytes.fromhex(_sha256(path)))
         adapter_sha256 = adapter_digest.hexdigest()
+        from finlabel.training.active_model import tokenizer_sha256
         metadata = {
             "base_model_ref": config.model_id + ("@" + config.model_revision if config.model_revision else ""),
             "task_id": validated["manifest"].get("task_id"),
@@ -258,6 +276,8 @@ def train_adapter(bundle: TrainingBundle, config: TrainingConfig, *, gate_path: 
             "split_sha256": validated["split_sha256"],
             "train_sha256": validated["manifest"]["train_sha256"],
             "adapter_sha256": adapter_sha256,
+            "tokenizer_sha256": tokenizer_sha256(staging),
+            "generation": {"do_sample": False, "max_new_tokens": 256},
             "parameters": {"epochs": config.epochs, "batch_size": config.batch_size,
                            "learning_rate": config.learning_rate, "lora_rank": config.lora_rank, "seed": config.seed},
             "packages": {name: package_version(name) for name in ("trl", "peft", "transformers", "datasets", "accelerate", "torch")},
