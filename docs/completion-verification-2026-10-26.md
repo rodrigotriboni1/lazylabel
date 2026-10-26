@@ -4,6 +4,19 @@ Integration branch: `codex/finlabel-autonomous-mvp`
 Panel implementation branch: `codex/finlabel-autonomous-panel` (commit `25d8783`)  
 Full verification branch: `codex/finlabel-full-verification`
 
+## Review branches by deliverable
+
+| Etapa | Branch | Commit |
+|---|---|---|
+| Dashboard, KPIs e heatmap | `codex/finlabel-dashboard-redesign` | `02671dc` |
+| Contratos de rotulagem autônoma | `codex/finlabel-autonomous-contract-tests` | `84e7fd5` |
+| Dados confiáveis e ciclo de treino | `codex/finlabel-trusted-training-completion` | `c962b26` |
+| Rollback após promoção | `codex/finlabel-training-rollback` | `582395a` |
+| Compatibilidade do modelo local | `codex/finlabel-local-model-compat` | `28c116d` |
+| Painel autônomo React/FastAPI | `codex/finlabel-autonomous-panel` | `25d8783` |
+| Análise e privacidade end-to-end | `codex/finlabel-analysis-e2e` | `bb282f5` |
+| Verificação e relatório finais | `codex/finlabel-full-verification` | `e9386a6` |
+
 ## Automated checks
 
 - Python full suite: 128 passed, 17 subtests passed.
