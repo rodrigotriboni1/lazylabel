@@ -1,9 +1,7 @@
 """Public compatibility facade for the composed local HTTP adapter."""
 
 
-def create_app(project_path, backend_factory=None, *, host="127.0.0.1", port=8765, application=None):
-    from finlabel.bootstrap.http import create_app as compose
-    return compose(project_path, backend_factory, host=host, port=port, application=application)
+from finlabel.bootstrap.http import create_app
 
 
 # Historical protocol constants and security helpers remain import-compatible.

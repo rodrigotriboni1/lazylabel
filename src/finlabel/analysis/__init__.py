@@ -1,7 +1,7 @@
 """Validated analysis plans and deterministic local calculations."""
 
-from finlabel.analysis.engine import run_analysis
-from finlabel.analysis.planner import (
+from finlabel.adapters.outbound.sources.analysis import run_analysis
+from finlabel.adapters.outbound.models.analysis_planner import (
     AnalysisClarificationError,
     HighlightRef,
     plan_analysis,
@@ -18,7 +18,7 @@ from finlabel.domain.analysis.schema import (
     plan_to_dict,
     validate_analysis_plan,
 )
-from finlabel.analysis.service import AnalysisRun, analyze_source, result_to_dict
+from finlabel.adapters.outbound.persistence.analysis_runs import AnalysisRun, analyze_source, result_to_dict
 
 __all__ = [
     "AnalysisPlan",
