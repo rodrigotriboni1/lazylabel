@@ -7,89 +7,30 @@ import re
 import tempfile
 import fcntl
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Mapping
+
+from finlabel.domain.training.promotion import (
+    PromotionPolicy as DomainPromotionPolicy, PromotionEvent, promotion_reasons, rollback_reasons,
+)
+from finlabel.domain.training.metrics import _digest, _finite, _metrics_equal, _derive_holdout_metrics
+from finlabel.domain.training.evaluation import labeling_policy_sha256
+from finlabel.domain.training.task_spec import task_spec_sha256
 
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _EVALUATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
-def _digest(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
-                                    separators=(",", ":"), default=str).encode()).hexdigest()
-
-
-def _finite(value):
-    import math
-    return (not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value))
-
-
-@dataclass(frozen=True)
-class PromotionPolicy:
-    task_id: str
-    version: str
-    required_metrics: Mapping[str, float]
-    minimum_coverage: float
-    allowed_per_label_regression: Mapping[str, float]
-    max_calibration_error: float
-    rollback_monitor_limits: Mapping[str, float]
-    min_holdout_count: int
-    policy_sha256: str = ""
-
-    def __post_init__(self):
-        if not self.task_id or not self.version:
-            raise ValueError("Promotion policy requires task_id and version.")
-        if not self.required_metrics or not self.allowed_per_label_regression or not self.rollback_monitor_limits:
-            raise ValueError("Promotion policy required metrics, per-label limits, and rollback limits are mandatory.")
-        for group in (self.required_metrics, self.allowed_per_label_regression, self.rollback_monitor_limits):
-            if not isinstance(group, Mapping) or not group or any(not isinstance(k, str) or not k or not _finite(v) for k, v in group.items()):
-                raise ValueError("Promotion policy metric gates must be non-empty finite numeric mappings.")
-        if not _finite(self.minimum_coverage) or not 0 <= self.minimum_coverage <= 1:
-            raise ValueError("minimum_coverage must be between 0 and 1.")
-        if not _finite(self.max_calibration_error) or not 0 <= self.max_calibration_error <= 1:
-            raise ValueError("max_calibration_error must be between 0 and 1.")
-        if isinstance(self.min_holdout_count, bool) or not isinstance(self.min_holdout_count, int) or self.min_holdout_count < 1:
-            raise ValueError("min_holdout_count must be a positive integer.")
-        expected = self.sha256_payload()
-        if self.policy_sha256 and self.policy_sha256 != expected:
-            raise ValueError("Promotion policy digest does not match its configured gates.")
-        object.__setattr__(self, "policy_sha256", expected)
-
-    def sha256_payload(self):
-        return _digest({"task_id": self.task_id, "version": self.version,
-                        "required_metrics": dict(self.required_metrics), "minimum_coverage": self.minimum_coverage,
-                        "allowed_per_label_regression": dict(self.allowed_per_label_regression),
-                        "max_calibration_error": self.max_calibration_error,
-                        "rollback_monitor_limits": dict(self.rollback_monitor_limits),
-                        "min_holdout_count": self.min_holdout_count})
+class PromotionPolicy(DomainPromotionPolicy):
+    """Compatibility policy with local configuration loading."""
 
     @classmethod
     def load(cls, path, *, task_id):
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(raw, dict) or set(raw) != {"task_id", "version", "required_metrics", "minimum_coverage",
-            "allowed_per_label_regression", "max_calibration_error", "rollback_monitor_limits", "min_holdout_count"}:
-            raise ValueError("Promotion policy must define exactly every required task gate.")
-        if raw["task_id"] != task_id:
-            raise ValueError("Promotion policy task_id does not match.")
-        return cls(**raw)
-
-
-@dataclass(frozen=True)
-class PromotionEvent:
-    event_id: str
-    candidate_id: str
-    evaluation_id: str
-    task_id: str
-    action: str
-    reason_codes: Sequence[str]
-    previous_model_ref: Optional[str]
-    active_model_ref: Optional[str]
-    policy_sha256: str
-    evaluation_sha256: str
-    created_at: str
+        return cls.from_dict(raw, task_id=task_id)
 
 
 class ModelRegistry:
@@ -315,7 +256,7 @@ class ModelRegistry:
         if changed_candidates: self._write_atomic(self.candidates_path, candidates)
 
     def _promote_locked(self, candidate_id, evaluation_id, policy):
-        if not isinstance(policy, PromotionPolicy) or policy.sha256_payload() != policy.policy_sha256:
+        if not isinstance(policy, DomainPromotionPolicy) or policy.sha256_payload() != policy.policy_sha256:
             raise ValueError("Promotion policy is invalid or changed after configuration.")
         candidate = self.candidate(candidate_id)
         evaluation_path = self.root / "evaluations" / (evaluation_id + ".json")
@@ -490,16 +431,7 @@ class ModelRegistry:
         previous_promotion = self._promotion_for_model(task_id, previous_ref, prior_events)
         restored = self._pointer_from_promotion(previous_promotion)
 
-        reasons = []
-        for metric, limit in policy.rollback_monitor_limits.items():
-            value = recomputed.get(metric)
-            if metric not in {"accuracy", "macro_f1", "coverage", "brier_score", "calibration_error"}:
-                raise ValueError("health_metric_unsupported:{}".format(metric))
-            if not _finite(value):
-                raise ValueError("health_metric_missing_or_invalid:{}".format(metric))
-            violated = value > limit if metric in {"brier_score", "calibration_error"} else value < limit
-            if violated:
-                reasons.append("rollback_limit_violated:{}".format(metric))
+        reasons = rollback_reasons(recomputed, policy)
         if not reasons:
             raise ValueError("health_gates_passed")
 
@@ -598,24 +530,10 @@ class ModelRegistry:
 
 
 def _promotion_reasons(candidate, result, policy):
+    """Verify local evidence before applying the pure promotion gates."""
     reasons = []
-    # This is a format/version check, not an authenticated evaluator identity.
-    if result.get("evaluator") != "finlabel-local-transformers-peft-v1":
-        reasons.append("unsupported_evaluator_contract")
-    unsigned = dict(result)
-    recorded = unsigned.pop("evaluation_sha256", None)
-    if not isinstance(recorded, str) or _digest(unsigned) != recorded:
-        reasons.append("evaluation_integrity_mismatch")
-    if result.get("score_method") != "label_json_mean_log_likelihood_v2":
-        reasons.append("unsupported_score_evidence")
-    if (not isinstance(candidate.get("training_gate_sha256"), str)
-            or not _SHA.fullmatch(candidate["training_gate_sha256"])
-            or result.get("training_gate_sha256") != candidate.get("training_gate_sha256")):
-        reasons.append("training_gate_evidence_missing_or_mismatched")
     try:
         from finlabel.labeling.task import load_task, load_task_policy
-        from finlabel.training.evaluation import labeling_policy_sha256
-        from finlabel.training.task_spec import task_spec_sha256
         task = load_task(candidate["task_path"])
         labeling_policy = load_task_policy(task)
         if labeling_policy is None:
@@ -723,65 +641,7 @@ def _promotion_reasons(candidate, result, policy):
             reasons.append("candidate_model_or_calibrator_artifact_mismatch")
     except (OSError, ValueError, KeyError, StopIteration, TypeError):
         reasons.append("candidate_model_or_calibrator_artifact_missing")
-    if candidate.get("task_id") != policy.task_id or result.get("task_id") != policy.task_id:
-        reasons.append("task_identity_mismatch")
-    if candidate.get("status") != "evaluated":
-        reasons.append("candidate_not_evaluated")
-    if result.get("candidate_id") != candidate.get("candidate_id"):
-        reasons.append("candidate_evaluation_mismatch")
-    if result.get("policy_sha256") != policy.policy_sha256:
-        reasons.append("policy_changed_or_mismatched")
-    if (not result.get("same_frozen_holdout") or not _SHA.fullmatch(str(result.get("holdout_sha256", "")))
-            or not _SHA.fullmatch(str(result.get("holdout_dataset_sha256", "")))
-            or not _SHA.fullmatch(str(result.get("dataset_manifest_sha256", "")))):
-        reasons.append("holdout_provenance_missing")
-    holdout_count = result.get("holdout_count")
-    if isinstance(holdout_count, bool) or not isinstance(holdout_count, int) or holdout_count < 0:
-        reasons.append("holdout_count_invalid")
-    elif holdout_count < policy.min_holdout_count:
-        reasons.append("holdout_count_below_minimum")
-    if not result.get("trusted_label_provenance"):
-        reasons.append("trusted_label_provenance_missing")
-    if result.get("candidate_model_ref") != candidate.get("model_ref"):
-        reasons.append("candidate_model_provenance_mismatch")
-    if result.get("candidate_id") != candidate.get("candidate_id"):
-        reasons.append("candidate_evaluation_mismatch")
-    if not isinstance(result.get("incumbent_model_ref"), str) or not result["incumbent_model_ref"]:
-        reasons.append("incumbent_model_provenance_mismatch")
-    previous = candidate.get("incumbent_model_ref")
-    if previous is None or result.get("incumbent_model_ref") != previous:
-        reasons.append("incumbent_model_mismatch")
-    active_record = candidate.get("expected_active_model_ref")
-    if result.get("incumbent_model_ref") != (active_record or previous):
-        reasons.append("incumbent_model_mismatch")
-    provenance = result.get("trusted_label_provenance")
-    if (not isinstance(provenance, Mapping)
-            or not all(isinstance(provenance.get(field), str) and provenance[field]
-                       for field in ("source_name", "provenance_id", "trust_kind"))
-            or not _SHA.fullmatch(str(provenance.get("snapshot_sha256", "")))):
-        reasons.append("trusted_label_provenance_invalid")
-    coverage = result.get("coverage")
-    if not _finite(coverage) or coverage < policy.minimum_coverage:
-        reasons.append("coverage_gate_failed")
-    calibration_error = result.get("calibration_error")
-    if not _finite(calibration_error) or calibration_error > policy.max_calibration_error:
-        reasons.append("calibration_gate_failed")
-    candidate_metrics = result.get("candidate_metrics", {})
-    incumbent_metrics = result.get("incumbent_metrics", {})
-    for metric, minimum in policy.required_metrics.items():
-        value = candidate_metrics.get(metric)
-        if not _finite(value) or value < minimum:
-            reasons.append("required_metric_failed:{}".format(metric))
-        old = incumbent_metrics.get(metric)
-        if old is None or not _finite(old) or _finite(value) and value < old:
-            reasons.append("incumbent_comparison_missing_or_regressed:{}".format(metric))
-    candidate_labels = result.get("candidate_per_label", {})
-    incumbent_labels = result.get("incumbent_per_label", {})
-    for label, allowance in policy.allowed_per_label_regression.items():
-        current, old = candidate_labels.get(label), incumbent_labels.get(label)
-        if not _finite(current) or not _finite(old) or old - current > allowance:
-            reasons.append("per_label_regression_failed:{}".format(label))
-    return sorted(set(reasons))
+    return promotion_reasons(candidate, result, policy, evidence_reasons=reasons)
 
 
 def _training_gate_failure(candidate, evaluation):
@@ -796,14 +656,6 @@ def _training_gate_failure(candidate, evaluation):
         return hashlib.sha256(Path(path_value).read_bytes()).hexdigest() != expected
     except OSError:
         return True
-
-
-def _metrics_equal(left, right):
-    if not isinstance(left, Mapping) or set(left) != set(right):
-        return False
-    return all(_finite(left.get(key)) and abs(left[key] - value) <= 1e-12
-               for key, value in right.items())
-
 
 def _validate_holdout_row_binding(manifest_path, manifest_digest, holdout_count, task, labels,
                                   candidate_rows, incumbent_rows):
@@ -870,92 +722,3 @@ def _validate_holdout_row_binding(manifest_path, manifest_digest, holdout_count,
         if observed != expected:
             raise ValueError(role + "_holdout_rows_do_not_match_frozen_partition")
     return expected
-
-
-def _derive_holdout_metrics(rows, labels, threshold):
-    """Recompute gates from privacy-minimized per-row target/prediction evidence."""
-    if not isinstance(rows, list) or not rows:
-        raise ValueError("holdout_rows_missing")
-    allowed_reasons = {None, "below_threshold", "rule_conflict", "invalid_input", "unknown_label",
-                       "invalid_output", "backend_error", "calibration_error", "stale_source"}
-    abstain = "__finlabel_abstain__"
-    while abstain in labels:
-        abstain += "_"
-    confusion = {label: {guess: 0 for guess in (*labels, abstain)} for label in labels}
-    correct, confidences, canonical_rows = [], [], []
-    seen = set()
-    applied_count = 0
-    for row in rows:
-        expected_fields = {"record_ref", "input_digest", "target", "prediction", "scores", "confidence", "applied", "reason_code"}
-        if not isinstance(row, Mapping) or set(row) != expected_fields:
-            raise ValueError("malformed_holdout_row")
-        ref, input_digest, target, predicted = (row["record_ref"], row["input_digest"],
-                                                row["target"], row["prediction"])
-        confidence, reason = row["confidence"], row["reason_code"]
-        if (not isinstance(ref, str) or not _SHA.fullmatch(ref) or ref in seen
-                or not isinstance(input_digest, str) or not _SHA.fullmatch(input_digest) or target not in labels
-                or predicted is not None and predicted not in labels or reason not in allowed_reasons):
-            raise ValueError("invalid_holdout_row_identity_or_label")
-        seen.add(ref)
-        if predicted is None:
-            if (row["scores"] is not None or confidence is not None or row["applied"] is not False
-                    or reason not in {"rule_conflict", "invalid_input", "unknown_label", "invalid_output",
-                                      "backend_error", "calibration_error"}):
-                raise ValueError("abstention_has_prediction_evidence")
-            guess = abstain
-            correct.append(0.0)
-            applied = False
-        else:
-            if reason not in {None, "below_threshold", "stale_source"}:
-                raise ValueError("prediction_reason_code_invalid")
-            scores = row["scores"]
-            if (not isinstance(scores, Mapping) or set(scores) != set(labels)
-                    or any(not _finite(value) for value in scores.values())
-                    or not _finite(confidence) or not 0 <= confidence <= 1):
-                raise ValueError("prediction_score_evidence_invalid")
-            expected_applied = reason is None and confidence >= threshold
-            if row["applied"] is not expected_applied:
-                raise ValueError("applied_flag_mismatches_threshold")
-            if reason == "below_threshold" and confidence >= threshold:
-                raise ValueError("threshold_reason_mismatch")
-            if reason is None and confidence < threshold:
-                raise ValueError("threshold_reason_mismatch")
-            guess = predicted
-            correct.append(float(predicted == target))
-            confidences.append((confidence, float(predicted == target)))
-            applied = expected_applied
-        confusion[target][guess] += 1
-        applied_count += int(applied)
-        canonical_rows.append({"record_ref": ref, "input_digest": input_digest,
-            "target": target, "prediction": predicted,
-            "scores": ({label: row["scores"][label] for label in labels}
-                       if row["scores"] is not None else None),
-            "confidence": confidence, "applied": applied, "reason_code": reason})
-    total = len(rows)
-    per_label, f1s = {}, []
-    for label in labels:
-        tp = confusion[label][label]
-        fp = sum(confusion[truth][label] for truth in labels if truth != label)
-        fn = sum(confusion[label][guess] for guess in (*labels, abstain) if guess != label)
-        precision = tp / (tp + fp) if tp + fp else 0.0
-        recall = tp / (tp + fn) if tp + fn else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-        per_label[label] = {"precision": precision, "recall": recall, "f1": f1, "support": tp + fn}
-        f1s.append(f1)
-    accuracy = sum(correct) / total
-    brier = sum((confidence - outcome) ** 2 for confidence, outcome in confidences) / len(confidences) if confidences else 1.0
-    ece = 0.0
-    if confidences:
-        for index in range(10):
-            bucket = [(confidence, outcome) for confidence, outcome in confidences
-                      if index / 10 <= confidence < ((index + 1) / 10 if index < 9 else 1.0000001)]
-            if bucket:
-                ece += len(bucket) / len(confidences) * abs(
-                    sum(outcome for _, outcome in bucket) / len(bucket)
-                    - sum(confidence for confidence, _ in bucket) / len(bucket))
-    metrics = {"accuracy": accuracy, "macro_f1": sum(f1s) / len(f1s), "brier_score": brier,
-               "calibration_error": ece if confidences else 1.0, "coverage": applied_count / total}
-    record_digest = _digest(canonical_rows)
-    return {"metrics": metrics, "per_label": per_label,
-            "per_label_f1": {label: values["f1"] for label, values in per_label.items()},
-            "confusion": confusion, "records_sha256": record_digest}
