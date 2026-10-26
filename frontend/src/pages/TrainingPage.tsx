@@ -3,7 +3,8 @@ import { Activity, ArrowRight, Check, CircleAlert, RefreshCw, RotateCcw, ShieldC
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getAutonomyOverview, type AutonomyOverview } from '@/lib/api'
+import type { AutonomyOverview } from '@/application/ports/FinLabelClient'
+import { useFinLabelClient } from '@/application/FinLabelClientContext'
 
 const steps = [
   { id: 'check', title: 'Verificar dados', detail: 'Integridade, qualidade e proveniência' },
@@ -51,15 +52,16 @@ function TrainingWorkflow({ current }: { current: StepId }) {
 }
 
 export default function TrainingPage() {
+  const client = useFinLabelClient()
   const [overview, setOverview] = useState<AutonomyOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const refresh = useCallback(async () => {
     setError(null)
-    try { setOverview(await getAutonomyOverview()) }
+    try { setOverview(await client.getAutonomyOverview()) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o histórico local.') }
     finally { setLoading(false) }
-  }, [])
+  }, [client])
   useEffect(() => { void refresh() }, [refresh])
 
   const activeStep = currentStep(overview)

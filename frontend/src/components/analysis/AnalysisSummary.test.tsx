@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AnalysisSummary } from './AnalysisSummary'
-import type { AnalysisResponse } from '@/lib/api'
+import type { AnalysisResponse } from '@/application/ports/FinLabelClient'
 
 const result: AnalysisResponse = {
   run_id: 'run-12345678', total_rows: 4, valid_row_count: 10,

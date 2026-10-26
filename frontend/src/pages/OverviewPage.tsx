@@ -3,12 +3,14 @@ import { Activity, ArrowUpRight, BarChart3, Database, ShieldCheck } from 'lucide
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getSources, type SourceInfo } from '@/lib/api'
+import type { SourceInfo } from '@/application/ports/FinLabelClient'
+import { useFinLabelClient } from '@/application/FinLabelClientContext'
 
 export default function OverviewPage() {
+  const client = useFinLabelClient()
   const [sources, setSources] = useState<SourceInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { getSources().then(({ sources: items }) => setSources(items)).catch((cause: Error) => setError(cause.message)) }, [])
+  useEffect(() => { client.getSources().then(({ sources: items }) => setSources(items)).catch((cause: Error) => setError(cause.message)) }, [client])
   return <>
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-2 text-sm font-medium text-[#47805f]">FINLABEL / LOCAL</p><h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Seu espaço de trabalho</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#718077]">Explore fontes locais, calcule indicadores auditáveis e monitore mudanças estruturais.</p></div><a className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#dce5de] bg-white px-3 text-sm font-medium text-[#34493a]" href="/analysis">Nova análise <ArrowUpRight size={16}/></a></div>
     {error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível carregar as fontes</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
