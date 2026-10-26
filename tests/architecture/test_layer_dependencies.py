@@ -1,7 +1,6 @@
 """Import contracts for the staged clean architecture migration."""
 
 import ast
-import sys
 from pathlib import Path
 
 import pytest
@@ -32,10 +31,12 @@ TRANSITIONAL_MODULES = {
     "finlabel.web", "finlabel.web.app",
 }
 
-FORBIDDEN_IO_ROOTS = {
-    "argparse", "csv", "fastapi", "httpx", "os", "pathlib", "peft",
-    "requests", "shutil", "sqlite3", "subprocess", "tempfile", "torch",
-    "transformers", "trl", "urllib", "uvicorn",
+# Restricted layers may use only pure standard-library helpers. An allowlist
+# avoids silently admitting a new filesystem, process, or network module.
+PURE_STDLIB_ROOTS = {
+    "abc", "collections", "copy", "dataclasses", "datetime", "decimal",
+    "enum", "functools", "hashlib", "itertools", "json", "math",
+    "numbers", "operator", "re", "statistics", "types", "typing",
 }
 
 
@@ -92,7 +93,7 @@ def forbidden_imports(importer: str, imports: set[str]) -> set[str]:
                 forbidden.add(imported)
         elif current in {"domain", "application"}:
             root = imported.split(".")[0]
-            if root in FORBIDDEN_IO_ROOTS or root not in sys.stdlib_module_names:
+            if root not in PURE_STDLIB_ROOTS:
                 forbidden.add(imported)
     return forbidden
 
@@ -118,9 +119,15 @@ def test_relative_and_nested_imports_are_collected():
         ("finlabel.domain.analysis.rules", "finlabel.domain.labeling", False),
         ("finlabel.domain.analysis.rules", "finlabel.application.ports", True),
         ("finlabel.domain.analysis.rules", "pathlib", True),
+        ("finlabel.domain.analysis.rules", "io", True),
+        ("finlabel.domain.analysis.rules", "socket", True),
+        ("finlabel.domain.analysis.rules", "http.client", True),
         ("finlabel.application.use_cases.analysis", "finlabel.domain.analysis", False),
         ("finlabel.application.use_cases.analysis", "finlabel.adapters.outbound", True),
         ("finlabel.application.use_cases.analysis", "sqlite3", True),
+        ("finlabel.application.use_cases.analysis", "io", True),
+        ("finlabel.application.use_cases.analysis", "socket", True),
+        ("finlabel.application.use_cases.analysis", "http.client", True),
         ("finlabel.adapters.outbound.sources.csv_source", "finlabel.application.ports", False),
         ("finlabel.adapters.outbound.sources.csv_source", "finlabel.bootstrap", True),
         ("finlabel.bootstrap.cli", "finlabel.adapters.inbound.cli", False),
