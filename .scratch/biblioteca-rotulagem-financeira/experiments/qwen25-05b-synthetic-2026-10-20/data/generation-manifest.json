@@ -1,0 +1,15 @@
+{
+  "labels": [
+    "receita",
+    "despesa_operacional",
+    "custo_financeiro"
+  ],
+  "train_rows": 72,
+  "heldout_rows": 24,
+  "train_sha256": "3e99dd373fb980699039149a1c7507a055374c8d6f0911c729594835c8b29e00",
+  "heldout_sha256": "bfa6a76912ea0e5f09be94944717aafb493cdc962dc1008a215a0c9b51df3224",
+  "ground_truth_sha256": "4cc04a79546296e7857ae4798f8413b8ab20fc44a60110782cf932423afe23e4",
+  "train_templates_per_label": 8,
+  "heldout_templates_per_label": 8,
+  "overlapping_description_count": 0
+}

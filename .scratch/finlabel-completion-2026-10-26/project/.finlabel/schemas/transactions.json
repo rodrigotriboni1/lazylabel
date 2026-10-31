@@ -1,0 +1,18 @@
+{
+  "columns": {
+    "record_id": "string",
+    "period": "string",
+    "category": "string",
+    "amount": "number",
+    "reference_label": "string"
+  },
+  "required_columns": [
+    "record_id",
+    "period",
+    "category",
+    "amount",
+    "reference_label"
+  ],
+  "max_missing_ratio": {},
+  "allow_extra_columns": false
+}

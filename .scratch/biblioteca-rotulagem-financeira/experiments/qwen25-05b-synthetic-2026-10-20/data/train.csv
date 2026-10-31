@@ -1,0 +1,73 @@
+historico,referencia_interna
+Pix recebido de cliente Aurora pela fatura S0101,SYNTH-TRAIN-0000
+Pix recebido de cliente Cedro pela fatura S0102,SYNTH-TRAIN-0001
+Pix recebido de cliente Horizonte pela fatura S0103,SYNTH-TRAIN-0002
+Crédito de venda no cartão referente ao pedido S0201,SYNTH-TRAIN-0003
+Crédito de venda no cartão referente ao pedido S0202,SYNTH-TRAIN-0004
+Crédito de venda no cartão referente ao pedido S0203,SYNTH-TRAIN-0005
+"Boleto recebido da empresa Raiz, pedido S0301",SYNTH-TRAIN-0006
+"Boleto recebido da empresa Solare, pedido S0302",SYNTH-TRAIN-0007
+"Boleto recebido da empresa Aurora, pedido S0303",SYNTH-TRAIN-0008
+Transferência recebida de Cedro por serviços prestados,SYNTH-TRAIN-0009
+Transferência recebida de Horizonte por serviços prestados,SYNTH-TRAIN-0010
+Transferência recebida de Ipê por serviços prestados,SYNTH-TRAIN-0011
+"Recebimento de mensalidade do cliente Nascente, contrato S0501",SYNTH-TRAIN-0012
+"Recebimento de mensalidade do cliente Pioneira, contrato S0502",SYNTH-TRAIN-0013
+"Recebimento de mensalidade do cliente Raiz, contrato S0503",SYNTH-TRAIN-0014
+"Valor recebido por venda de mercadorias, pedido S0601",SYNTH-TRAIN-0015
+"Valor recebido por venda de mercadorias, pedido S0602",SYNTH-TRAIN-0016
+"Valor recebido por venda de mercadorias, pedido S0603",SYNTH-TRAIN-0017
+Depósito de cliente Horizonte para quitação da nota S0701,SYNTH-TRAIN-0018
+Depósito de cliente Ipê para quitação da nota S0702,SYNTH-TRAIN-0019
+Depósito de cliente Nascente para quitação da nota S0703,SYNTH-TRAIN-0020
+Receita de consultoria recebida da empresa Pioneira,SYNTH-TRAIN-0021
+Receita de consultoria recebida da empresa Raiz,SYNTH-TRAIN-0022
+Receita de consultoria recebida da empresa Solare,SYNTH-TRAIN-0023
+"Pagamento do aluguel do escritório Aurora, referência S0101",SYNTH-TRAIN-0000
+"Pagamento do aluguel do escritório Cedro, referência S0102",SYNTH-TRAIN-0001
+"Pagamento do aluguel do escritório Horizonte, referência S0103",SYNTH-TRAIN-0002
+Conta de energia elétrica da unidade Ipê,SYNTH-TRAIN-0003
+Conta de energia elétrica da unidade Nascente,SYNTH-TRAIN-0004
+Conta de energia elétrica da unidade Pioneira,SYNTH-TRAIN-0005
+"Compra de material de escritório na loja Raiz, pedido S0301",SYNTH-TRAIN-0006
+"Compra de material de escritório na loja Solare, pedido S0302",SYNTH-TRAIN-0007
+"Compra de material de escritório na loja Aurora, pedido S0303",SYNTH-TRAIN-0008
+Pagamento da folha salarial da equipe Cedro,SYNTH-TRAIN-0009
+Pagamento da folha salarial da equipe Horizonte,SYNTH-TRAIN-0010
+Pagamento da folha salarial da equipe Ipê,SYNTH-TRAIN-0011
+Fatura de internet e telefonia da filial Nascente,SYNTH-TRAIN-0012
+Fatura de internet e telefonia da filial Pioneira,SYNTH-TRAIN-0013
+Fatura de internet e telefonia da filial Raiz,SYNTH-TRAIN-0014
+"Reembolso de viagem de trabalho para Solare, relatório S0601",SYNTH-TRAIN-0015
+"Reembolso de viagem de trabalho para Aurora, relatório S0602",SYNTH-TRAIN-0016
+"Reembolso de viagem de trabalho para Cedro, relatório S0603",SYNTH-TRAIN-0017
+Serviço de limpeza mensal contratado da empresa Horizonte,SYNTH-TRAIN-0018
+Serviço de limpeza mensal contratado da empresa Ipê,SYNTH-TRAIN-0019
+Serviço de limpeza mensal contratado da empresa Nascente,SYNTH-TRAIN-0020
+Compra de insumos para a operação com fornecedor Pioneira,SYNTH-TRAIN-0021
+Compra de insumos para a operação com fornecedor Raiz,SYNTH-TRAIN-0022
+Compra de insumos para a operação com fornecedor Solare,SYNTH-TRAIN-0023
+Tarifa de manutenção da conta empresarial Aurora,SYNTH-TRAIN-0000
+Tarifa de manutenção da conta empresarial Cedro,SYNTH-TRAIN-0001
+Tarifa de manutenção da conta empresarial Horizonte,SYNTH-TRAIN-0002
+Juros do empréstimo de capital de giro contrato S0201,SYNTH-TRAIN-0003
+Juros do empréstimo de capital de giro contrato S0202,SYNTH-TRAIN-0004
+Juros do empréstimo de capital de giro contrato S0203,SYNTH-TRAIN-0005
+"Taxa de processamento da adquirente Raiz, lote S0301",SYNTH-TRAIN-0006
+"Taxa de processamento da adquirente Solare, lote S0302",SYNTH-TRAIN-0007
+"Taxa de processamento da adquirente Aurora, lote S0303",SYNTH-TRAIN-0008
+Encargo por atraso de parcela do financiamento S0401,SYNTH-TRAIN-0009
+Encargo por atraso de parcela do financiamento S0402,SYNTH-TRAIN-0010
+Encargo por atraso de parcela do financiamento S0403,SYNTH-TRAIN-0011
+Tarifa bancária de transferência para Nascente,SYNTH-TRAIN-0012
+Tarifa bancária de transferência para Pioneira,SYNTH-TRAIN-0013
+Tarifa bancária de transferência para Raiz,SYNTH-TRAIN-0014
+Juros sobre saldo utilizado no limite da conta Solare,SYNTH-TRAIN-0015
+Juros sobre saldo utilizado no limite da conta Aurora,SYNTH-TRAIN-0016
+Juros sobre saldo utilizado no limite da conta Cedro,SYNTH-TRAIN-0017
+Custo de antecipação de recebíveis contrato S0701,SYNTH-TRAIN-0018
+Custo de antecipação de recebíveis contrato S0702,SYNTH-TRAIN-0019
+Custo de antecipação de recebíveis contrato S0703,SYNTH-TRAIN-0020
+Taxa de administração financeira cobrada por Pioneira,SYNTH-TRAIN-0021
+Taxa de administração financeira cobrada por Raiz,SYNTH-TRAIN-0022
+Taxa de administração financeira cobrada por Solare,SYNTH-TRAIN-0023

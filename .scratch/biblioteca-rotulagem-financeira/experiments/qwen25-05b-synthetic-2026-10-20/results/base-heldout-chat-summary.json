@@ -1,0 +1,39 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "adapter": null,
+  "device": "mps",
+  "prompt_format": "model_chat_template",
+  "generation": {
+    "do_sample": false,
+    "max_new_tokens": 64
+  },
+  "metrics": {
+    "count": 24,
+    "valid_predictions": 23,
+    "valid_prediction_rate": 0.9583333333333334,
+    "exact_accuracy": 0.375,
+    "macro_f1": 0.3,
+    "confusion_matrix": {
+      "receita": {
+        "receita": 2,
+        "despesa_operacional": 0,
+        "custo_financeiro": 6,
+        "invalid": 0
+      },
+      "despesa_operacional": {
+        "receita": 0,
+        "despesa_operacional": 0,
+        "custo_financeiro": 7,
+        "invalid": 1
+      },
+      "custo_financeiro": {
+        "receita": 0,
+        "despesa_operacional": 1,
+        "custo_financeiro": 7,
+        "invalid": 0
+      }
+    }
+  },
+  "elapsed_seconds": 8.479
+}

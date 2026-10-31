@@ -1,0 +1,24 @@
+<h2>Quando o dataset não está pronto para treino</h2>
+<p class="subtitle">Escolha como a biblioteca deve responder aos problemas encontrados no dataset revisado.</p>
+
+<div class="mockup" style="max-width:1050px;margin:0 auto">
+  <div class="mockup-header">FinLabel · pré-verificação do dataset</div>
+  <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:18px">
+    <div style="background:#fff;border:1px solid #d6dfdf;border-radius:9px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div><small>PREPARAÇÃO PARA FINE-TUNING</small><h3 style="margin:5px 0">Dataset: classificação de transações</h3></div><strong style="color:#a36116">PRONTO COM RESSALVAS</strong></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px">
+        <div style="background:#f0f8f4;border-radius:7px;padding:10px"><small>EXEMPLOS VÁLIDOS</small><h3 style="margin:4px 0">428</h3><small>aprovados ou corrigidos</small></div>
+        <div style="background:#fff8ec;border-radius:7px;padding:10px"><small>COBERTURA DE RÓTULOS</small><h3 style="margin:4px 0">4 de 5</h3><small>1 rótulo com poucos exemplos</small></div>
+        <div style="background:#f0f8f4;border-radius:7px;padding:10px"><small>DUPLICADOS</small><h3 style="margin:4px 0">2</h3><small>removidos da exportação</small></div>
+        <div style="background:#f0f8f4;border-radius:7px;padding:10px"><small>INVÁLIDOS / DESATUALIZADOS</small><h3 style="margin:4px 0">0</h3><small>incluídos no dataset</small></div>
+      </div>
+      <div style="background:#fff8ec;border:1px solid #efd29e;border-radius:7px;padding:10px;margin-top:10px;font-size:11px"><strong>Ressalva:</strong> o rótulo “tarifa” tem apenas 3 exemplos. Colete mais revisões para melhorar a cobertura.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:8px;padding:13px"><small>OPÇÃO A</small><h3>Bloquear qualquer ressalva</h3><p style="font-size:11px">O treino só inicia quando todos os mínimos e critérios forem atendidos.</p><div style="color:#146d68;font-size:10px"><strong>Mais seguro e simples de explicar</strong></div><div style="color:#58666a;font-size:10px;margin-top:6px">Pode impedir experimentos quando a tarefa tem poucos exemplos.</div></div>
+      <div style="background:#fff;border:2px solid #146d68;border-radius:8px;padding:13px"><small>OPÇÃO B · RECOMENDADA</small><h3>Bloqueios + avisos</h3><p style="font-size:11px">Problemas de integridade bloqueiam. Cobertura baixa avisa e exige confirmação explícita para treino exploratório.</p><div style="color:#146d68;font-size:10px"><strong>Protege contra dados inválidos sem esconder limites</strong></div><div style="color:#58666a;font-size:10px;margin-top:6px">O resultado fica marcado como exploratório; não ativa o adapter automaticamente.</div></div>
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:8px;padding:13px"><small>OPÇÃO C</small><h3>Só informar</h3><p style="font-size:11px">Exibe métricas do dataset e deixa a decisão de treinar inteiramente para a pessoa.</p><div style="color:#146d68;font-size:10px"><strong>Mais flexível</strong></div><div style="color:#58666a;font-size:10px;margin-top:6px">Aumenta o risco de treino com dados inválidos ou cobertura insuficiente.</div></div>
+    </div>
+    <div style="margin-top:12px;background:#f2f5f6;border-radius:7px;padding:10px;font-size:10px"><strong>Exemplo de bloqueio:</strong> exemplos sem rótulo válido, fonte/hash desatualizado, formato incompatível ou dataset vazio. <strong>Exemplo de aviso:</strong> poucos exemplos de um rótulo ou distribuição muito desequilibrada.</div>
+  </div>
+</div>

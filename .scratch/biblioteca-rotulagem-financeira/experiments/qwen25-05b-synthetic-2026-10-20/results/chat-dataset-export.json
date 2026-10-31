@@ -1,0 +1,7 @@
+{
+  "rows": 72,
+  "dataset_sha256": "d57451a535ca213bfd37b083dad5d3a7b7ee714092a681c83ae1c3ce50a230ef",
+  "source_dataset_sha256": "00f5858facd3bbb17a763823b4fe010b50774a5379dfb5f1eef2dd143599727c",
+  "path": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/data/qwen-chat-training.jsonl",
+  "prompt_format": "Qwen2.5 tokenizer chat template; single user message and assistant generation prefix"
+}

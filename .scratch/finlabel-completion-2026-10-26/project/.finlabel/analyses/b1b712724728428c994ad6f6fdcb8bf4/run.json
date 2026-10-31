@@ -1,0 +1,10 @@
+{
+  "run_id": "b1b712724728428c994ad6f6fdcb8bf4",
+  "created_at": "2026-10-26T03:10:32.533709Z",
+  "source_name": "transactions",
+  "question": "Participação por categoria no período",
+  "model_ref": null,
+  "plan_sha256": "7243f437704f08c9558ae1c0c0d9d3cd13fc838fb042097208c17db35d69082e",
+  "result_sha256": "07a7fb8bbb66a3fb2227ea23a89efbc52253e8012bc7459eac3f36b5cea62dc0",
+  "chart_sha256": "8037086d6723f587e8f40bea587861ee5d05432d5428ac1dae6bef74bcbe4cc2"
+}

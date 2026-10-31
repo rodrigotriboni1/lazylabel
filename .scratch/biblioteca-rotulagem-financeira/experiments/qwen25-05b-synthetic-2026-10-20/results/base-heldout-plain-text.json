@@ -1,0 +1,228 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "adapter": null,
+  "device": "mps",
+  "generation": {
+    "do_sample": false,
+    "max_new_tokens": 64
+  },
+  "metrics": {
+    "count": 24,
+    "exact_accuracy": 0.0,
+    "macro_f1": 0.0,
+    "confusion_matrix": {
+      "receita": {
+        "receita": 0,
+        "despesa_operacional": 0,
+        "custo_financeiro": 0
+      },
+      "despesa_operacional": {
+        "receita": 0,
+        "despesa_operacional": 0,
+        "custo_financeiro": 0
+      },
+      "custo_financeiro": {
+        "receita": 0,
+        "despesa_operacional": 0,
+        "custo_financeiro": 0
+      }
+    }
+  },
+  "elapsed_seconds": 33.387,
+  "predictions": [
+    {
+      "index": 0,
+      "description": "Entrada via transferência do comprador Nascente, documento S0105",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro é classificado como despesa_operacional porque ele contém informações sobre pagamentos recebidos de clientes e aluguéis, que são despesas operacionais.\"} {\""
+    },
+    {
+      "index": 1,
+      "description": "Valor de fatura comercial recebido do pagador Solare",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON object. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro é classificado como 'despesa_operacional' porque ele contém informações sobre despesas operacionais relacionadas ao pagamento da fatura.\"} {\"label\":\"receita"
+    },
+    {
+      "index": 2,
+      "description": "Crédito de venda à vista registrado no caixa S0305",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is no suitable label, do not select any label.\n\n{\n  \"label\": \"receita\",\n  \"rational\": \"O historico financeiro sintético contém dados relacionados ao recebimento de clientes, incluindo créditos e vendas, que podem ser classificados como receitas"
+    },
+    {
+      "index": 3,
+      "description": "Cliente Pioneira liquidou a cobrança do serviço S0405",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O cliente liquidou a cobrança do serviço S0405, que é uma despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"A receita do cliente liquidou"
+    },
+    {
+      "index": 4,
+      "description": "Recebimento de parcela de venda realizada ao cliente Aurora",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"receita\",\"rational\":\"O historico financeiro do cliente Aurora contém receitas como reembolso de parcelas de venda.\"}"
+    },
+    {
+      "index": 5,
+      "description": "Depósito referente a mercadorias entregues, nota S0605",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O historico financeiro é fornecido como receita e não como despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"O historico financeiro é fornecido como rece"
+    },
+    {
+      "index": 6,
+      "description": "Pagamento recebido pela prestação de serviço para Raiz",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON object. {\"label\":\"receita\",\"rational\":\"O pagamento recebido é uma receita do cliente.\"}"
+    },
+    {
+      "index": 7,
+      "description": "Liquidação de duplicata de cliente Cedro, título S0805",
+      "gold": "receita",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro do cliente Cedro contém despesas operacionais relacionadas ao aluguel e salários.\"} {\"label\":\"receita\",\"rational\":\"O histórico financeiro do cliente"
+    },
+    {
+      "index": 8,
+      "description": "Quitação do contrato mensal de locação do espaço Nascente",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro é fornecido como receita e despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"O histórico financeiro é fornecido como receita.\"} {\""
+    },
+    {
+      "index": 9,
+      "description": "Consumo de água e luz no centro operacional Solare",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro do histórico financeiro sintético contém dados relacionados ao despesa operacional.\"}"
+    },
+    {
+      "index": 10,
+      "description": "Aquisição de papelaria para o departamento Horizonte, pedido S0305",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O historico financeiro do cliente solicitou uma aquisição de papelaria, que é considerada uma despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"O historico finance"
+    },
+    {
+      "index": 11,
+      "description": "Salários mensais pagos aos funcionários da unidade Pioneira",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is no suitable label, do not select any label.\n\n{\n  \"label\": \"receita\",\n  \"rational\": \"O historico financeiro selecionado contém dados relacionados ao salário pago aos funcionários da unidade Pioneira.\"\n}"
+    },
+    {
+      "index": 12,
+      "description": "Plano corporativo de dados e telefone da equipe Aurora",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O historico financeiro do plano corporativo de dados e telefone da equipe Aurora contém informações sobre despesas operacionais relacionadas ao aluguel, salários, utilidades, materiais,"
+    },
+    {
+      "index": 13,
+      "description": "Diária de hospedagem em viagem a trabalho para Ipê",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro é fornecido como receita e despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"O histórico financeiro é fornecido como receita.\"} {\""
+    },
+    {
+      "index": 14,
+      "description": "Manutenção preventiva dos equipamentos da unidade Raiz",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"manutenção\", \"rational\":\"Esta é uma situação específica relacionada ao manutenção de equipamentos na unidade Raiz.\"} {\"label\":\"despesa_operacional\", \"rational\":\"A despesa operacional envolve pag"
+    },
+    {
+      "index": 15,
+      "description": "Material de embalagem comprado para expedição, fornecedor Cedro",
+      "gold": "despesa_operacional",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro sintético contém informações sobre despesas operacionais relacionadas ao material de embalagem comprado para expedição.\"} {\"label\":\"receita\",\"rational\":\"O"
+    },
+    {
+      "index": 16,
+      "description": "Cobrança de pacote de serviços pelo banco Nascente",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON object. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro do banco Nascente contém cobranças de pacotes de serviços, que são despesas operacionais.\"} {\"label\":\"receita\",\"rational\":\"O histórico finance"
+    },
+    {
+      "index": 17,
+      "description": "Encargos de juros do crédito empresarial número S0205",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is no suitable label, answer \"n/a\". {\"label\":\"n/a\", \"rational\":\"O historico financeiro não possui informações sobre receitas, despesas operacionais ou custo financeiro.\"}"
+    },
+    {
+      "index": 18,
+      "description": "Desconto de tarifa sobre vendas processadas na rede Horizonte",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is no suitable label, do not select any label.\n\n{\n  \"label\": \"despesa_operacional\",\n  \"rational\": \"O histórico financeiro selecionado contém dados relacionados ao descontos de tarifa sobre vendas processadas na rede Horizonte.\"\n}"
+    },
+    {
+      "index": 19,
+      "description": "Multa e juros de mora da prestação do contrato S0405",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"descendência\", \"rational\":\"O histórico financeiro não contém informações sobre receitas, despesas operacionais ou custos financeiros.\"} {\"label\":\"desastre\", \"rational\":\"O histórico financeiro não contém"
+    },
+    {
+      "index": 20,
+      "description": "Custo cobrado para transferir recursos pelo banco Aurora",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"custo_financeiro\", \"rational\":\"O histórico financeiro é o custo cobrado para transferir recursos pelo banco Aurora.\"}"
+    },
+    {
+      "index": 21,
+      "description": "Encargos de utilização do cheque especial da conta Ipê",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON object. {\"label\":\"despesa_operacional\",\"rational\":\"O histórico financeiro é fornecido como receita e não como despesa operacional.\"} {\"label\":\"receita\",\"rational\":\"O histórico financeiro é fornecido como receita"
+    },
+    {
+      "index": 22,
+      "description": "Deságio pago pela antecipação do título S0705",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O historico financeiro é sobre despesas operacionais.\"}"
+    },
+    {
+      "index": 23,
+      "description": "Despesa de intermediação financeira da instituição Cedro",
+      "gold": "custo_financeiro",
+      "prediction": null,
+      "rationale": null,
+      "raw_output": "If there is none, return an empty JSON. {\"label\":\"despesa_operacional\",\"rational\":\"O historico financeiro do Cedro contém despesas relacionadas ao processo de intermediação financeira.\"} {\"label\":\"receita\",\"rational\":\"O historico financeiro do Cedro"
+    }
+  ],
+  "prompt_format": "plain_text"
+}

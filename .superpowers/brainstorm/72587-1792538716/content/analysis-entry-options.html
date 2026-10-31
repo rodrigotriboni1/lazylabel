@@ -1,0 +1,72 @@
+<h2>Como a pessoa deve começar uma análise?</h2>
+<p class="subtitle">Estilo neutro e gráfico em destaque. Compare como a pergunta vira um cálculo verificável.</p>
+
+<div class="cards">
+  <div class="card" data-choice="question-first" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Análises · pergunta em linguagem natural</div>
+        <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:14px">
+          <small style="color:#146d68">BASE LOCAL · SOMENTE LEITURA</small>
+          <h3 style="margin:5px 0 10px">O que você quer descobrir?</h3>
+          <div style="background:#fff;border:1px solid #d5dfe1;border-radius:7px;padding:11px;color:#66797c">Como a participação de cada produto nas vendas mudou por trimestre?</div>
+          <button class="mock-button" style="margin-top:9px">Interpretar pergunta</button>
+          <div class="placeholder" style="background:#fff;padding:10px;margin-top:10px">
+            <small>PLANO PROPOSTO · confira antes de calcular</small>
+            <p style="font-size:12px;margin:6px 0">Medida: vendas　·　Grupo: produto<br>Período: trimestre　·　Visualização: linhas</p>
+            <button class="mock-button">Revisar plano</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · Pergunta primeiro</h3><p>A pessoa descreve o que quer saber; a IA propõe o plano para revisão antes da execução.</p></div>
+  </div>
+
+  <div class="card" data-choice="guided-builder" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Análises · construtor guiado</div>
+        <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:14px">
+          <small style="color:#146d68">BASE LOCAL · SOMENTE LEITURA</small>
+          <h3 style="margin:5px 0 10px">Monte uma análise</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+            <div class="placeholder" style="background:#fff;padding:9px"><small>O QUE MEDIR</small><br><strong>Vendas　⌄</strong></div>
+            <div class="placeholder" style="background:#fff;padding:9px"><small>AGRUPAR POR</small><br><strong>Produto　⌄</strong></div>
+            <div class="placeholder" style="background:#fff;padding:9px"><small>PERÍODO</small><br><strong>Trimestre　⌄</strong></div>
+            <div class="placeholder" style="background:#fff;padding:9px"><small>GRÁFICO</small><br><strong>Linhas　⌄</strong></div>
+          </div>
+          <button class="mock-button" style="margin-top:9px">Pré-visualizar cálculo</button>
+          <p style="font-size:11px;margin:8px 0 0;color:#66797c">Cada campo fica explícito antes de gerar o gráfico.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · Formulário guiado</h3><p>A pessoa escolhe medida, grupo, período e gráfico. Mais explícito e previsível, com menos conversa.</p></div>
+  </div>
+
+  <div class="card" data-choice="hybrid-builder" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Análises · pergunta com plano editável</div>
+        <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:14px">
+          <small style="color:#146d68">BASE LOCAL · SOMENTE LEITURA</small>
+          <h3 style="margin:5px 0 10px">Explore seus dados</h3>
+          <div style="background:#fff;border:1px solid #d5dfe1;border-radius:7px;padding:10px;color:#66797c;font-size:12px">Como a participação de cada produto nas vendas mudou por trimestre?</div>
+          <div class="placeholder" style="background:#fff;padding:10px;margin-top:9px">
+            <small>PLANO PROPOSTO · ajuste os campos</small>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin:8px 0">
+              <span style="background:#e9eef0;padding:5px;border-radius:4px;font-size:10px">Medida: Vendas　⌄</span>
+              <span style="background:#e9eef0;padding:5px;border-radius:4px;font-size:10px">Grupo: Produto　⌄</span>
+              <span style="background:#e9eef0;padding:5px;border-radius:4px;font-size:10px">Tempo: Trimestre　⌄</span>
+              <span style="background:#e9eef0;padding:5px;border-radius:4px;font-size:10px">Gráfico: Linhas　⌄</span>
+            </div>
+            <button class="mock-button">Confirmar e calcular</button>
+          </div>
+          <p style="font-size:11px;margin:8px 0 0;color:#66797c">A IA sugere; o motor local calcula após confirmação.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C · Híbrido</h3><p>Combina linguagem natural com campos visíveis e editáveis antes do cálculo.</p></div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Os nomes de campos são ilustrativos. Escolha como gostaria de interagir ou descreva outra ideia.</p>
