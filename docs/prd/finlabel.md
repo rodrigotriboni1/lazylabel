@@ -63,7 +63,7 @@ Marcado conforme os documentos do commit `257e90d`; **não reexecutei a verifica
 
 - **Privacidade:** referências opacas e digests; sem linhas, prompts ou notas livres em logs/evidências.
 - **Falha segura:** ausência de política, rótulos, artefatos ou gates → não aplica/não promove.
-- **Portabilidade de dependências:** núcleo sem dependências obrigatórias (`dependencies = []`); extras `[web]` e `[models]`; Python ≥ 3.9 (`pyproject.toml` do baseline).
+- **Portabilidade de dependências:** núcleo sem dependências obrigatórias (`dependencies = []`); extras `[web]` e `[models]`; Python ≥ 3.10 (`pyproject.toml` do baseline).
 - **Manutenibilidade:** regras de camada executáveis por teste.
 - **Acessibilidade/layout:** sem overflow horizontal de documento em 1440×900 e 390×844 (verificação divergente entre documentos; ver roadmap).
 
