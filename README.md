@@ -1,9 +1,15 @@
 # TCC de Rodrigo Mialichi Triboni
 
-**Tema:** Redes bayesianas e utilidade esperada aplicadas à seleção de *next best action* em sistemas automatizados de decisão.
+**Tema submetido:** Redes bayesianas e utilidade esperada aplicadas à seleção de *next best action* em sistemas automatizados de decisão.
+
+**Direção atual do projeto:** biblioteca local FinLabel para rotulagem assistida de dados financeiros. O pivô ainda não foi aprovado pelo orientador: [ADR-0007](docs/adr/0007-pivo-do-tcc-para-biblioteca-finlabel.md) (status Proposta).
 
 ## Por onde começar
 
+- [PRD do FinLabel](docs/prd/finlabel.md), [decisões (ADRs)](docs/adr/) e [glossário](GLOSSARY.md)
+- [Roadmap de melhorias](docs/roadmap-melhorias.md)
+- [Guia rápido do FinLabel (inglês)](codigo/finlabel/docs/quickstart.md)
+- [Pergunta ao orientador sobre calibração do modelo-base](docs/pergunta-orientador-calibracao-modelo-base.md)
 - [Agenda semanal](Agenda_semanal_TCC.md)
 - [Protocolo experimental preliminar](planejamento/Protocolo_experimental.md)
 - [Fluxo de uso de IA no TCC](planejamento/Uso_de_IA_no_TCC.md)
@@ -27,7 +33,7 @@
 | `entregas/` | Documentos preparados para compartilhar ou entregar |
 | `docs/agents/` | Regras de tracker, labels e documentação de domínio para as skills |
 | `.scratch/` | Mapa e tickets locais das próximas tarefas |
-| `codigo/finlabel/` | Primeiro incremento da biblioteca local de rotulagem financeira (`finlabel-local`) |
+| `codigo/finlabel/` | Biblioteca local `finlabel-local`: CLI, painel web, rotulagem autônoma com quarentena e ciclo de treino com gates (ver PRD) |
 | `.documentos_qa/` | PDFs, imagens renderizadas e arquivos auxiliares de conferência de documentos |
 
 ## Entregas existentes
@@ -43,4 +49,6 @@ South German Credit havia sido escolhida para o plano experimental anterior; a d
 
 ## Biblioteca de rotulagem financeira
 
-A direção mais recente do projeto está registrada na [proposta da biblioteca](planejamento/Proposta_fluxo_reutilizavel.md) e no [épico atualizado](.scratch/proximas-etapas-tcc/epico.md). O primeiro incremento em `codigo/finlabel/` inspeciona CSVs localmente; fine-tuning de modelos leves, revisão humana e avaliação ainda serão implementados em etapas posteriores, após definição do modelo, hardware e protocolo.
+O código em `codigo/finlabel/` já cobre fontes CSV/SQLite somente leitura, monitoramento de esquema, análises determinísticas, rotulagem autônoma com quarentena, ciclo local de treino com gates de promoção e rollback, CLI e painel web. Escopo, limites e métricas estão no [PRD](docs/prd/finlabel.md); as decisões, nos [ADRs](docs/adr/). O que ainda não foi comprovado (dados reais, baseline simples, portabilidade) está listado no [roadmap](docs/roadmap-melhorias.md). Para experimentar, veja o [guia rápido](codigo/finlabel/docs/quickstart.md) e o comando `finlabel quickstart` descrito no [README da biblioteca](codigo/finlabel/README.md).
+
+A proposta original da biblioteca continua em [Proposta_fluxo_reutilizavel.md](planejamento/Proposta_fluxo_reutilizavel.md); ela descreve revisão humana por registro, que o produto atual substituiu por quarentena e supervisão confiável (ADR-0004).
