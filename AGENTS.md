@@ -21,7 +21,10 @@ separate from the `.scratch/` Markdown issue tracker above. State is in
 `factory/checks.sh`. Dashboard: `cd factory && python3 -m http.server`, then
 open http://localhost:8000/dashboard.html.
 
-Code lives in `codigo/finlabel/` (Python >=3.9, stdlib only, no install step).
-Run it with `PYTHONPATH=src python3 -m finlabel.cli ...` from that folder. Tests
-are `unittest` files in `codigo/finlabel/tests/`; the validation command is
-`bash factory/checks.sh`. There is no dev server.
+Code lives in `codigo/finlabel/` (Python >=3.10, FastAPI backend, React frontend
+in `frontend/`). Set up a fresh checkout with
+`cd codigo/finlabel && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[web,test]' pytest && npm --prefix frontend ci`.
+The `models`/`train` extras (torch) are not needed for tests. Frontend dev server:
+`npm --prefix frontend run dev -- --port <port>`. The validation command is
+`bash factory/checks.sh` (pytest, oxlint, vitest, `tsc -b`; it skips `vite build`
+because that rewrites tracked assets in `src/finlabel/web/static/app`).
