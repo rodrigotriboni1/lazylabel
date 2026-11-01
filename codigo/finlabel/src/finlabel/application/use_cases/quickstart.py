@@ -15,7 +15,7 @@ def sample_files(model_id, model_revision):
     """Return file name -> text for the sample CSV, task and policy."""
     lines = [",".join(INPUT_COLUMNS + ("reference_label",))]
     for i in range(40):
-        amount, days, utilization = 100 + i * 37 % 900, i * 7 % 60, i * 13 % 100
+        amount, days, utilization = 100 + (i * 37) % 900, (i * 7) % 60, (i * 13) % 100
         lines.append("{},{},{},{}".format(amount, days, utilization, _reference_label(days, utilization)))
     task = {
         "task_id": "sample",

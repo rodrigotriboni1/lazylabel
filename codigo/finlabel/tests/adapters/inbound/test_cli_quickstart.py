@@ -69,3 +69,12 @@ def test_refuses_existing_project(tmp_path):
     status, _, err = cli("quickstart", str(target), "--model-id", "m")
     assert status == 2 and err.startswith("finlabel:")
     assert before == {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+
+
+def test_tilde_path_lands_in_one_place(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    status, _, _ = cli("quickstart", "~/p", "--model-id", "m")
+    assert status == 0
+    assert (tmp_path / "home/p/task.json").is_file() and (tmp_path / "home/p/.finlabel/project.json").is_file()
+    assert not (tmp_path / "~").exists()
