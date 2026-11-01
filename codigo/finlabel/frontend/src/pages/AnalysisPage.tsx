@@ -22,15 +22,12 @@ export default function AnalysisPage({ runId }: { runId?: string }) {
   const [result, setResult] = useState<AnalysisResponse | null>(null)
   const [clarifications, setClarifications] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(Boolean(runId))
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     client.getSources().then(({ sources: items }) => { setSources(items); setSource(items[0]?.name ?? '') }).catch((e: Error) => setError(e.message))
-    if (runId) {
-      setBusy(true)
-      client.getAnalysisRun(runId).then(setResult).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
-    }
+    if (runId) client.getAnalysisRun(runId).then(setResult).catch((e: Error) => setError(e.message)).finally(() => setBusy(false))
   }, [client, runId])
   const currentPlan = useMemo(() => {
     try { return JSON.parse(planText) as AnalysisPlan }

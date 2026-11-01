@@ -42,7 +42,7 @@ Ordem sugerida: P0 desbloqueia tudo, P1 sustenta a tese, P2 qualidade, P3 higien
 - **Ação:** reexecutar testes e QA no commit final, e gravar um único relatório com commit, comandos e saída.
 
 ### 8. Avisos conhecidos
-- Cinco avisos de lint no React (dois de exports de UI, três `set-state-in-effect` em Training, Labeling e Analysis).
+- Cinco avisos de lint no React (dois de exports de UI, três `set-state-in-effect` em Training, Labeling e Analysis). **Resolvido (issue #4).**
 - Bundle principal de 710 kB (limite de aviso: 500 kB) — considerar code-splitting por rota.
 
 ### 9. Reprodutibilidade dos testes

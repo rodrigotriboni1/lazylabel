@@ -56,20 +56,19 @@ export default function TrainingPage() {
   const [overview, setOverview] = useState<AutonomyOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const refresh = useCallback(async () => {
-    setError(null)
-    try { setOverview(await client.getAutonomyOverview()) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o histórico local.') }
-    finally { setLoading(false) }
-  }, [client])
-  useEffect(() => { void refresh() }, [refresh])
+  const load = useCallback(() => client.getAutonomyOverview()
+    .then(setOverview)
+    .catch((cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o histórico local.'))
+    .finally(() => setLoading(false)), [client])
+  useEffect(() => { void load() }, [load])
+  const refresh = () => { setError(null); void load() }
 
   const activeStep = currentStep(overview)
   const activeModels = overview?.active_models.filter((item) => item.model_ref) ?? []
   const cycles = overview?.training_cycles ?? []
   const events = [...(overview?.model_events ?? [])].reverse()
   return <div className="space-y-7">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="mb-2 text-sm font-medium text-[#47805f]">TREINAMENTO / CICLO LOCAL</p><h1 className="text-3xl font-semibold tracking-tight">Treino com promoção segura</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#718077]">Rótulos confiáveis alimentam ciclos em lote. Avaliação congelada decide promoção; dados insuficientes, políticas ausentes ou falhas mantêm o modelo atual.</p></div><Button variant="outline" className="gap-2" onClick={() => void refresh()}><RefreshCw size={15}/>Atualizar</Button></div>
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="mb-2 text-sm font-medium text-[#47805f]">TREINAMENTO / CICLO LOCAL</p><h1 className="text-3xl font-semibold tracking-tight">Treino com promoção segura</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#718077]">Rótulos confiáveis alimentam ciclos em lote. Avaliação congelada decide promoção; dados insuficientes, políticas ausentes ou falhas mantêm o modelo atual.</p></div><Button variant="outline" className="gap-2" onClick={refresh}><RefreshCw size={15}/>Atualizar</Button></div>
     {error && <div role="alert" className="rounded-lg border border-[#f0d5d1] bg-white p-4 text-sm text-[#963f35]">{error}</div>}
     <TrainingWorkflow current={activeStep}/>
     {cycles[0]?.evaluation && <Card className="border-[#dce8df] bg-white"><CardHeader><CardTitle className="text-base">Avaliação congelada mais recente</CardTitle><CardDescription>{cycles[0].evaluation.holdout_count.toLocaleString('pt-BR')} registros · candidato e modelo ativo comparados no mesmo holdout</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-4">{(['accuracy', 'macro_f1', 'coverage', 'calibration_error'] as const).map((metric) => <div key={metric} className="rounded-lg bg-[#f7faf7] p-3"><p className="text-xs text-[#718077]">{{ accuracy: 'Acurácia', macro_f1: 'Macro F1', coverage: 'Cobertura', calibration_error: 'Erro de calibração' }[metric]}</p><p className="mt-1 text-lg font-semibold">{formatMetric(cycles[0].evaluation?.candidate_metrics[metric])}</p><p className="mt-1 text-[11px] text-[#718077]">Modelo atual: {formatMetric(cycles[0].evaluation?.incumbent_metrics[metric])}</p></div>)}</div></CardContent></Card>}
