@@ -37,6 +37,11 @@ def main(argv=None, *, application=None, application_factory=None, serve=None):
     project_commands = project.add_subparsers(dest="project_command", required=True)
     project_init = project_commands.add_parser("init", help="initialize a local project workspace")
     project_init.add_argument("path", help="project directory")
+    quickstart = commands.add_parser("quickstart",
+        help="scaffold a sample project with synthetic data and starter task files; downloads no model")
+    quickstart.add_argument("dir", help="new or empty project directory")
+    quickstart.add_argument("--model-id", required=True, help="model reference recorded in task.json; nothing is downloaded")
+    quickstart.add_argument("--model-revision")
     source = commands.add_parser("source", help="configure read-only local data sources")
     source_commands = source.add_subparsers(dest="source_command", required=True)
     add_csv = source_commands.add_parser("add-csv", help="add a CSV source to a project")
@@ -138,6 +143,17 @@ def main(argv=None, *, application=None, application_factory=None, serve=None):
             return 0
         if args.command == "project" and args.project_command == "init":
             print(str(app.initialize(args.path)))
+            return 0
+        if args.command == "quickstart":
+            result = app.quickstart(args.dir, args.model_id, args.model_revision)
+            print("\n".join([
+                "Sample project created at {} (source: {}, task: {}).".format(args.dir, result["source"], result["task_id"]),
+                "Next steps:",
+                "  finlabel label sample --task sample --project {}".format(args.dir),
+                "  finlabel serve --project {}".format(args.dir),
+                "Optional later: finlabel supervision add ... --label-column reference_label",
+                "The policy values in policy.json are illustrative and must be validated for the task.",
+                "Labeling will quarantine every prediction as uncalibrated until calibration evidence exists."]))
             return 0
         if args.command == "source":
             result = app.configure_source(args.source_command, args.name, getattr(args, "path", None),

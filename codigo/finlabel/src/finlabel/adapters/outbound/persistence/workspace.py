@@ -25,6 +25,19 @@ class FileWorkspace:
     def initialize(self, path):
         return init_project(path)
 
+    def write_new_files(self, directory, files):
+        target = Path(directory).expanduser()
+        if target.exists() and (not target.is_dir() or any(target.iterdir())):
+            raise FileExistsError('Quickstart only writes into a missing or empty directory: {}'.format(target))
+        target.mkdir(parents=True, exist_ok=True)
+        paths = {}
+        for name, text in files.items():
+            path = target / name
+            with path.open('x', encoding='utf-8') as handle:
+                handle.write(text)
+            paths[name] = str(path.resolve())
+        return paths
+
     def project(self, project):
         return load_project(project)
 
