@@ -151,7 +151,8 @@ def main(argv=None, *, application=None, application_factory=None, serve=None):
                 "Next steps:",
                 "  finlabel label sample --task sample --project {}".format(args.dir),
                 "  finlabel serve --project {}".format(args.dir),
-                "Optional later: finlabel supervision add ... --label-column reference_label",
+                "The labels in reference_label are synthetic and registered as trusted labels with provenance "
+                "synthetic-sample; provenance is an operator declaration.",
                 "The policy values in policy.json are illustrative and must be validated for the task.",
                 "Labeling will quarantine every prediction as uncalibrated until calibration evidence exists."]))
             return 0

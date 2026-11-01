@@ -63,7 +63,9 @@ O comando cria um projeto de exemplo com dados falsos, sem baixar nem escolher m
 
 - `finlabel-sample-synthetic.csv`: 40 linhas sintéticas (`fake_amount`, `fake_days_past_due`, `fake_utilization` e `reference_label`);
 - `task.json` e `policy.json`: tarefa e política `sample` (a coluna `reference_label` não é entrada de inferência);
-- `.finlabel/`: projeto inicializado, com a fonte `sample` e a tarefa `sample` já registradas.
+- `.finlabel/`: projeto inicializado, com a fonte `sample` e a tarefa `sample` já registradas, e a coluna `reference_label` registrada como rótulos confiáveis da tarefa `sample` (`provenance` `synthetic-sample`, `trust_kind` `provided_ground_truth`).
+
+Esses rótulos são sintéticos e o `provenance` é uma declaração do operador (operator declaration), não uma verificação. Se o registro falhar, o comando informa o erro e mantém os arquivos, o projeto, a fonte e a tarefa já escritos.
 
 `--model-id` é obrigatório; o valor só é gravado em `task.json`, e nenhum modelo é baixado, validado ou executado. O comando só escreve em um diretório inexistente ou vazio e recusa qualquer diretório não vazio (inclusive um projeto FinLabel existente) sem alterar nada.
 
