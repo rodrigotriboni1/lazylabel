@@ -27,4 +27,4 @@ def test_registration_failure_keeps_files(tmp_path, monkeypatch):
     for name in ("finlabel-sample-synthetic.csv", "task.json", "policy.json", ".finlabel/tasks/sample.json"):
         assert (target / name).is_file()
     project = json.loads((target / ".finlabel/project.json").read_text())
-    assert "sample" in json.dumps(project["sources"]) and not project["supervision_sources"]
+    assert "sample" in project["sources"] and not project["supervision_sources"]
