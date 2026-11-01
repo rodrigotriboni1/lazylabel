@@ -32,7 +32,9 @@ class WorkspaceApplication:
         self.workspace.initialize(path)
         self.workspace.configure_source(path, "add-csv", "sample", paths[CSV_NAME])
         task_path = self.workspace.add_task(path, paths["task.json"])
-        return {"source": "sample", "task_id": "sample", "task_path": str(task_path)}
+        supervision = self.workspace.register_supervision(
+            path, "sample", "sample", "reference_label", "synthetic-sample", "provided_ground_truth")
+        return {"source": "sample", "task_id": "sample", "task_path": str(task_path), "supervision": supervision}
 
     def configure_source(self, *args, **kwargs):
         return self.workspace.configure_source(self.project_reference, *args, **kwargs)
