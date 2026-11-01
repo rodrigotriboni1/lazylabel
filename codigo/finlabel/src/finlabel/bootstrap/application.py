@@ -7,6 +7,7 @@ from finlabel.adapters.outbound.persistence.analysis_runs import FileAnalysisRun
 from finlabel.adapters.outbound.persistence.label_runs import FileLabelRunStore
 from finlabel.adapters.outbound.persistence.runtime import LocalRuntime
 from finlabel.adapters.outbound.persistence.registry import ModelRegistry
+from finlabel.adapters.outbound.persistence.prerequisites import FilePrerequisiteChecks
 from finlabel.adapters.outbound.persistence.tasks import load_task_policy
 from finlabel.adapters.outbound.models.analysis_planner import LocalAnalysisPlanner
 
@@ -62,4 +63,4 @@ def build_application(project_reference=".", *, backend_factory=None, workspace=
         queries=queries if queries is not None else FilePanelQueries(ModelRegistry),
         pipeline_runs=pipeline_runs_factory or (lambda config: FilePipelineRuns(config.workspace_dir)),
         analysis_ports=analysis_ports, labeling_ports=labeling_ports,
-        training_ports=training_ports, runtime=runtime)
+        training_ports=training_ports, runtime=runtime, prerequisite_checks=FilePrerequisiteChecks)

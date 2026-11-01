@@ -4,11 +4,12 @@ from finlabel.application.use_cases.analysis import analyze_source
 from finlabel.application.use_cases.labeling import run_labeling
 from finlabel.application.use_cases.training import run_training_cycle
 from finlabel.application.use_cases.errors import PersistenceError
+from finlabel.application.use_cases.prerequisites import prerequisites_checklist
 
 
 class WorkspaceApplication:
     def __init__(self, project_reference, *, workspace: WorkspaceOperations, queries: PanelQueries, pipeline_runs,
-                 analysis_ports, labeling_ports, training_ports, runtime):
+                 analysis_ports, labeling_ports, training_ports, runtime, prerequisite_checks=None):
         self.project_reference = project_reference
         self.workspace = workspace
         self.queries = queries
@@ -17,6 +18,7 @@ class WorkspaceApplication:
         self.labeling_ports = labeling_ports
         self.training_ports = training_ports
         self.runtime = runtime
+        self.prerequisite_checks = prerequisite_checks
 
     def inspect(self, path, target=None):
         return self.workspace.inspect(path, target)
@@ -147,6 +149,10 @@ class WorkspaceApplication:
 
     def pipeline_status(self, run_id):
         return self.pipeline_runs(self.workspace.project(self.project_reference)).read_pipeline(run_id)
+
+    def prerequisites(self, task_id):
+        config = self.workspace.project(self.project_reference)
+        return prerequisites_checklist(task_id, self.prerequisite_checks(config))
 
     def model_status(self, task_id):
         return self.workspace.model_status(self.workspace.project(self.project_reference), task_id)
