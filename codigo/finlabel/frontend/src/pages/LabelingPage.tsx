@@ -22,7 +22,7 @@ export default function LabelingPage() {
     setOverview(next)
     setSource((current) => next.sources.some((item) => item.name === current) ? current : next.sources[0]?.name ?? '')
     setTask((current) => next.tasks.some((item) => item.task_id === current) ? current : next.tasks[0]?.task_id ?? '')
-  }, (cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o estado local.'))
+  }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o estado local.'))
     .finally(() => setLoading(false)), [client])
   useEffect(() => { void refresh() }, [refresh])
 

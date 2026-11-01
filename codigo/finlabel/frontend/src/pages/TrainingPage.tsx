@@ -57,7 +57,8 @@ export default function TrainingPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(() => client.getAutonomyOverview()
-    .then(setOverview, (cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o histórico local.'))
+    .then(setOverview)
+    .catch((cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o histórico local.'))
     .finally(() => setLoading(false)), [client])
   useEffect(() => { void load() }, [load])
   const refresh = () => { setError(null); void load() }
