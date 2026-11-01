@@ -1,0 +1,33 @@
+{
+  "run_id": "d5ea931d5e3944228f3e34cbf1a0ad95",
+  "task_id": "risk",
+  "source": "transactions",
+  "started_at": "2026-10-26T03:08:06.326282Z",
+  "finished_at": "2026-10-26T03:08:06.327800Z",
+  "label_run_id": "2f33ad63a7c24c5ebcb6748e28405745",
+  "label_model_ref": "Qwen/Qwen2.5-0.5B-Instruct",
+  "labels": {
+    "applied": 0,
+    "quarantined": 6,
+    "reason_counts": {
+      "missing_policy": 6
+    }
+  },
+  "training": {
+    "state": "blocked",
+    "reason_codes": [
+      "task_labeling_policy_missing"
+    ],
+    "candidate_id": null,
+    "evaluation_id": null,
+    "promotion_action": null,
+    "active_model_ref": null
+  },
+  "artifacts": {
+    "pipeline_manifest": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/finlabel-completion-2026-10-26/project/.finlabel/pipeline-runs/d5ea931d5e3944228f3e34cbf1a0ad95/run.json",
+    "label_run_dir": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/finlabel-completion-2026-10-26/project/.finlabel/label-runs/2f33ad63a7c24c5ebcb6748e28405745",
+    "label_outcomes": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/finlabel-completion-2026-10-26/project/.finlabel/label-runs/2f33ad63a7c24c5ebcb6748e28405745/outcomes.jsonl",
+    "training_cycle": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/finlabel-completion-2026-10-26/project/.finlabel/training/cycles/2b767c0a38d646a2b2e7772845ba53cc.json"
+  },
+  "integrity_sha256": "01b0eb0edd714d22a7308d01fbcf0d1f6ff83cbb735d3bfe60e240dce163bb12"
+}

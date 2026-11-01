@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "sources": {
+    "transactions": {
+      "kind": "csv",
+      "path": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/finlabel-completion-2026-10-26/project/transactions.csv",
+      "table": null,
+      "id_column": null,
+      "schema": {
+        "amount": "decimal",
+        "period": "date"
+      }
+    }
+  },
+  "model_roles": {},
+  "supervision_sources": {}
+}

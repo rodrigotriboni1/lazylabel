@@ -1,0 +1,15 @@
+{
+  "task_id": "risk",
+  "instructions": "Classifique risco de exemplo sintético.",
+  "input_columns": [
+    "category",
+    "amount"
+  ],
+  "labels": [
+    "low",
+    "high"
+  ],
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": null,
+  "policy_path": null
+}

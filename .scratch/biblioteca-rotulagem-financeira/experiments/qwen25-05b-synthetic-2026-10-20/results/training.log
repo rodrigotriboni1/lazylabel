@@ -1,0 +1,48 @@
+{'loss': '0.2293', 'grad_norm': '0.2334', 'learning_rate': '0.0001917', 'entropy': '0.1178', 'mean_token_accuracy': '0.9257', 'num_tokens': '2576', 'epoch': '0.1389'}
+{'loss': '0.1095', 'grad_norm': '0.5034', 'learning_rate': '0.0001824', 'entropy': '0.08567', 'mean_token_accuracy': '0.9614', 'num_tokens': '5144', 'epoch': '0.2778'}
+{'loss': '0.1609', 'grad_norm': '0.01859', 'learning_rate': '0.0001731', 'entropy': '0.06476', 'mean_token_accuracy': '0.96', 'num_tokens': '7733', 'epoch': '0.4167'}
+{'loss': '0.03037', 'grad_norm': '0.01218', 'learning_rate': '0.0001639', 'entropy': '0.02324', 'mean_token_accuracy': '0.99', 'num_tokens': '1.032e+04', 'epoch': '0.5556'}
+{'loss': '0.002199', 'grad_norm': '0.01379', 'learning_rate': '0.0001546', 'entropy': '0.01349', 'mean_token_accuracy': '1', 'num_tokens': '1.292e+04', 'epoch': '0.6944'}
+{'loss': '0.06307', 'grad_norm': '4.975', 'learning_rate': '0.0001454', 'entropy': '0.005528', 'mean_token_accuracy': '0.99', 'num_tokens': '1.551e+04', 'epoch': '0.8333'}
+{'loss': '0.004957', 'grad_norm': '0.00865', 'learning_rate': '0.0001361', 'entropy': '0.01511', 'mean_token_accuracy': '1', 'num_tokens': '1.808e+04', 'epoch': '0.9722'}
+{'loss': '0.01187', 'grad_norm': '0.004519', 'learning_rate': '0.0001269', 'entropy': '0.02289', 'mean_token_accuracy': '0.99', 'num_tokens': '2.067e+04', 'epoch': '1.111'}
+{'loss': '0.000416', 'grad_norm': '0.004384', 'learning_rate': '0.0001176', 'entropy': '0.004199', 'mean_token_accuracy': '1', 'num_tokens': '2.326e+04', 'epoch': '1.25'}
+{'loss': '0.07029', 'grad_norm': '0.003512', 'learning_rate': '0.0001083', 'entropy': '0.003179', 'mean_token_accuracy': '0.99', 'num_tokens': '2.585e+04', 'epoch': '1.389'}
+{'loss': '0.0002956', 'grad_norm': '0.009343', 'learning_rate': '9.907e-05', 'entropy': '0.003195', 'mean_token_accuracy': '1', 'num_tokens': '2.844e+04', 'epoch': '1.528'}
+{'loss': '0.0002955', 'grad_norm': '0.003845', 'learning_rate': '8.981e-05', 'entropy': '0.003133', 'mean_token_accuracy': '1', 'num_tokens': '3.102e+04', 'epoch': '1.667'}
+{'loss': '0.0003131', 'grad_norm': '0.003675', 'learning_rate': '8.056e-05', 'entropy': '0.0033', 'mean_token_accuracy': '1', 'num_tokens': '3.36e+04', 'epoch': '1.806'}
+{'loss': '0.0003149', 'grad_norm': '0.003585', 'learning_rate': '7.13e-05', 'entropy': '0.00318', 'mean_token_accuracy': '1', 'num_tokens': '3.617e+04', 'epoch': '1.944'}
+{'loss': '0.000266', 'grad_norm': '0.004154', 'learning_rate': '6.204e-05', 'entropy': '0.002856', 'mean_token_accuracy': '1', 'num_tokens': '3.874e+04', 'epoch': '2.083'}
+{'loss': '0.0002846', 'grad_norm': '0.002928', 'learning_rate': '5.278e-05', 'entropy': '0.003029', 'mean_token_accuracy': '1', 'num_tokens': '4.131e+04', 'epoch': '2.222'}
+{'loss': '0.0002165', 'grad_norm': '0.005537', 'learning_rate': '4.352e-05', 'entropy': '0.002491', 'mean_token_accuracy': '1', 'num_tokens': '4.388e+04', 'epoch': '2.361'}
+{'loss': '0.0002247', 'grad_norm': '0.002754', 'learning_rate': '3.426e-05', 'entropy': '0.002435', 'mean_token_accuracy': '1', 'num_tokens': '4.647e+04', 'epoch': '2.5'}
+{'loss': '0.0002547', 'grad_norm': '0.003705', 'learning_rate': '2.5e-05', 'entropy': '0.002752', 'mean_token_accuracy': '1', 'num_tokens': '4.908e+04', 'epoch': '2.639'}
+{'loss': '0.0002025', 'grad_norm': '0.001964', 'learning_rate': '1.574e-05', 'entropy': '0.002242', 'mean_token_accuracy': '1', 'num_tokens': '5.166e+04', 'epoch': '2.778'}
+{'loss': '0.000169', 'grad_norm': '0.002535', 'learning_rate': '6.481e-06', 'entropy': '0.001912', 'mean_token_accuracy': '1', 'num_tokens': '5.424e+04', 'epoch': '2.917'}
+{'train_runtime': '143.6', 'train_samples_per_second': '1.504', 'train_steps_per_second': '1.504', 'train_loss': '0.03175', 'entropy': '0.001957', 'mean_token_accuracy': '1', 'num_tokens': '5.579e+04', 'epoch': '3'}
+{
+  "output_dir": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter",
+  "base_model_ref": "Qwen/Qwen2.5-0.5B-Instruct@7ae557604adf67be50417f59c2c2f167def9a775",
+  "dataset_sha256": "d57451a535ca213bfd37b083dad5d3a7b7ee714092a681c83ae1c3ce50a230ef",
+  "adapter_files": [
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/adapter_model.safetensors",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/tokenizer_config.json",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/tokenizer.json",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/README.md",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/adapter_config.json",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/chat_template.jinja",
+    "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter/finlabel-training.json"
+  ],
+  "final_metrics": {
+    "train_runtime": 143.5911,
+    "train_samples_per_second": 1.504,
+    "train_steps_per_second": 1.504,
+    "total_flos": 121277543867136.0,
+    "train_loss": 0.03174819357540131,
+    "entropy": 0.0019572258073215685,
+    "mean_token_accuracy": 1.0,
+    "num_tokens": 55791.0,
+    "epoch": 3.0,
+    "step": 216.0
+  }
+}

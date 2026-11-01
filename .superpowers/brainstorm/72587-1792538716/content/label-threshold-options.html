@@ -1,0 +1,24 @@
+<h2>Como definir cobertura mínima por rótulo</h2>
+<p class="subtitle">A quantidade adequada depende da tarefa e do modelo; o MVP pode combinar configuração explícita e orientação baseada nos dados.</p>
+
+<div class="mockup" style="max-width:1050px;margin:0 auto">
+  <div class="mockup-header">FinLabel · configuração da tarefa</div>
+  <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:18px">
+    <div style="background:#fff;border:1px solid #d6dfdf;border-radius:9px;padding:14px;margin-bottom:12px">
+      <small>RÓTULOS CONFIGURADOS</small>
+      <div style="display:grid;grid-template-columns:1.2fr .7fr .8fr .8fr;gap:8px;margin-top:8px;font-size:11px">
+        <strong>Rótulo</strong><strong>Revisados</strong><strong>Mínimo</strong><strong>Situação</strong>
+        <span>fraude</span><span>182</span><span>configurável</span><span style="color:#146d68">Coberto</span>
+        <span>compra</span><span>139</span><span>configurável</span><span style="color:#146d68">Coberto</span>
+        <span>tarifa</span><span>3</span><span>configurável</span><span style="color:#a36116">Abaixo do mínimo</span>
+      </div>
+      <div style="margin-top:12px;background:#fff8ec;border:1px solid #efd29e;border-radius:7px;padding:10px;font-size:10px">A ferramenta informa a cobertura observada e o impacto da distribuição. Ela não declara que uma quantidade fixa garante bom desempenho.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:8px;padding:13px"><small>OPÇÃO A</small><h3>Valor padrão fixo</h3><p style="font-size:11px">A biblioteca escolhe um número igual para todos os rótulos e tarefas.</p><div style="color:#58666a;font-size:10px">Fácil de começar, mas pode dar uma falsa sensação de garantia e não serve igualmente para toda tarefa.</div></div>
+      <div style="background:#fff;border:2px solid #146d68;border-radius:8px;padding:13px"><small>OPÇÃO B · RECOMENDADA</small><h3>Mínimo configurável + orientação</h3><p style="font-size:11px">A pessoa define o mínimo por rótulo; a ferramenta mostra cobertura, desbalanceamento e ressalvas. Um preset demonstrativo pode ser ajustado.</p><div style="color:#146d68;font-size:10px"><strong>Transparente e reutilizável entre tarefas</strong></div><div style="color:#58666a;font-size:10px;margin-top:6px">O preset é conveniência, não promessa de qualidade estatística.</div></div>
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:8px;padding:13px"><small>OPÇÃO C</small><h3>Sem mínimo configurável</h3><p style="font-size:11px">A ferramenta apenas mostra a contagem por rótulo; qualquer cobertura baixa vira aviso.</p><div style="color:#58666a;font-size:10px">Flexível, mas perde um controle claro para bloquear ou confirmar treino exploratório.</div></div>
+    </div>
+    <div style="margin-top:12px;background:#f2f5f6;border-radius:7px;padding:10px;font-size:10px"><strong>Separação importante:</strong> mínimo de exemplos serve para controle operacional; avaliação em conjunto reservado mede desempenho. Um não substitui o outro.</div>
+  </div>
+</div>

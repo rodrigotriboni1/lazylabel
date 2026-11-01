@@ -1,0 +1,39 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "adapter": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/adapter",
+  "device": "mps",
+  "prompt_format": "model_chat_template",
+  "generation": {
+    "do_sample": false,
+    "max_new_tokens": 64
+  },
+  "metrics": {
+    "count": 24,
+    "valid_predictions": 24,
+    "valid_prediction_rate": 1.0,
+    "exact_accuracy": 0.7083333333333334,
+    "macro_f1": 0.7055555555555556,
+    "confusion_matrix": {
+      "receita": {
+        "receita": 4,
+        "despesa_operacional": 3,
+        "custo_financeiro": 1,
+        "invalid": 0
+      },
+      "despesa_operacional": {
+        "receita": 0,
+        "despesa_operacional": 7,
+        "custo_financeiro": 1,
+        "invalid": 0
+      },
+      "custo_financeiro": {
+        "receita": 0,
+        "despesa_operacional": 2,
+        "custo_financeiro": 6,
+        "invalid": 0
+      }
+    }
+  },
+  "elapsed_seconds": 8.62
+}

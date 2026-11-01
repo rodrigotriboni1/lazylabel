@@ -1,0 +1,30 @@
+<h2>Como avaliar o adapter antes de ativá-lo</h2>
+<p class="subtitle">A avaliação precisa comparar base e adapter nos mesmos exemplos que ficaram fora do fine-tuning.</p>
+
+<div class="mockup" style="max-width:1050px;margin:0 auto">
+  <div class="mockup-header">FinLabel · avaliação de candidato</div>
+  <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:18px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div style="background:#fff;border:1px solid #d6dfdf;border-radius:7px;padding:10px"><small>CONJUNTO RESERVADO</small><h3 style="margin:5px 0">Separado antes do treino</h3><span style="font-size:10px">Sem exemplos usados para ajustar pesos</span></div>
+      <div style="background:#fff;border:1px solid #d6dfdf;border-radius:7px;padding:10px"><small>COMPARAÇÃO</small><h3 style="margin:5px 0">Mesmo conjunto</h3><span style="font-size:10px">Modelo-base e adapter avaliados lado a lado</span></div>
+      <div style="background:#fff;border:1px solid #d6dfdf;border-radius:7px;padding:10px"><small>MÉTRICAS</small><h3 style="margin:5px 0">Por rótulo + geral</h3><span style="font-size:10px">F1 macro, precisão e recall por classe</span></div>
+      <div style="background:#fff;border:1px solid #d6dfdf;border-radius:7px;padding:10px"><small>DECISÃO</small><h3 style="margin:5px 0">Pessoa aprova</h3><span style="font-size:10px">Sem ativação automática do candidato</span></div>
+    </div>
+    <div style="background:#fff;border:1px solid #d6dfdf;border-radius:9px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div><small>RESULTADO ILUSTRATIVO</small><h3 style="margin:5px 0">Base × adapter · classificação financeira</h3></div><span style="background:#fff8ec;padding:6px 9px;border-radius:6px;color:#a36116;font-size:10px">Candidato · aguardando revisão</span></div>
+      <div style="display:grid;grid-template-columns:1.1fr .8fr .8fr .8fr;gap:8px;margin-top:10px;font-size:11px">
+        <strong>Métrica</strong><strong>Base</strong><strong>Adapter</strong><strong>Variação</strong>
+        <span>F1 macro</span><span>0,71</span><span>0,76</span><span style="color:#146d68">+0,05</span>
+        <span>Recall · fraude</span><span>0,68</span><span>0,61</span><span style="color:#a34141">−0,07</span>
+        <span>Precisão · fraude</span><span>0,73</span><span>0,81</span><span style="color:#146d68">+0,08</span>
+      </div>
+      <div style="margin-top:10px;background:#fff8ec;border:1px solid #efd29e;border-radius:7px;padding:10px;font-size:10px"><strong>Leitura:</strong> o F1 macro subiu, mas o recall de fraude caiu. A pessoa precisa revisar o trade-off por rótulo antes de aprovar.</div>
+      <div style="display:flex;gap:8px;margin-top:10px"><button style="border:0;border-radius:6px;background:#146d68;color:white;padding:8px 12px">Aprovar candidato</button><button style="border:1px solid #a9b4b7;border-radius:6px;background:white;color:#1b3033;padding:8px 12px">Manter modelo-base</button><button style="border:1px solid #a9b4b7;border-radius:6px;background:white;color:#1b3033;padding:8px 12px">Ver erros por exemplo</button></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+      <div style="background:#f0f8f4;border:1px solid #b9d9ce;border-radius:7px;padding:10px;font-size:10px"><strong>Se aprovado:</strong> registrar versão do modelo, dados, configuração e métricas; só então disponibilizar o adapter para novas sugestões.</div>
+      <div style="background:#f7f8fc;border:1px dashed #9aa8cf;border-radius:7px;padding:10px;font-size:10px"><strong>Se conjunto reservado for pequeno:</strong> mostrar alerta de incerteza e contagens; não apresentar a métrica como evidência conclusiva.</div>
+    </div>
+  </div>
+</div>
+<p class="subtitle" style="margin-top:14px">Os números na tabela são ilustrativos para desenhar a tela, não resultados do experimento.</p>

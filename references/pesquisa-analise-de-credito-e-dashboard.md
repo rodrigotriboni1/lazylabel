@@ -1,0 +1,80 @@
+# Análise de crédito, saúde da carteira e dashboard
+
+**Data da pesquisa:** 19/10/2026  
+**Escopo:** referências introdutórias para o TCC com South German Credit; práticas de monitoramento de carteira; tradução dessas práticas para uma interface demonstrativa.
+
+## Síntese
+
+Um analista de crédito não avalia uma carteira por um único índice. A análise combina qualidade dos tomadores e exposições, atrasos e problemas de pagamento, mudanças de rating, garantias, concentração por segmento, limites, perdas/provisões e fatores macroeconômicos. A supervisão de Basileia recomenda monitorar créditos individuais e grupos homogêneos, identificar problemas cedo, acompanhar ratings, exposições e concentrações e encaminhar casos para ação corretiva. [BCBS, General credit risk management, princípios 9–12](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10)
+
+Para este TCC, o South German Credit permite estudar classificação de risco e comparar modelos em registros de empréstimos, mas a página do UCI descreve observações/atributos do contrato, não uma série temporal de saldos ou pagamentos por mês. Portanto, gráficos de tendência temporal da saúde real de uma carteira não podem ser estimados diretamente desses dados; podem ser apresentados como cortes por segmento ou como cenário sintético explicitamente identificado. Essa é uma inferência a partir do escopo/schema publicado pelo [UCI](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate) e dos dados longitudinais que seriam necessários para monitorar exposições ao longo do tempo.
+
+## Livros recomendados
+
+Os livros abaixo foram conferidos em páginas de editoras acadêmicas. Para leitura inicial e conexão direta com scoring, risco e portfólio, começar por **Van Gestel e Baesens**; para conectar análise fundamentalista e gestão prática de exposições, consultar **Bouteillé e Coogan-Pushner**. Os dois são textos de referência, não precisam ser lidos integralmente para o TCC.
+
+1. **Van Gestel, Tony; Baesens, Bart. _Credit Risk Management: Basic Concepts: Financial Risk Components, Rating Analysis, Models, Economic and Regulatory Capital_. Oxford University Press, 2008. ISBN impresso 9780199545117; ISBN online 9780191720147.** A estrutura cobre gestão bancária, credit scoring, ratings, modelagem e mensuração, modelos de carteira e capital regulatório; isso o torna a recomendação mais alinhada à comparação de modelos e ao panorama de carteira. [Oxford Academic](https://academic.oup.com/book/5416)
+
+2. **Bouteillé, Sylvain; Coogan-Pushner, Diane. _The Handbook of Credit Risk Management: Originating, Assessing, and Managing Credit Exposures_. Wiley, primeira publicação em 2012 (copyright 2013). ISBN impresso 9781118300206; ISBN online 9781119203551.** O escopo editorial vai da originação à avaliação, gestão de carteira e transferência de risco; inclui capítulos separados de análise fundamental e gestão de portfólio. [Wiley](https://onlinelibrary.wiley.com/doi/book/10.1002/9781119203551)
+
+3. **Joseph, Ciby. _Advanced Credit Risk Analysis and Management_. Wiley, 2013. ISBN impresso 9781118604915; ISBN online 9781118604878.** Aborda análise financeira, indústria e macroeconomia, ratings, PD/EAD/LGD, risco no nível da entidade e da carteira; útil para vocabulário e contexto profissional, embora o título seja avançado. [Wiley](https://onlinelibrary.wiley.com/doi/book/10.1002/9781118604878)
+
+4. **Bandyopadhyay, Arindam. _Managing Portfolio Credit Risk in Banks_. Cambridge University Press, 2016. ISBN impresso 9781107146471; ISBN online 9781316550915.** É direcionado à mensuração e gestão de risco de crédito de carteira, com técnicas estatísticas e matemáticas e estudos de bancos indianos; oferece contexto aplicado, mas parte das práticas institucionais é específica do ambiente estudado. [Cambridge University Press](https://www.cambridge.org/core/books/managing-portfolio-credit-risk-in-banks/CCA56DFE92A48E8AFE9705E875DEC814)
+
+5. **Lando, David. _Credit Risk Modeling: Theory and Applications_. Princeton University Press, 2004. ISBN 9780691089294.** A editora apresenta o livro como introdução a modelos de risco de crédito, incluindo abordagens de probabilidade de default; é uma referência mais quantitativa e possivelmente mais exigente para uma leitura seletiva. [Princeton University Press/JSTOR](https://www.jstor.org/stable/j.ctv30pnvs1)
+
+**Leitura recomendada para o recorte:** capítulos introdutórios de scoring/modelagem e de portfolio models em Van Gestel e Baesens; análise fundamental e credit portfolio management em Bouteillé e Coogan-Pushner. A editora lista estes tópicos no sumário do [livro de Van Gestel e Baesens](https://academic.oup.com/book/5416) e do [Handbook da Wiley](https://onlinelibrary.wiley.com/doi/book/10.1002/9781119203551).
+
+## O que se acompanha para saber se a carteira está piorando
+
+As práticas variam conforme produto, política de crédito, regras contábeis e jurisdição. Os indicadores abaixo são dimensões de monitoramento respaldadas por orientações supervisoras, não limites universais que definem sozinhos uma carteira “boa” ou “ruim”. A análise de crédito também não é determinada por uma única razão ou indicador. [Wiley, “The Credit Process and Credit Risk Management”](https://onlinelibrary.wiley.com/doi/10.1002/9780470555996.ch5)
+
+| Dimensão | O que o analista procura | Visão útil no dashboard |
+|---|---|---|
+| Pagamentos e atraso | Atrasos contratuais, exposição em atraso e novos casos problemáticos; a supervisão de Basileia espera identificação tempestiva de delinquências e classificação de exposições potencialmente problemáticas. [BCBS](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10) | Série temporal de quantidade e saldo em atraso por faixa de dias, taxa de atraso e transição entre faixas. |
+| Qualidade de crédito / ratings | Distribuição dos ratings, pioras/migrações para faixas de maior risco, watchlist e mudanças desde a concessão. Ratings que se deterioram devem levar a maior monitoramento e podem entrar em watchlist. [BCBS, §§10.59–10.60](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10) | Distribuição por faixa e matriz de migração entre períodos; lista de casos que pioraram. |
+| Concentração e composição | Exposição concentrada em tomador/grupo, setor, região, produto, garantia ou fatores correlacionados; composição deve ser comparada à estratégia, limites e tolerâncias da instituição. [BCBS, §§10.5, 10.61–10.66](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10) | Exposição e proporção por segmento; maiores concentrações; uso de limite e alertas próximos do limite. |
+| Capacidade de pagamento, garantias e covenants | Situação financeira atual, cumprimento de obrigações e covenants, cobertura e condição de garantias/colaterais. [BCBS, §10.54](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10) | Sinais de revisão, cobertura de garantia quando houver dados, e pendências de covenant. |
+| Problemas, perdas e provisões | Casos não performantes/forborne, perdas realizadas, recuperações, write-offs e suficiência de provisões segundo o regime aplicável. Basileia exige políticas de classificação, monitoramento e provisões adequadas. [BCBS, princípio 9](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10) | Saldo problemático e sua participação; perdas/recuperações e cobertura de provisões em períodos consistentes. |
+| Alertas e fatores futuros | Indicadores qualitativos e quantitativos antecipados, tendências macroeconômicas e cenários de estresse. A EBA recomenda early-warning indicators por carteira, subcarteira, setor, geografia e exposição, com gatilhos e responsáveis definidos. [EBA, Guidelines on loan origination and monitoring, seção 8.5](https://www.eba.europa.eu/activities/single-rulebook/regulatory-activities/credit-risk/guidelines-loan-origination-and-monitoring) | Painel de alertas com definição, limiar, data e ação; cenário-base e cenários adversos claramente identificados. |
+
+### Como interpretar “está ruim?”
+
+“Ruim” deve ser avaliado contra uma referência: metas e limites aprovados, histórico comparável, composição esperada e tolerância a risco. Uma piora persistente de atraso, aumento de exposição em watchlist, migração de ratings para faixas de risco elevado ou concentração acima do limite são sinais para investigação e ação, mas não provam isoladamente que a carteira causará perdas. A estrutura de Basileia liga monitoramento a limites e estratégia aprovados, e recomenda monitorar exposições reais contra limites, além de considerar fatores macroeconômicos e cenários de estresse. [BCBS, §§10.5, 10.64, 10.69–10.70](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10)
+
+Para uma carteira de empréstimos de varejo, segmentar as métricas por coorte de originação, finalidade, duração, valor ou outras características disponíveis ajuda a localizar onde se concentra a deterioração. A regulamentação da EBA orienta a acompanhar indicadores agregados e também por subcarteira, setor, geografia e exposições individuais. [EBA](https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2020/Guidelines%20on%20loan%20origination%20and%20monitoring/884283/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf)
+
+## Saúde da carteira não é desempenho do modelo
+
+São perguntas diferentes e devem aparecer em áreas distintas do trabalho e do dashboard:
+
+- **Desempenho do modelo:** o classificador distingue bons e maus pagadores? As probabilidades previstas correspondem às frequências observadas? Para comparar regressão logística e rede bayesiana, avaliar discriminação (por exemplo, ROC-AUC), calibração (comparar risco previsto e frequência observada; Brier score pode complementar) e desempenho na decisão conforme custos/benefícios definidos. A literatura de mensuração de scorecards separa discriminação, previsão de probabilidades e classificação após ponto de corte. [Oxford Academic, capítulo “Measurement of scoring systems”](https://academic.oup.com/book/2180/chapter-abstract/142187994)
+- **Validação e monitoramento do modelo:** avaliar se a implementação continua apropriada, se os dados são relevantes e se as previsões concordam com resultados reais. A orientação da Reserva Federal descreve validação conceitual, análise de resultados e monitoramento contínuo; outcomes analysis compara previsões/saídas com resultados correspondentes e a validade depende do objetivo e disponibilidade de dados. [Federal Reserve, Supervisory Guidance on Model Risk Management](https://www.federalreserve.gov/frrs/guidance/supervisory-guidance-on-model-risk-management.htm)
+- **Saúde da carteira:** qual é a condição dos créditos e exposições que existem no portfólio — atrasos, ratings, watchlist, concentrações, perdas, garantias, limites e evolução. Essas métricas descrevem o portfólio e demandam dados operacionais e temporais, não apenas rótulos de teste. [BCBS](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10)
+
+Um modelo com boa ROC-AUC não demonstra, sozinho, que uma carteira real está saudável: AUC mede ordenação/discriminação em uma amostra rotulada, enquanto a saúde da carteira depende também de montantes expostos, tempo, atrasos, recuperações, concentração e contexto. Essa distinção decorre da separação entre avaliação de scores [Oxford Academic](https://academic.oup.com/book/2180/chapter-abstract/142187994), análise de resultados de modelo [Federal Reserve](https://www.federalreserve.gov/frrs/guidance/supervisory-guidance-on-model-risk-management.htm) e dimensões de monitoramento de carteira [BCBS](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10).
+
+## Implicações para o South German Credit e a interface
+
+1. **Objetivo do protótipo:** apresentar uma comparação reproduzível entre os modelos e uma visão exploratória de risco por segmentos disponíveis. O UCI descreve a variável-alvo como cumprimento do contrato (good) ou não (bad) e fornece variáveis de perfil/condições do crédito. Antes de codificar, confirmar no arquivo `codetable.txt` e no leitor oficial os valores usados para bom/ruim; documentar qualquer recodificação explicitamente. [UCI South German Credit](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate)
+2. **Gráficos possíveis com a base:** proporção de rótulos bom/ruim; distribuição de risco previsto e observado; resultados por finalidade, duração, faixa de valor, histórico de crédito e outros atributos descritos pelo UCI; matriz de confusão e curvas de avaliação dos modelos. Isso é análise transversal por observação/segmento, não uma tendência histórica real.
+3. **Não chamar de tendência temporal real:** para gráficos de atraso por mês, vintage/coorte, migração de rating, inadimplência acumulada ou evolução de saldo, é necessário ter snapshots com datas e estados de pagamento/exposição ao longo do tempo. A página do dataset não lista datas de observação/períodos de pagamentos como atributos; o regulador, por sua vez, exige monitoramento contínuo de condições, atraso, rating e exposições. [UCI](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate), [BCBS](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10)
+4. **Se a interface precisar mostrar curvas de tendência:** criar uma tabela sintética de snapshots, com datas e eventos simulados, e rotular cada visualização “dados simulados para demonstração”; não atribuir essa evolução ao South German Credit. Alternativamente, procurar uma base longitudinal com pagamentos mensais e saldo, e tratá-la como uma extensão metodológica separada.
+5. **Contexto temporal e representatividade:** a documentação de Grömping/UCI informa que a versão corrigida trata problemas nos códigos da base amplamente usada e fornece contexto; isso não transforma os registros históricos em dados atuais de carteira. A aplicação deve evitar alegar que o risco previsto hoje representa automaticamente uma população ou instituição atual. [Relatório de correção de Grömping](https://www1.beuth-hochschule.de/FB_II/reports/Report-2019-004.pdf), [UCI](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate)
+
+### Proposta de telas
+
+- **Resumo:** volume de observações, proporção bom/ruim, riscos previstos, filtros por segmento e aviso claro sobre limites dos dados.
+- **Comparação de modelos:** ROC/PR ou matriz de confusão no conjunto de teste, calibração e métricas no mesmo recorte; limiar de classificação e custos simulados explicitados.
+- **Segmentos:** distribuição de classes e risco previsto por finalidade, faixa de duração/valor e atributos selecionados.
+- **Carteira demonstrativa:** somente se houver snapshots reais apropriados ou dados simulados identificados, exibir atraso, watchlist, transição de rating e exposição temporal.
+
+As telas acima são recomendações de design derivadas das métricas supervisoras citadas, não exigências normativas para um protótipo acadêmico.
+
+## Fontes principais
+
+- Basel Committee on Banking Supervision. [General credit risk management — Basel Framework, consolidated guidelines](https://www.bis.org/committees/bcbs/basel-consolidated-guidelines/module/cri/10).
+- European Banking Authority. [Guidelines on loan origination and monitoring](https://www.eba.europa.eu/activities/single-rulebook/regulatory-activities/credit-risk/guidelines-loan-origination-and-monitoring).
+- Federal Reserve. [Supervisory Guidance on Model Risk Management](https://www.federalreserve.gov/frrs/guidance/supervisory-guidance-on-model-risk-management.htm).
+- UCI Machine Learning Repository. [South German Credit dataset](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate).
+- Grömping, Ulrike. [South German Credit Data: Correcting a Widely Used Data Set](https://www1.beuth-hochschule.de/FB_II/reports/Report-2019-004.pdf), 2019.

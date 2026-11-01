@@ -1,0 +1,28 @@
+<h2>Fluxo de treino com os dois controles</h2>
+<p class="subtitle">A proposta acrescenta uma barreira antes de treinar e outra antes de usar o adapter.</p>
+
+<div class="mockup" style="max-width:1050px;margin:0 auto">
+  <div class="mockup-header">FinLabel · ciclo supervisionado local</div>
+  <div class="mockup-body" style="background:#e9eef0;color:#1b3033;padding:17px">
+    <div class="label" style="color:#146d68">JÁ EXISTE NO PROTÓTIPO</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px">
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:7px;padding:10px"><small>1 · INFERÊNCIA</small><h3 style="margin:5px 0">Modelo sugere</h3><p style="font-size:10px">Previsões estruturadas sobre os campos escolhidos.</p><strong style="color:#146d68;font-size:9px">DISPONÍVEL</strong></div>
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:7px;padding:10px"><small>2 · REVISÃO</small><h3 style="margin:5px 0">Pessoa decide</h3><p style="font-size:10px">Aceitar, editar ou rejeitar; decisão fica no log.</p><strong style="color:#146d68;font-size:9px">DISPONÍVEL</strong></div>
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:7px;padding:10px"><small>3 · DATASET</small><h3 style="margin:5px 0">Exportação explícita</h3><p style="font-size:10px">Exemplos aceitos/corrigidos, com hash e proveniência.</p><strong style="color:#146d68;font-size:9px">DISPONÍVEL</strong></div>
+      <div style="background:#f7f8fc;border:1px dashed #9aa8cf;border-radius:7px;padding:10px"><small>4 · NOVO GATE</small><h3 style="margin:5px 0">Validar dataset</h3><p style="font-size:10px">Volume mínimo, cobertura por rótulo, duplicados e itens inválidos/stale.</p><strong style="color:#5274b8;font-size:9px">PROPOSTA</strong></div>
+    </div>
+    <div style="text-align:center;padding:7px;color:#146d68;font-size:18px">↓ dataset aprovado para treino　　·　　se insuficiente: pedir mais revisões</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+      <div style="background:#fff;border:1px solid #b9d9ce;border-radius:7px;padding:10px"><small>5 · TREINO</small><h3 style="margin:5px 0">Criar adapter LoRA</h3><p style="font-size:10px">Ação explícita; pesos e metadados salvos localmente.</p><strong style="color:#146d68;font-size:9px">DISPONÍVEL</strong></div>
+      <div style="background:#f7f8fc;border:1px dashed #9aa8cf;border-radius:7px;padding:10px"><small>6 · NOVO GATE</small><h3 style="margin:5px 0">Avaliar base × adapter</h3><p style="font-size:10px">Mesmo conjunto reservado, sem treino nele; métricas comparáveis.</p><strong style="color:#5274b8;font-size:9px">NO EXPERIMENTO, SCRIPT À PARTE</strong></div>
+      <div style="background:#f7f8fc;border:1px dashed #9aa8cf;border-radius:7px;padding:10px"><small>7 · NOVA DECISÃO</small><h3 style="margin:5px 0">Aprovar ou manter base</h3><p style="font-size:10px">Pessoa inspeciona métricas e escolhe; adapter não entra em uso sozinho.</p><strong style="color:#5274b8;font-size:9px">PROPOSTA</strong></div>
+      <div style="background:#f7f8fc;border:1px dashed #9aa8cf;border-radius:7px;padding:10px"><small>8 · FECHAR CICLO</small><h3 style="margin:5px 0">Carregar adapter</h3><p style="font-size:10px">Backend usa o adapter escolhido para novas sugestões que voltam à revisão.</p><strong style="color:#5274b8;font-size:9px">A IMPLEMENTAR</strong></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px">
+      <div style="background:#fff8ec;border:1px solid #efd29e;border-radius:7px;padding:10px;font-size:10px"><strong>Se o dataset falhar:</strong> mostrar quais rótulos ou critérios estão insuficientes e retornar à revisão. Não treinar silenciosamente com poucos exemplos.</div>
+      <div style="background:#fff8ec;border:1px solid #efd29e;border-radius:7px;padding:10px;font-size:10px"><strong>Se o adapter não passar na avaliação:</strong> manter o modelo-base ativo; registrar o resultado e permitir revisar dados/configuração.</div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Os limites numéricos do gate (por exemplo, mínimos por rótulo) ainda seriam definidos por tarefa. Não coloquei valores fixos sem evidência.</p>

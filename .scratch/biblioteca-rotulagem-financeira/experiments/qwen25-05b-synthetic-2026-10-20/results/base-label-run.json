@@ -1,0 +1,10 @@
+{
+  "run_id": "a4288ba420b44678ba3d39391986e0d1",
+  "source": "synthetic_train",
+  "task": "natureza_movimentacao_sintetica",
+  "model_ref": "Qwen/Qwen2.5-0.5B-Instruct@7ae557604adf67be50417f59c2c2f167def9a775",
+  "suggestions": 72,
+  "invalid": 0,
+  "suggestion_file": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/project/.finlabel/runs/a4288ba420b44678ba3d39391986e0d1/suggestions.jsonl",
+  "max_new_tokens": 64
+}

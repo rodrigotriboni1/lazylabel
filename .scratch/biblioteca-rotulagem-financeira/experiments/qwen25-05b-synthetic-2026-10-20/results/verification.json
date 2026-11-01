@@ -1,0 +1,26 @@
+{
+  "source_hashes_match_generation_manifest": true,
+  "no_exact_train_test_description_overlap": true,
+  "reviewed_and_formatted_rows": 72,
+  "unselected_reference_markers_absent_from_prompt_and_suggestions": true,
+  "suggestion_hash_matches_run_metadata": true,
+  "review_events_reconciled": 72,
+  "review_counts": {
+    "accepted": 38,
+    "corrected": 34
+  },
+  "heldout_predictions_aligned_to_source_and_reference": true,
+  "metrics_recomputed_from_saved_predictions": true,
+  "base_valid_predictions": 23,
+  "finetuned_valid_predictions": 24,
+  "base_accuracy": 0.375,
+  "finetuned_accuracy": 0.7083333333333334,
+  "base_macro_f1": 0.3,
+  "finetuned_macro_f1": 0.7055555555555556,
+  "net_correct_predictions": 8,
+  "improved_examples": 10,
+  "regressed_examples": 2,
+  "adapter_file_present": true,
+  "adapter_bytes": 17640136,
+  "adapter_sha256": "05edf565c2e86bd846b62bc92fa1f726b6f9fab407819ffc93af5c523304f018"
+}

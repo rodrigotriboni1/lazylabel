@@ -1,0 +1,12 @@
+{
+  "path": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/data/reviewed-training.jsonl",
+  "rows": 72,
+  "manifest": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/data/reviewed-training.jsonl.manifest.json",
+  "dataset_sha256": "00f5858facd3bbb17a763823b4fe010b50774a5379dfb5f1eef2dd143599727c",
+  "excluded_counts": {
+    "unreviewed": 0,
+    "rejected": 0,
+    "stale": 0,
+    "invalid": 0
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "a4288ba420b44678ba3d39391986e0d1",
+  "source_rows": 72,
+  "valid_suggestions": 72,
+  "accepted_equal_to_oracle": 38,
+  "corrected_to_oracle": 34,
+  "unavailable_or_invalid": 0,
+  "review_events": 72
+}

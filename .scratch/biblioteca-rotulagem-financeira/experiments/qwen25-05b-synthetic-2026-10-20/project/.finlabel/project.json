@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "sources": {
+    "synthetic_train": {
+      "kind": "csv",
+      "path": "/Users/rodrigotriboni1/Documents/ChatGPT/TCC/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/data/train.csv",
+      "table": null,
+      "id_column": null,
+      "schema": {}
+    }
+  },
+  "model_roles": {}
+}

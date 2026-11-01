@@ -1,0 +1,8 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "license": "Apache-2.0; local experiment only; model card reviewed 2026-10-20",
+  "hardware": "Apple M4, 16 GB unified memory, macOS 26.6.2; MPS if PyTorch reports available",
+  "data_policy": "Synthetic records generated locally by generate_data.py only; no user or production data; no hub upload or telemetry",
+  "evaluation_protocol": "72 synthetic train descriptions; 24 disjoint held-out descriptions; exact accuracy and macro-F1; fixed seed 42; 3 epochs; no hyperparameter selection on held-out set",
+  "authorized": true
+}

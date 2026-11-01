@@ -1,0 +1,9 @@
+{
+  "run_id": "a4288ba420b44678ba3d39391986e0d1",
+  "source_name": "synthetic_train",
+  "task_id": "natureza_movimentacao_sintetica",
+  "model_ref": "Qwen/Qwen2.5-0.5B-Instruct@7ae557604adf67be50417f59c2c2f167def9a775",
+  "row_count": 72,
+  "invalid_count": 0,
+  "suggestions_sha256": "3429d957b98e9b01daad2ec3441f321cb421e81f1da607735dd1cb60780c52c0"
+}

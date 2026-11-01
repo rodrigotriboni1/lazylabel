@@ -1,0 +1,8 @@
+{
+  "task_id": "natureza_movimentacao_sintetica",
+  "instructions": "Classifique o histórico financeiro sintético em exatamente uma categoria. Use receita para entrada de venda, cobrança, serviço ou pagamento recebido de cliente. Use despesa_operacional para aluguel, salários, utilidades, materiais, viagens ou manutenção necessários à operação. Use custo_financeiro para tarifa bancária, juros, multa de mora, processamento, cheque especial ou antecipação de recebíveis. Considere apenas o histórico selecionado. Responda somente com um objeto JSON no formato {\"label\":\"categoria\"}, usando exatamente um dos rótulos permitidos.",
+  "input_columns": ["historico"],
+  "labels": ["receita", "despesa_operacional", "custo_financeiro"],
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+}
