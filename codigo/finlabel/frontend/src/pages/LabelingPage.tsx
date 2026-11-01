@@ -17,16 +17,13 @@ export default function LabelingPage() {
   const [result, setResult] = useState<AutonomousRunResult | null>(null)
   const idempotencyKey = useRef(crypto.randomUUID())
 
-  const refresh = useCallback(async () => {
-    try {
-      const next = await client.getAutonomyOverview()
-      setError(null)
-      setOverview(next)
-      setSource((current) => next.sources.some((item) => item.name === current) ? current : next.sources[0]?.name ?? '')
-      setTask((current) => next.tasks.some((item) => item.task_id === current) ? current : next.tasks[0]?.task_id ?? '')
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o estado local.') }
-    finally { setLoading(false) }
-  }, [client])
+  const refresh = useCallback(() => client.getAutonomyOverview().then((next) => {
+    setError(null)
+    setOverview(next)
+    setSource((current) => next.sources.some((item) => item.name === current) ? current : next.sources[0]?.name ?? '')
+    setTask((current) => next.tasks.some((item) => item.task_id === current) ? current : next.tasks[0]?.task_id ?? '')
+  }, (cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível carregar o estado local.'))
+    .finally(() => setLoading(false)), [client])
   useEffect(() => { void refresh() }, [refresh])
 
   const selectedTask = overview?.tasks.find((item) => item.task_id === task)
