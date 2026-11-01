@@ -4,6 +4,8 @@ Biblioteca em desenvolvimento para análise local e rotulagem autônoma de dados
 
 Inferência local usa Transformers quando o modelo é selecionado. O fine-tuning PEFT/LoRA e a promoção automática exigem política, rótulos confiáveis, evidência de avaliação e gates específicos da tarefa. Pesos só são baixados quando uma execução local explicitamente selecionada precisa deles.
 
+English quickstart: [docs/quickstart.md](docs/quickstart.md)
+
 ## Instalação local
 
 ```bash
