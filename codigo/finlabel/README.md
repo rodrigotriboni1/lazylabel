@@ -53,6 +53,22 @@ Abra `http://127.0.0.1:8765`. O serviço só faz bind em loopback, valida `Host`
 
 Use `/labeling` para executar rotulagem, quarentena e ciclo de treino; `/training` mostra as etapas, avaliação congelada, estado do modelo, promoção, rejeição e rollback automáticos. Não há decisão manual por registro nem botão manual de promoção.
 
+## Início rápido com dados sintéticos
+
+```bash
+finlabel quickstart ./meu-projeto --model-id REFERENCIA-DO-MODELO-ESCOLHIDO [--model-revision REV]
+```
+
+O comando cria um projeto de exemplo com dados falsos, sem baixar nem escolher modelo:
+
+- `finlabel-sample-synthetic.csv`: 40 linhas sintéticas (`fake_amount`, `fake_days_past_due`, `fake_utilization` e `reference_label`);
+- `task.json` e `policy.json`: tarefa e política `sample` (a coluna `reference_label` não é entrada de inferência);
+- `.finlabel/`: projeto inicializado, com a fonte `sample` e a tarefa `sample` já registradas.
+
+`--model-id` é obrigatório; o valor só é gravado em `task.json`, e nenhum modelo é baixado, validado ou executado. O comando só escreve em um diretório inexistente ou vazio e recusa qualquer diretório não vazio (inclusive um projeto FinLabel existente) sem alterar nada.
+
+Os valores da política (`0.95` e `300`) são ilustrativos e precisam ser validados para a sua tarefa. Como `calibration_ref` é `null`, toda previsão fica em quarentena (`uncalibrated`) até existir evidência de calibração.
+
 ## Tarefas e rotulagem autônoma
 
 Uma tarefa declarativa define instruções, colunas permitidas, rótulos e o modelo local. Salve este JSON como `risk.json`:

@@ -5,6 +5,7 @@ from finlabel.application.use_cases.labeling import run_labeling
 from finlabel.application.use_cases.training import run_training_cycle
 from finlabel.application.use_cases.errors import PersistenceError
 from finlabel.application.use_cases.prerequisites import prerequisites_checklist
+from finlabel.application.use_cases.quickstart import CSV_NAME, sample_files
 
 
 class WorkspaceApplication:
@@ -25,6 +26,13 @@ class WorkspaceApplication:
 
     def initialize(self, path):
         return self.workspace.initialize(path)
+
+    def quickstart(self, path, model_id, model_revision=None):
+        paths = self.workspace.write_new_files(path, sample_files(model_id, model_revision))
+        self.workspace.initialize(path)
+        self.workspace.configure_source(path, "add-csv", "sample", paths[CSV_NAME])
+        task_path = self.workspace.add_task(path, paths["task.json"])
+        return {"source": "sample", "task_id": "sample", "task_path": str(task_path)}
 
     def configure_source(self, *args, **kwargs):
         return self.workspace.configure_source(self.project_reference, *args, **kwargs)
