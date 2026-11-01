@@ -37,15 +37,11 @@ source .venv/bin/activate
 python -m pip install -e '.[web]'
 ```
 
-To add other extras later: `python -m pip install -e '.[web,models]'`.
-
 ### (b) pipx
 
 ```bash
 pipx install '.[web]'
 ```
-
-To add other extras: `pipx install '.[web,models]'`.
 
 ### (c) uv
 
@@ -53,14 +49,12 @@ To add other extras: `pipx install '.[web,models]'`.
 uv tool install '.[web]'
 ```
 
-To add other extras: `uv tool install '.[web,models]'`.
-
 ## First run
 
 These steps assume `finlabel` is on your `PATH` (activate the venv in (a), or use the binary installed by (b) or (c)). Work in a directory outside the repo checkout:
 
 ```bash
-mkdir ~/finlabel-demo && cd ~/finlabel-demo
+mkdir -p ~/finlabel-demo && cd ~/finlabel-demo
 ```
 
 Create a sample CSV and an analysis plan:
