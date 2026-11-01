@@ -83,15 +83,25 @@ Regra para código novo: importe pelo caminho canônico (`finlabel.domain`, `fin
 
 ## Verificações reproduzíveis
 
-Use o Python do ambiente virtual que contém as dependências de teste e, para o frontend, Node/dependências instalados:
+Todos os comandos rodam a partir de `codigo/finlabel/`. É necessário Python >=3.10 (conforme `pyproject.toml`). Os extras `models` e `train` (torch, transformers) não são necessários para rodar os testes.
+
+Configuração do ambiente (Python e frontend):
 
 ```bash
-/tmp/finlabel-clean-hexagonal-venv/bin/python -m pytest -q
+python -m venv .venv
+.venv/bin/python -m pip install -e '.[web,test]' pytest
+npm --prefix frontend ci
+```
+
+Verificações:
+
+```bash
+.venv/bin/python -m pytest -q
 npm --prefix frontend test -- --run
 npm --prefix frontend run build
 npm --prefix frontend run lint
-/tmp/finlabel-clean-hexagonal-venv/bin/python -m compileall -q src tests
+.venv/bin/python -m compileall -q src tests
 git diff --check
 ```
 
-Os testes de dependência/compatibilidade também podem ser executados isoladamente: `/tmp/finlabel-clean-hexagonal-venv/bin/python -m pytest tests/architecture tests/compatibility -q`. O build produz os assets React locais usados pelo FastAPI; o servidor deve ficar ligado somente ao loopback. Consulte o relatório da etapa final em `.superpowers/sdd/2026-10-26-finlabel-clean-hexagonal/task-13-report.md` para resultados da integração e limites do QA feito nesta revisão.
+Os testes de dependência/compatibilidade também podem ser executados isoladamente: `.venv/bin/python -m pytest tests/architecture tests/compatibility -q`. O build produz os assets React locais usados pelo FastAPI; o servidor deve ficar ligado somente ao loopback. Consulte o relatório da etapa final em `.superpowers/sdd/2026-10-26-finlabel-clean-hexagonal/task-13-report.md` para resultados da integração e limites do QA feito nesta revisão.
