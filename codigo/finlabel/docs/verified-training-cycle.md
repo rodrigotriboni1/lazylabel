@@ -79,6 +79,20 @@ An unhealthy report is saved under `.finlabel/models/health-evaluations/<evaluat
 
 This evidence is verified inside the local workspace trust boundary. Hashes detect accidental or uncoordinated edits and make journal replay deterministic, but they do not prove who ran the evaluator or prevent a workspace owner from rewriting evidence and recomputing hashes. The rollback interface does not claim an external cryptographic evaluator attestation.
 
+## Prerequisites checklist
+
+`finlabel label` prints a top-level `prerequisites` list when the task has no labeling policy or `uncalibrated` is the most common (or tied for most common) reason code. `finlabel run` and `finlabel run-status` print it when the most common label reason is `uncalibrated` or `missing_policy` (ties count), or when training is `blocked`. `label-run` never prints it.
+
+Each item has `check`, `status` and, when the status is not `present`, a fixed `fix` hint that uses the literal `<task>` placeholder. Checks appear in this order:
+
+- `labeling_policy`: `present`, `missing` or `invalid`. Missing: set `policy_path` in `.finlabel/tasks/<task>.json` to a labeling policy file. Invalid: the file does not load as a labeling policy for the task; fix it.
+- `trusted_label_source`: `present` or `missing`. Missing: register one with `finlabel supervision add <source> --task <task> --label-column <column> --provenance <name> --trust-kind provided_ground_truth|validated_rule`.
+- `training_gate`: `present` or `missing`. Missing: create `.finlabel/training-gate.json`.
+- `promotion_policy`: `present` or `missing`. Missing: create `.finlabel/models/promotion-policies/<task>.json`.
+- `calibrator`: `present` or `missing`. Missing: there is no promoted model with a calibrator yet; the first promotion through `finlabel run` writes it.
+
+The checklist is diagnostic only. It checks existence, not contents, and reflects the project's current state, not its state when a run was made (so `run-status` may differ from the earlier `run` output once files are added). It is computed when printed and is not stored in any run artifact.
+
 ## CLI and panel status
 
 `finlabel run-status <run_id>` verifies and displays the aggregate pipeline result. `finlabel model-status <task_id>` displays the active model reference and validated promotion, rejection, and rollback history without exposing adapter paths. The local panel uses the same run service and shows cycle state, frozen holdout metrics, and lifecycle events; it has no per-record decision controls or manual promotion action.

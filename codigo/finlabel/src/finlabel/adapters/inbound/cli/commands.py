@@ -8,6 +8,25 @@ from pathlib import Path
 from finlabel.domain.analysis.schema import plan_from_dict
 
 
+def _dominant(reason_counts):
+    """Reasons tied for the highest count."""
+    top = max(reason_counts.values(), default=0)
+    return {reason for reason, count in reason_counts.items() if count == top and top}
+
+
+def _needs_prerequisites(result):
+    if "policy_id" in result:
+        return result["policy_id"] is None or "uncalibrated" in _dominant(result["reason_counts"])
+    return (result["training"]["state"] == "blocked"
+        or bool(_dominant(result["labels"]["reason_counts"]) & {"uncalibrated", "missing_policy"}))
+
+
+def _with_prerequisites(app, result):
+    if _needs_prerequisites(result):
+        result["prerequisites"] = app.prerequisites(result["task_id"])
+    return result
+
+
 def main(argv=None, *, application=None, application_factory=None, serve=None):
     parser = argparse.ArgumentParser(prog="finlabel")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -166,13 +185,14 @@ def main(argv=None, *, application=None, application_factory=None, serve=None):
                 result["notice"] = (
                     "Predictions are uncalibrated and remain quarantined. A fitted calibrator matching the "
                     "task, model, policy, and score method is required before labels can be applied.")
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(_with_prerequisites(app, result), ensure_ascii=False, indent=2))
             return 0
         if args.command == "run":
-            print(json.dumps(app.pipeline(args.source, args.task, device=args.device), ensure_ascii=False, indent=2))
+            result = _with_prerequisites(app, app.pipeline(args.source, args.task, device=args.device))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "run-status":
-            print(json.dumps(app.pipeline_status(args.run_id), ensure_ascii=False, indent=2))
+            print(json.dumps(_with_prerequisites(app, app.pipeline_status(args.run_id)), ensure_ascii=False, indent=2))
             return 0
         if args.command == "label-run":
             print(json.dumps(app.label_status(args.run_id), ensure_ascii=False, indent=2))
