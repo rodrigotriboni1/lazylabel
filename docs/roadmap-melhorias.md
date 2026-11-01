@@ -43,7 +43,7 @@ Ordem sugerida: P0 desbloqueia tudo, P1 sustenta a tese, P2 qualidade, P3 higien
 
 ### 8. Avisos conhecidos
 - Cinco avisos de lint no React (dois de exports de UI, três `set-state-in-effect` em Training, Labeling e Analysis). **Resolvido (issue #4).**
-- Bundle principal de 710 kB (limite de aviso: 500 kB) — considerar code-splitting por rota.
+- Bundle principal de 710 kB (limite de aviso: 500 kB) — considerar code-splitting por rota. Code-splitting por rota feito: bundle principal 275,58 kB. **Resolvido (issue #18).**
 
 ### 9. Reprodutibilidade dos testes
 - `docs/architecture/clean-hexagonal.md` manda usar `/tmp/finlabel-clean-hexagonal-venv/bin/python`, caminho que some. Trocar por `python -m venv .venv && pip install -e '.[web,models]'` (ou o extra de teste que existir) e documentar o comando de teste.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Activity, BarChart3, Database, FlaskConical, LayoutDashboard, ListChecks, ShieldCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { FinLabelClient, Health } from '@/application/ports/FinLabelClient'
 import { FinLabelClientProvider } from '@/application/FinLabelClientProvider'
 import { useFinLabelClient } from '@/application/FinLabelClientContext'
-import OverviewPage from '@/pages/OverviewPage'
-import AnalysisPage from '@/pages/AnalysisPage'
-import MonitorPage from '@/pages/MonitorPage'
-import LabelingPage from '@/pages/LabelingPage'
-import TrainingPage from '@/pages/TrainingPage'
+
+const OverviewPage = lazy(() => import('@/pages/OverviewPage'))
+const AnalysisPage = lazy(() => import('@/pages/AnalysisPage'))
+const MonitorPage = lazy(() => import('@/pages/MonitorPage'))
+const LabelingPage = lazy(() => import('@/pages/LabelingPage'))
+const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 
 const navigation = [
   { label: 'Visão geral', mobileLabel: 'Início', path: '/', icon: LayoutDashboard },
@@ -76,7 +77,9 @@ function AppShell() {
         </header>
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
+          <Suspense fallback={<p role="status" className="text-sm text-[#718077]">Carregando página…</p>}>
           {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' || path === '/review' ? <LabelingPage /> : path === '/training' ? <TrainingPage /> : error ? <Card className="border-[#f0d5d1] bg-white"><CardHeader><CardTitle className="text-base">Não foi possível conectar</CardTitle><CardDescription>{error}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></CardContent></Card> : <OverviewPage />}
+          </Suspense>
         </section>
         <footer className="px-5 pb-8 text-center text-xs text-[#94a097] md:px-10">FinLabel · ambiente de processamento local</footer>
       </main>
