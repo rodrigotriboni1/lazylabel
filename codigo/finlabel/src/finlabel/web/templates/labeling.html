@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>FinLabel — rotulagem local</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="page-header">
+      <p class="eyebrow">FINLABEL · ROTULAGEM ASSISTIDA</p>
+      <h1>Reveja sugestões localmente</h1>
+      <p>O modelo recebe apenas as colunas selecionadas pela tarefa. Revise cada sugestão antes de preparar dados de treino.</p>
+      <p><a href="/">Voltar para análise</a> · <a href="/training">Preparar fine-tuning</a></p>
+    </header>
+    <section class="panel">
+      <div class="section-heading"><div><p class="eyebrow">01 · EXECUÇÃO</p><h2>Gerar sugestões</h2></div><span class="badge">Fonte somente leitura</span></div>
+      {% if sources and tasks %}
+        <label for="label-source">Fonte</label>
+        <select id="label-source">{% for source in sources %}<option value="{{ source }}">{{ source }}</option>{% endfor %}</select>
+        <label for="label-task">Tarefa</label>
+        <select id="label-task">{% for task in tasks %}<option value="{{ task.task_id }}">{{ task.task_id }} · {{ task.labels|join(", ") }}</option>{% endfor %}</select>
+        <button id="start-label-run" class="button primary" type="button">Gerar sugestões locais</button>
+      {% else %}
+        <p>Adicione uma fonte e uma tarefa JSON com <code>finlabel source</code> e <code>finlabel task add</code>.</p>
+      {% endif %}
+      <label for="label-run-id">ID da execução</label>
+      <div class="button-row"><input id="label-run-id" maxlength="32" placeholder="Cole um ID ou gere sugestões"><button id="load-label-run" class="button secondary" type="button">Carregar execução</button></div>
+      <div id="label-status" class="notice" role="status" aria-live="polite"></div>
+    </section>
+    <section class="panel" aria-labelledby="review-title">
+      <div class="section-heading"><div><p class="eyebrow">02 · REVISÃO</p><h2 id="review-title">Sugestões</h2></div><span id="label-count" class="badge"></span></div>
+      <div id="label-suggestions" class="suggestion-list"></div>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><p class="eyebrow">03 · EXPORTAÇÃO</p><h2>Preparar dataset</h2></div></div>
+      <label for="dataset-name">Nome do arquivo local</label>
+      <input id="dataset-name" value="reviewed-examples.jsonl" maxlength="69">
+      <button id="prepare-dataset" class="button secondary" type="button">Preparar dataset revisado</button>
+      <p class="helper">A exportação inclui somente decisões aceitas ou corrigidas; rejeitadas, desatualizadas e sem revisão ficam de fora.</p>
+      <div id="dataset-status" class="notice" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+</body>
+</html>
