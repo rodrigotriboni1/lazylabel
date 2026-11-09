@@ -1,0 +1,33 @@
+{
+  "root": "page",
+  "elements": {
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg" }, "children": ["header", "error", "body"] },
+    "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
+    "title": { "type": "Heading", "props": { "text": "Seu espaço de trabalho", "level": "h1" } },
+    "lead": { "type": "Text", "props": { "text": "Explore fontes locais, calcule indicadores auditáveis e monitore mudanças estruturais.", "variant": "muted" } },
+
+    "error": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "visible": { "$state": "/status", "eq": "error" }, "children": ["error-alert", "retry"] },
+    "error-alert": { "type": "Alert", "props": { "title": "Não foi possível carregar as fontes", "message": { "$state": "/error" }, "type": "error" } },
+    "retry": { "type": "Button", "props": { "label": "Tentar novamente", "variant": "secondary" }, "on": { "press": { "action": "reload" } } },
+
+    "body": { "type": "Grid", "props": { "columns": 2, "gap": "lg" }, "visible": { "$state": "/status", "neq": "error" }, "children": ["sources", "shortcuts"] },
+    "sources": { "type": "Card", "props": { "title": "Fontes de dados", "description": "Só o esquema: nomes e tipos de colunas." }, "children": ["loading", "empty", "source-list"] },
+    "loading": { "type": "Spinner", "props": { "label": "Carregando fontes…" }, "visible": { "$state": "/status", "eq": "loading" } },
+    "empty": { "type": "Text", "props": { "text": "Nenhuma fonte configurada. Conecte um CSV ou SQLite pelo comando lazylabel source.", "variant": "muted" }, "visible": { "$state": "/empty" } },
+    "source-list": { "type": "Stack", "props": { "direction": "vertical", "gap": "md" }, "repeat": { "statePath": "/sources", "key": "name" }, "children": ["source"] },
+    "source": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["source-head", "source-columns"] },
+    "source-head": { "type": "Stack", "props": { "direction": "horizontal", "justify": "between", "align": "center" }, "children": ["source-name", "source-kind"] },
+    "source-name": { "type": "Heading", "props": { "text": { "$item": "name" }, "level": "h4" } },
+    "source-kind": { "type": "Badge", "props": { "text": { "$item": "kind" }, "variant": "outline" } },
+    "source-columns": { "type": "Text", "props": { "text": { "$item": "summary" }, "variant": "caption" } },
+
+    "shortcuts": { "type": "Stack", "props": { "direction": "vertical", "gap": "md" }, "children": ["go-analysis", "go-monitor", "go-labeling", "privacy"] },
+    "go-analysis": { "type": "Card", "props": { "title": "Análises", "description": "Tendências e comparações com valores exatos." }, "children": ["link-analysis"] },
+    "link-analysis": { "type": "Link", "props": { "label": "Abrir análises", "href": "/analysis" } },
+    "go-monitor": { "type": "Card", "props": { "title": "Monitoramento", "description": "Compare a fonte com o esquema confirmado." }, "children": ["link-monitor"] },
+    "link-monitor": { "type": "Link", "props": { "label": "Abrir monitoramento", "href": "/monitor" } },
+    "go-labeling": { "type": "Card", "props": { "title": "Rotulagem", "description": "Rótulos, quarentena e ciclo de treino." }, "children": ["link-labeling"] },
+    "link-labeling": { "type": "Link", "props": { "label": "Abrir rotulagem", "href": "/labeling" } },
+    "privacy": { "type": "Alert", "props": { "title": "Dados permanecem locais", "message": "Esta tela mostra só nomes e tipos de colunas.", "type": "info" } }
+  }
+}
