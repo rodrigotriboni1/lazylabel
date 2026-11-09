@@ -10,7 +10,7 @@ Atualizado em 09/11/2026. Faça na ordem; cada passo destrava o seguinte.
 ## 1. Fechar o tema com o orientador
 
 - Levar as perguntas de [perguntas-orientador.md](perguntas-orientador.md).
-- Registrar as respostas e atualizar a situação das decisões 7 e 8 em [decisoes.md](decisoes.md).
+- Registrar as respostas e atualizar a situação da decisão 7 em [decisoes.md](decisoes.md).
 - Confirmar o prazo oficial de entrega e defesa e as regras sobre uso de IA ([uso-de-ia.md](uso-de-ia.md)).
 
 ## 2. Alinhar o protocolo
