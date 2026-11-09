@@ -1,4 +1,4 @@
-# FinLabel Local
+# LazyLabel Local
 
 Biblioteca em desenvolvimento para análise local e rotulagem autônoma de dados financeiros. Inclui conectores somente de leitura para CSV e SQLite, monitoramento de esquema, análises determinísticas, gráficos offline, painel web e fluxos locais de calibração e treino.
 
@@ -67,7 +67,7 @@ O comando cria um projeto de exemplo com dados falsos, sem baixar nem escolher m
 
 Esses rótulos são sintéticos e o `provenance` é uma declaração do operador (operator declaration), não uma verificação. Se o registro falhar, o comando informa o erro e mantém os arquivos, o projeto, a fonte e a tarefa já escritos.
 
-`--model-id` é obrigatório; o valor só é gravado em `task.json`, e nenhum modelo é baixado, validado ou executado. O comando só escreve em um diretório inexistente ou vazio e recusa qualquer diretório não vazio (inclusive um projeto FinLabel existente) sem alterar nada.
+`--model-id` é obrigatório; o valor só é gravado em `task.json`, e nenhum modelo é baixado, validado ou executado. O comando só escreve em um diretório inexistente ou vazio e recusa qualquer diretório não vazio (inclusive um projeto LazyLabel existente) sem alterar nada.
 
 Os valores da política (`0.95` e `300`) são ilustrativos e precisam ser validados para a sua tarefa. Como `calibration_ref` é `null`, toda previsão fica em quarentena (`uncalibrated`) até existir evidência de calibração.
 
@@ -180,7 +180,7 @@ rótulo aplicado como atual quando ele corresponder ao `input_digest` do resulta
 
 ## Rótulos confiáveis e ciclo de fine-tuning
 
-Para treinar, registre uma coluna de referência externa, separada das previsões e dos logs do FinLabel. CSV ou SQLite continua somente para leitura. `.finlabel/project.json` guarda proveniência, contagem e hash do snapshot, sem copiar linhas ou rótulos para logs. `trust_kind` e `provenance` são declarações do operador: FinLabel valida formato, mapeamento e origem, mas não autentica criptograficamente quem produziu ou aprovou os rótulos. A coluna de rótulo nunca pode entrar em `input_columns` da tarefa.
+Para treinar, registre uma coluna de referência externa, separada das previsões e dos logs do LazyLabel. CSV ou SQLite continua somente para leitura. `.finlabel/project.json` guarda proveniência, contagem e hash do snapshot, sem copiar linhas ou rótulos para logs. `trust_kind` e `provenance` são declarações do operador: LazyLabel valida formato, mapeamento e origem, mas não autentica criptograficamente quem produziu ou aprovou os rótulos. A coluna de rótulo nunca pode entrar em `input_columns` da tarefa.
 
 ```bash
 finlabel supervision add carteira \
@@ -218,7 +218,7 @@ O ciclo valida a fonte confiável, congela partições disjuntas de treino/calib
 
 O comando `finlabel train` continua disponível como backend explícito de fine-tuning, mas não promove um modelo nem substitui o ciclo verificado. `ReviewLog` e artefatos de revisão anteriores permanecem legíveis por compatibilidade histórica; não fazem parte da rotulagem autônoma atual.
 
-O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica adapters e desativa telemetria do trainer. FinLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, memória disponível e protocolo de avaliação. Consulte [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). O smoke real local do Qwen com exemplos sintéticos está em `docs/local-model-inference-2026-10-26.md`; não demonstra desempenho financeiro e o adapter histórico não pode ser promovido pelo ciclo atual.
+O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica adapters e desativa telemetria do trainer. LazyLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, memória disponível e protocolo de avaliação. Consulte [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). O smoke real local do Qwen com exemplos sintéticos está em `docs/local-model-inference-2026-10-26.md`; não demonstra desempenho financeiro e o adapter histórico não pode ser promovido pelo ciclo atual.
 
 ## Contrato de previsão local estruturada
 

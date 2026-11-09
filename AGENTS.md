@@ -10,7 +10,7 @@ Use the five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, 
 
 ### Domain docs
 
-This is a single-context repo; consult `GLOSSARY.md` and relevant ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+This is a single-context repo; consult `tcc/glossario.md` and `tcc/decisoes.md`. See `docs/agents/domain.md`.
 
 ## Software factory
 

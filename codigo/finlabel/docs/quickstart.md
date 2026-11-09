@@ -1,4 +1,4 @@
-# FinLabel Local quickstart
+# LazyLabel Local quickstart
 
 This guide takes you from a fresh checkout to a chart and the local web panel, using a tiny sample CSV. Everything runs locally.
 

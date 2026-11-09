@@ -1,6 +1,6 @@
-# FinLabel: Clean Architecture e arquitetura hexagonal
+# LazyLabel: Clean Architecture e arquitetura hexagonal
 
-Este documento descreve a arquitetura implementada no FinLabel. Os caminhos abaixo são relativos à raiz do repositório. As regras de dependência executáveis estão em `tests/architecture/test_layer_dependencies.py`; os contratos das fachadas estão em `tests/compatibility/`.
+Este documento descreve a arquitetura implementada no LazyLabel. Os caminhos abaixo são relativos à raiz do repositório. As regras de dependência executáveis estão em `tests/architecture/test_layer_dependencies.py`; os contratos das fachadas estão em `tests/compatibility/`.
 
 ## Fluxo e dependências
 
@@ -9,8 +9,8 @@ As dependências do Python apontam para dentro: domínio → nada externo ao dom
 ```mermaid
 flowchart LR
   subgraph Browser["Navegador · frontend/src"]
-    UI["presentation: pages/ + components/"] --> FPORT["application/ports/FinLabelClient.ts"]
-    FPORT -. implementada por .-> FHTTP["adapters/http/FinLabelHttpClient.ts"]
+    UI["presentation: pages/ + components/"] --> FPORT["application/ports/LazyLabelClient.ts"]
+    FPORT -. implementada por .-> FHTTP["adapters/http/LazyLabelHttpClient.ts"]
     FBOOT["main.tsx + App.tsx\ncomposição e provider"] --> UI
     FBOOT --> FHTTP
   end
@@ -30,7 +30,7 @@ flowchart LR
   OUT --> MODELS["Transformers / PEFT\nimportação e uso opcionais"]
 ```
 
-No diagrama, `finlabel.cli:main` é a fachada pública que delega à composição/adapter CLI. `finlabel.web.app:create_app` preserva o import público e delega à composição HTTP. Na interface, `frontend/src/main.tsx` cria o `FinLabelHttpClient`, e `frontend/src/App.tsx` fornece o cliente tipado às páginas. Apenas `frontend/src/adapters/http/FinLabelHttpClient.ts` faz requests de rede; `FinLabelMemoryClient.ts` implementa a mesma porta para testes.
+No diagrama, `finlabel.cli:main` é a fachada pública que delega à composição/adapter CLI. `finlabel.web.app:create_app` preserva o import público e delega à composição HTTP. Na interface, `frontend/src/main.tsx` cria o `LazyLabelHttpClient`, e `frontend/src/App.tsx` fornece o cliente tipado às páginas. Apenas `frontend/src/adapters/http/LazyLabelHttpClient.ts` faz requests de rede; `LazyLabelMemoryClient.ts` implementa a mesma porta para testes.
 
 ## Camadas Python
 
@@ -51,7 +51,7 @@ No diagrama, `finlabel.cli:main` é a fachada pública que delega à composiçã
 - `application/ports/projects.py` e `workspace.py` definem lookup e operações locais do workspace; `adapters/outbound/persistence/workspace.py` e os stores em `persistence/` implementam configuração, consultas e artefatos.
 - `application/ports/analysis.py` e `labeling.py` isolam planejador/preditor e persistência de resultados. Implementações locais de modelo ficam em `adapters/outbound/models/`.
 - `application/ports/training.py` descreve dados confiáveis, treino, avaliação, registry e ciclo; `adapters/outbound/training/` executa os efeitos. O domínio em `domain/training/` decide validações, métricas, gates e razões de promoção/rejeição.
-- Em `frontend/src/application/ports/FinLabelClient.ts`, a interface do navegador descreve as operações consumidas pelas páginas. `frontend/src/adapters/http/FinLabelHttpClient.ts` mapeia o contrato HTTP; `frontend/src/adapters/in-memory/FinLabelMemoryClient.ts` oferece resultados determinísticos em testes.
+- Em `frontend/src/application/ports/LazyLabelClient.ts`, a interface do navegador descreve as operações consumidas pelas páginas. `frontend/src/adapters/http/LazyLabelHttpClient.ts` mapeia o contrato HTTP; `frontend/src/adapters/in-memory/LazyLabelMemoryClient.ts` oferece resultados determinísticos em testes.
 
 ## Composição e extensões
 
@@ -73,7 +73,7 @@ Hoje o bootstrap seleciona CSV e SQLite a partir de `SourceSpec.kind`. Adicionar
 
 ### Alterar o cliente web
 
-As páginas e componentes em `frontend/src/pages/` e `frontend/src/components/` consomem `FinLabelClient` pelo provider. Uma nova operação começa na porta tipada, recebe implementação no adapter HTTP e no adapter em memória, e só então é usada pela apresentação. O backend Python permanece a fonte única para regras de negócio.
+As páginas e componentes em `frontend/src/pages/` e `frontend/src/components/` consomem `LazyLabelClient` pelo provider. Uma nova operação começa na porta tipada, recebe implementação no adapter HTTP e no adapter em memória, e só então é usada pela apresentação. O backend Python permanece a fonte única para regras de negócio.
 
 ## Compatibilidade e fachadas
 
