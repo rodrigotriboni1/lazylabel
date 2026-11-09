@@ -1,14 +1,14 @@
 {
   "root": "page",
   "elements": {
-    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg" }, "children": ["header", "controls", "error", "loading", "result", "no-sources"] },
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "controls", "error", "loading", "result", "no-sources"] },
     "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
     "title": { "type": "Heading", "props": { "text": "Monitoramento", "level": "h1" } },
     "lead": { "type": "Text", "props": { "text": "Compara a estrutura atual da fonte com o esquema confirmado. Os valores dos registros não são exibidos.", "variant": "muted" } },
 
     "controls": { "type": "Card", "props": { "title": "Fonte" }, "visible": { "$state": "/hasSources" }, "children": ["controls-row"] },
     "controls-row": { "type": "Stack", "props": { "direction": "horizontal", "gap": "md", "align": "end" }, "children": ["source-select", "refresh"] },
-    "source-select": { "type": "Select", "props": { "label": "Fonte", "name": "source", "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } }, "on": { "change": { "action": "refresh" } } },
+    "source-select": { "type": "Choice", "props": { "label": "Fonte", "placeholder": null, "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } }, "on": { "change": { "action": "refresh" } } },
     "refresh": { "type": "Button", "props": { "label": "Atualizar", "variant": "secondary", "disabled": { "$state": "/busy" } }, "on": { "press": { "action": "refresh" } } },
 
     "error": { "type": "Alert", "props": { "title": "Monitor indisponível", "message": { "$state": "/error" }, "type": "warning" }, "visible": { "$state": "/error" } },

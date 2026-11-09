@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLazyLabelClient } from '@/application/LazyLabelClientContext'
-import { SpecView, usePageStore, type Spec } from '@/ui/SpecView'
+import { SpecView } from '@/ui/SpecView'
+import { usePageStore, type Spec } from '@/ui/store'
 import spec from '@/specs/overview.json'
 
 export default function OverviewPage() {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useLazyLabelClient } from '@/application/LazyLabelClientContext'
-import { SpecView, usePageStore, type Spec } from '@/ui/SpecView'
+import { SpecView } from '@/ui/SpecView'
+import { usePageStore, type Spec } from '@/ui/store'
 import spec from '@/specs/monitor.json'
 
 export default function MonitorPage() {
@@ -33,7 +34,7 @@ export default function MonitorPage() {
 
   useEffect(() => {
     client.getSources().then(({ sources }) => {
-      store.update({ '/sourceOptions': sources.map((s) => s.name), '/hasSources': sources.length > 0, '/noSources': sources.length === 0, '/source': sources[0]?.name ?? '' })
+      store.update({ '/sourceOptions': sources.map((s) => ({ value: s.name, label: `${s.name} · ${s.kind}` })), '/hasSources': sources.length > 0, '/noSources': sources.length === 0, '/source': sources[0]?.name ?? '' })
       void refresh()
     }).catch((cause: Error) => store.update({ '/error': cause.message }))
   }, [client, store, refresh])
