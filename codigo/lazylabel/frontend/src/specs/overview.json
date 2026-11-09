@@ -1,7 +1,7 @@
 {
   "root": "page",
   "elements": {
-    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg" }, "children": ["header", "error", "body"] },
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "error", "body"] },
     "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
     "title": { "type": "Heading", "props": { "text": "Seu espaço de trabalho", "level": "h1" } },
     "lead": { "type": "Text", "props": { "text": "Explore fontes locais, calcule indicadores auditáveis e monitore mudanças estruturais.", "variant": "muted" } },
@@ -28,6 +28,6 @@
     "link-monitor": { "type": "Link", "props": { "label": "Abrir monitoramento", "href": "/monitor" } },
     "go-labeling": { "type": "Card", "props": { "title": "Rotulagem", "description": "Rótulos, quarentena e ciclo de treino." }, "children": ["link-labeling"] },
     "link-labeling": { "type": "Link", "props": { "label": "Abrir rotulagem", "href": "/labeling" } },
-    "privacy": { "type": "Alert", "props": { "title": "Dados permanecem locais", "message": "Esta tela mostra só nomes e tipos de colunas.", "type": "info" } }
+    "privacy": { "type": "Text", "props": { "text": "Esta tela mostra só nomes e tipos de colunas, nunca os registros.", "variant": "caption" } }
   }
 }

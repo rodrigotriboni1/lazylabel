@@ -25,10 +25,10 @@ function periodOrder(result: AnalysisResponse, field: string) {
 }
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return <div className="min-w-0 rounded-xl border border-[#e5ebe6] bg-white p-4">
-    <p className="text-xs font-medium text-[#718077]">{label}</p>
-    <p className="mt-2 truncate text-xl font-semibold tracking-tight text-[#1d2a22]" title={value}>{value}</p>
-    {detail && <p className="mt-1 truncate text-xs text-[#718077]">{detail}</p>}
+  return <div className="min-w-0 rounded-xl border border-border bg-card p-4">
+    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <p className="mt-2 truncate text-xl font-semibold tracking-tight text-foreground" title={value}>{value}</p>
+    {detail && <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>}
   </div>
 }
 

@@ -1,0 +1,29 @@
+{
+  "root": "page",
+  "elements": {
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "form", "result", "waiting"] },
+    "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
+    "title": { "type": "Heading", "props": { "text": "Análise de dados", "level": "h1" } },
+    "lead": { "type": "Text", "props": { "text": "Escolha a métrica e os campos. O servidor calcula a resposta; o gráfico só representa esse resultado.", "variant": "muted" } },
+
+    "form": { "type": "Card", "props": { "title": "Defina uma análise", "description": "Uma pergunta pode sugerir um plano; revise antes de calcular." }, "children": ["no-sources", "fields", "notice", "clarify", "error"] },
+    "no-sources": { "type": "Text", "props": { "text": "Nenhuma fonte configurada. Adicione uma pelo comando lazylabel source para começar.", "variant": "muted" }, "visible": { "$state": "/noSources" } },
+    "fields": { "type": "Stack", "props": { "direction": "vertical", "gap": "md", "align": "stretch" }, "visible": { "$state": "/hasSources" }, "children": ["source", "question", "plan", "plan-help", "actions"] },
+    "source": { "type": "Choice", "props": { "label": "Fonte", "placeholder": null, "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } }, "on": { "change": { "action": "clearResult" } } },
+    "question": { "type": "Textarea", "props": { "label": "Pergunta (opcional)", "name": "question", "rows": 3, "placeholder": "Ex.: Qual o total por categoria ao longo dos meses?", "value": { "$bindState": "/question" } } },
+    "plan": { "type": "Textarea", "props": { "label": "Plano completo JSON", "name": "plan", "rows": 12, "placeholder": null, "value": { "$bindState": "/planText" } } },
+    "plan-help": { "type": "Text", "props": { "text": "O plano é enviado como está. Edite dimensões, filtros, granularidade e escopo do denominador; a API valida antes de calcular.", "variant": "caption" } },
+    "actions": { "type": "Stack", "props": { "direction": "horizontal", "gap": "sm" }, "children": ["suggest", "calculate"] },
+    "suggest": { "type": "Button", "props": { "label": "Sugerir plano", "variant": "secondary",
+      "disabled": { "$cond": { "$state": "/busy" }, "$then": true, "$else": { "$cond": { "$state": "/question", "eq": "" }, "$then": true, "$else": false } } },
+      "on": { "press": { "action": "suggest" } } },
+    "calculate": { "type": "Button", "props": { "label": "Calcular análise", "variant": "primary", "disabled": { "$state": "/busy" } }, "on": { "press": { "action": "calculate" } } },
+
+    "notice": { "type": "Status", "props": { "text": { "$state": "/notice" } }, "visible": { "$state": "/notice" } },
+    "clarify": { "type": "Alert", "props": { "title": "É preciso esclarecer a pergunta", "message": { "$state": "/clarifications" }, "type": "warning" }, "visible": { "$state": "/clarifications" } },
+    "error": { "type": "Alert", "props": { "title": "Não foi possível calcular", "message": { "$state": "/error" }, "type": "error" }, "visible": { "$state": "/error" } },
+
+    "result": { "type": "AnalysisResult", "props": { "result": { "$state": "/result" } }, "visible": { "$state": "/result" } },
+    "waiting": { "type": "Text", "props": { "text": "Aguardando uma análise. Nenhum indicador foi inferido.", "variant": "muted" }, "visible": { "$state": "/waiting" } }
+  }
+}
