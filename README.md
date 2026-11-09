@@ -8,13 +8,13 @@ Biblioteca para analisar e rotular dados financeiros com modelos leves, com linh
 
 1. **Onde estou e o que fazer agora:** [tcc/proximos-passos.md](tcc/proximos-passos.md)
 2. **O que levar ao orientador:** [tcc/perguntas-orientador.md](tcc/perguntas-orientador.md)
-3. **Como usar o LazyLabel:** [codigo/finlabel/README.md](codigo/finlabel/README.md) e [guia rápido](codigo/finlabel/docs/quickstart.md)
+3. **Como usar o LazyLabel:** [codigo/lazylabel/README.md](codigo/lazylabel/README.md) e [guia rápido](codigo/lazylabel/docs/quickstart.md)
 
 ## Onde está cada coisa
 
 | Pasta | O que tem |
 |---|---|
-| `codigo/finlabel/` | A biblioteca: backend Python, painel React, testes |
+| `codigo/lazylabel/` | A biblioteca: backend Python, painel React, testes |
 | `codigo/experimento/` | Script do baseline (regressão logística) |
 | `tcc/` | Tudo do TCC: decisões, produto, protocolo, glossário, perguntas |
 | `tcc/experimentos/` | Experimentos executados, com dados e resultados |
@@ -26,9 +26,9 @@ Biblioteca para analisar e rotular dados financeiros com modelos leves, com linh
 
 ```bash
 bash factory/checks.sh                  # roda todos os testes; use antes de cada commit
-cd codigo/finlabel
-.venv/bin/finlabel quickstart ./demo --model-id <modelo>   # projeto de exemplo
-.venv/bin/finlabel serve                # abre o painel
+cd codigo/lazylabel
+.venv/bin/lazylabel quickstart ./demo --model-id <modelo>   # projeto de exemplo
+.venv/bin/lazylabel serve                # abre o painel
 ```
 
 - **Mudança no código:** abra uma issue no GitHub com o label `factory` e rode `/factory run` (ver `AGENTS.md`).

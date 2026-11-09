@@ -6,7 +6,7 @@
 # watch modes, no prompts, nothing that rewrites files.
 set -euo pipefail
 
-cd codigo/finlabel
+cd codigo/lazylabel
 
 # Python >=3.10 is required by pyproject; the system python3 is older, so uv fetches one.
 # The torch-based extras (models, train) are skipped: tests must not need them.
@@ -18,5 +18,5 @@ uv pip install --quiet --python .venv/bin/python -e '.[web,test]' pytest
 npm --prefix frontend ci --prefer-offline --no-audit --no-fund --silent
 npm --prefix frontend run lint
 npm --prefix frontend test -- --run
-# `vite build` is left out: it rewrites the tracked assets in src/finlabel/web/static/app.
+# `vite build` is left out: it rewrites the tracked assets in src/lazylabel/web/static/app.
 npm --prefix frontend exec -- tsc -b frontend

@@ -1,4 +1,4 @@
-"""Baseline de regressão logística para o experimento real do FinLabel.
+"""Baseline de regressão logística para o experimento real do LazyLabel.
 
 Segue tcc/protocolo-experimental.md: divisão estratificada 80/20 com
 semente 42 e índices salvos, validação cruzada de 5 partições só no

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Execução {{ run_id }} — LazyLabel</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="page-header"><p class="eyebrow">EXECUÇÃO LOCAL</p><h1>Resultado da análise</h1><p><code>{{ run_id }}</code></p></header>
+    <section class="panel">
+      <h2>Plano executado</h2>
+      <dl class="metadata">
+        <dt>Métrica</dt><dd>{{ result.plan.metric.operation }}{% if result.plan.metric.column %} · {{ result.plan.metric.column }}{% endif %}</dd>
+        <dt>Campos usados</dt><dd>{{ result.selected_fields | join(", ") }}</dd>
+        <dt>Linhas consideradas</dt><dd>{{ result.valid_row_count }}</dd>
+      </dl>
+      {% if result.highlights %}<section><h2>Observações fundamentadas</h2><ul>{% for item in result.highlights %}<li>{{ item.text }}</li>{% endfor %}</ul></section>{% endif %}
+      <iframe title="Gráfico calculado" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/analysis/{{ run_id }}/chart"></iframe>
+      <h2>Tabela agregada</h2>
+      <div class="table-scroll"><table>
+        {% if result.rows %}<thead><tr>{% for key in result.rows[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in result.rows[:max_page_rows] %}<tr>{% for value in row.values() %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>{% endif %}
+      </table></div>
+      {% if result.rows | length > max_page_rows %}<p class="helper">Mostrando {{ max_page_rows }} de {{ result.rows | length }} grupos. Abra o resultado JSON local para consultar todos.</p>{% endif %}
+      <a href="/">Voltar ao painel</a>
+    </section>
+  </main>
+</body>
+</html>

@@ -55,7 +55,7 @@ ESCALATE if any of them fails, or if the change:
 In this project a human must also always see changes to: `tcc/decisoes.md`,
 `tcc/glossario.md` or the TCC text and deliverables (`texto/`, `tcc/entregas/`,
 `tcc/`); anything that sends data over the network, reads files outside
-the path the user gave, or prints dataset rows (FinLabel is local-first and
+the path the user gave, or prints dataset rows (LazyLabel is local-first and
 privacy-first); and claims about model accuracy or evaluation results.
 
 ## Write decision.md

@@ -22,7 +22,7 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 ## 2. Fontes só leitura
 
 - **Por quê:** ler os dados sem nenhum risco de alterá-los.
-- **Como:** `CsvSource` e `SqliteSource` abrem a origem em modo leitura; tudo que o LazyLabel produz vai para `.finlabel/`. Tipos de data e número são mapeados à mão (`source set-type`).
+- **Como:** `CsvSource` e `SqliteSource` abrem a origem em modo leitura; tudo que o LazyLabel produz vai para `.lazylabel/`. Tipos de data e número são mapeados à mão (`source set-type`).
 - **Custo:** não escreve de volta; só duas fontes hoje.
 
 ## 3. Camadas
@@ -40,7 +40,7 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 ## 5. Treino com gates
 
 - **Por quê:** só trocar de modelo com evidência, e poder voltar atrás.
-- **Como:** `finlabel run` rotula e depois treina com rótulos confiáveis em partições congeladas (treino, calibração, holdout); candidato e modelo atual são comparados no mesmo holdout; tudo fica num registro com hash; não há botão manual de promoção.
+- **Como:** `lazylabel run` rotula e depois treina com rótulos confiáveis em partições congeladas (treino, calibração, holdout); candidato e modelo atual são comparados no mesmo holdout; tudo fica num registro com hash; não há botão manual de promoção.
 - **Custo:** exige configurar autorização, políticas e rótulos antes de qualquer treino.
 
 ## 6. Análise exata

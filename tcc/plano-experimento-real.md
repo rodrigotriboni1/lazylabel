@@ -2,13 +2,13 @@
 
 - **Data:** 2026-11-01
 - **Estado:** rascunho, não executado. Depende da aprovação do orientador para o escopo (decisão 7) e para a base e o baseline (perguntas 1–4 de [proposta-biblioteca.md](proposta-biblioteca.md)).
-- **Objetivo:** produzir a primeira evidência com dados reais: o ciclo `finlabel run` com rótulos confiáveis reais, comparado a um baseline simples no mesmo recorte. Hoje só existe experimento sintético (24 exemplos) e o ciclo de treino só foi exercitado com stub.
+- **Objetivo:** produzir a primeira evidência com dados reais: o ciclo `lazylabel run` com rótulos confiáveis reais, comparado a um baseline simples no mesmo recorte. Hoje só existe experimento sintético (24 exemplos) e o ciclo de treino só foi exercitado com stub.
 - **Base:** South German Credit corrigida, conforme [protocolo-experimental.md](protocolo-experimental.md): 1000 registros, 20 variáveis, alvo `kredit` (0 = ruim, 1 = bom), amostra estratificada de 300 ruins e 700 bons.
 
 ## O que já está pronto
 
 - Baseline: `codigo/experimento/baseline_logreg.py`. Faz a divisão 80/20 com semente 42 e salva os índices, roda validação cruzada de 5 partições só no desenvolvimento e só abre o teste final com `--final`. Foi testado apenas com dados sintéticos gerados para este plano; não foi executado na base real.
-- Ciclo do LazyLabel: `finlabel project init`, `source add-csv`, `task add`, `supervision add`, `run`, `run-status`, `model-status` (ver `codigo/finlabel/README.md` e `docs/verified-training-cycle.md`).
+- Ciclo do LazyLabel: `lazylabel project init`, `source add-csv`, `task add`, `supervision add`, `run`, `run-status`, `model-status` (ver `codigo/lazylabel/README.md` e `docs/verified-training-cycle.md`).
 
 ## O que falta e só você pode fazer
 
@@ -37,18 +37,18 @@ uv run --with scikit-learn --with pandas python codigo/experimento/baseline_logr
   --csv dados/brutos/<arquivo>.csv --target kredit --numeric <colunas-numericas> --out resultados/baseline
 
 # 2. projeto LazyLabel só com dev.csv
-finlabel project init ./projeto-sgc
-finlabel source add-csv dev ./dados/processados/dev.csv --project ./projeto-sgc
-finlabel task add ./tarefa-risco.json --project ./projeto-sgc
-finlabel supervision add dev --task risco --label-column kredit \
+lazylabel project init ./projeto-sgc
+lazylabel source add-csv dev ./dados/processados/dev.csv --project ./projeto-sgc
+lazylabel task add ./tarefa-risco.json --project ./projeto-sgc
+lazylabel supervision add dev --task risco --label-column kredit \
   --provenance <origem-registrada> --trust-kind provided_ground_truth \
   --label-map '{"0":"bad","1":"good"}' --project ./projeto-sgc
-finlabel run --task risco --source dev --project ./projeto-sgc
-finlabel run-status RUN_ID --project ./projeto-sgc
-finlabel model-status risco --project ./projeto-sgc
+lazylabel run --task risco --source dev --project ./projeto-sgc
+lazylabel run-status RUN_ID --project ./projeto-sgc
+lazylabel model-status risco --project ./projeto-sgc
 ```
 
-`finlabel quickstart` gera um projeto de exemplo com arquivos iniciais de tarefa e política, que servem de modelo para `tarefa-risco.json` e para a política.
+`lazylabel quickstart` gera um projeto de exemplo com arquivos iniciais de tarefa e política, que servem de modelo para `tarefa-risco.json` e para a política.
 
 ## Riscos
 

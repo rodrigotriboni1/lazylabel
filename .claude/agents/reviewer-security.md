@@ -46,7 +46,7 @@ checkout; your one file goes there.
 - **Secrets**: keys, credentials or `.env` values in commits.
 - **Dependencies**: new packages, and whether they are needed and maintained.
 
-Project hot spots: FinLabel handles financial datasets locally. Flag any network
+Project hot spots: LazyLabel handles financial datasets locally. Flag any network
 call, any file path taken from user input without validation, and any output
 (stdout, logs, errors) that prints dataset rows or labels.
 
