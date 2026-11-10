@@ -11,7 +11,7 @@ EXP="$PWD/tcc/experimentos/sintetico-qwen-0.5b"
 REPO="$PWD/codigo/lazylabel/.worktrees/autonomous-mvp"
 HF_HOME="$EXP/model-cache" HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
 PYTHONPATH="$REPO/src" "$EXP/.venv/bin/python" \
-  "$REPO/scripts/evaluate_synthetic_backend.py" \
+  "$EXP/scripts/evaluate_synthetic_backend.py" \
   --experiment "$EXP" \
   --output "$EXP/results/live-inference-2026-10-26-integration-final.json" \
   --device mps
