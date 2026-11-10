@@ -49,7 +49,7 @@ class LocalEvaluatorTests(unittest.TestCase):
         self.assertEqual(metrics["accuracy"], 0.5)
         self.assertEqual(metrics["coverage"], 0.5)
         self.assertEqual(labels["high"]["support"], 1)
-        self.assertEqual(confusion["high"]["__lazylabel_abstain__"], 1)
+        self.assertEqual(confusion["high"]["__finlabel_abstain__"], 1)
 
     def test_recomputed_holdout_metrics_count_abstention_in_per_label_recall(self):
         rows = [
@@ -216,7 +216,7 @@ class LocalEvaluatorTests(unittest.TestCase):
         registry.transition(candidate["candidate_id"], "training")
         registry.transition(candidate["candidate_id"], "evaluated")
         result = {"schema_version": 1, "evaluation_id": "verified-evaluation",
-            "evaluator": "lazylabel-transformers-peft-v1", "score_method": RAW_SCORE_METHOD,
+            "evaluator": "finlabel-local-transformers-peft-v1", "score_method": RAW_SCORE_METHOD,
             "task_id": task.task_id, "task_spec_sha256": task_spec_sha256(task),
             "policy_id": self.policy.policy_id, "policy_sha256": gates.policy_sha256,
             "labeling_policy_sha256": labeling_policy_sha256(self.policy),

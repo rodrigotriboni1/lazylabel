@@ -22,7 +22,11 @@ describe('AskPage', () => {
   it('computes exact rows first, then renders the screen the model laid out', async () => {
     show({ text: screenText })
     fireEvent.change(await screen.findByRole('textbox', { name: 'Pergunta' }), { target: { value: 'Quantos por categoria?' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar tela' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Propor plano' }))
+    // The proposed plan must be shown for review before anything is computed.
+    expect(await screen.findByRole('textbox', { name: 'Plano completo JSON' })).toHaveValue(JSON.stringify(plan, null, 2))
+    expect(screen.queryByRole('region', { name: 'Tela gerada pela IA' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Calcular e gerar tela' }))
     const generated = await screen.findByRole('region', { name: 'Tela gerada pela IA' })
     expect(generated).toHaveTextContent('Contagem por categoria')
     expect(generated).toHaveTextContent('7')
@@ -32,7 +36,8 @@ describe('AskPage', () => {
   it('refuses a screen that uses components outside the display-only catalog', async () => {
     show({ text: '{"op":"add","path":"/root","value":"x"}\n{"op":"add","path":"/elements/x","value":{"type":"Button","props":{"label":"Apagar"},"children":[]}}' })
     fireEvent.change(await screen.findByRole('textbox', { name: 'Pergunta' }), { target: { value: 'Algo' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar tela' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Propor plano' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Calcular e gerar tela' }))
     expect(await screen.findByText(/tela inválida/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Apagar' })).not.toBeInTheDocument()
   })

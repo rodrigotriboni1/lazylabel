@@ -31,7 +31,7 @@ def _derive_holdout_metrics(rows, labels, threshold):
         raise ValueError("holdout_rows_missing")
     allowed_reasons = {None, "below_threshold", "rule_conflict", "invalid_input", "unknown_label",
                        "invalid_output", "backend_error", "calibration_error", "stale_source"}
-    abstain = "__lazylabel_abstain__"
+    abstain = "__finlabel_abstain__"
     while abstain in labels:
         abstain += "_"
     confusion = {label: {guess: 0 for guess in (*labels, abstain)} for label in labels}
@@ -115,7 +115,7 @@ def _derive_holdout_metrics(rows, labels, threshold):
 
 
 def _metrics(scored, calibrator, task, policy, model_ref):
-    abstain = "__lazylabel_abstain__"
+    abstain = "__finlabel_abstain__"
     while abstain in task.labels:
         abstain += "_"
     confusion = {label: {other: 0 for other in (*task.labels, abstain)} for label in task.labels}

@@ -63,7 +63,7 @@ def _write_cycle(path, payload):
 
 def _manifest_for(batch, task, workspace):
     artifact_root = Path(workspace).resolve()
-    if artifact_root.name != ".lazylabel":
+    if artifact_root.name not in (".lazylabel", ".finlabel"):
         artifact_root = artifact_root / ".lazylabel"
     destination = artifact_root / "trusted-datasets" / task.task_id / batch.snapshot_sha256
     manifest_path = destination / "manifest.json"

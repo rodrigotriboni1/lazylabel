@@ -47,7 +47,7 @@ def eligible():
     candidate = {"task_id": "risk", "candidate_id": "c1", "model_ref": "candidate-ref",
                  "status": "evaluated", "training_gate_sha256": "a" * 64,
                  "incumbent_model_ref": "incumbent-ref", "expected_active_model_ref": "incumbent-ref"}
-    result = {"evaluator": "lazylabel-transformers-peft-v1", "score_method": "label_json_mean_log_likelihood_v2",
+    result = {"evaluator": "finlabel-local-transformers-peft-v1", "score_method": "label_json_mean_log_likelihood_v2",
               "task_id": "risk", "candidate_id": "c1", "candidate_model_ref": "candidate-ref",
               "incumbent_model_ref": "incumbent-ref", "policy_sha256": gates.policy_sha256,
               "training_gate_sha256": "a" * 64, "same_frozen_holdout": True,

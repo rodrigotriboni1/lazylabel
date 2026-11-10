@@ -8,3 +8,14 @@ export function usePageStore(initial: Record<string, unknown>): StateStore {
 }
 
 export type { Spec }
+
+/** Shared by pages with a source picker: fills /sourceOptions, /source, /hasSources and /noSources. */
+export function loadSourceOptions(client: { getSources(): Promise<{ sources: { name: string; kind: string }[] }> }, store: StateStore) {
+  return client.getSources().then(({ sources }) => {
+    store.update({
+      '/sourceOptions': sources.map((s) => ({ value: s.name, label: `${s.name} · ${s.kind}` })),
+      '/source': sources[0]?.name ?? '', '/hasSources': sources.length > 0, '/noSources': sources.length === 0,
+    })
+    return sources
+  })
+}

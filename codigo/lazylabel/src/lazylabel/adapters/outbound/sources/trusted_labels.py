@@ -53,7 +53,7 @@ def load_trusted_labels(project, task) -> TrustedLabelBatch:
 
     source = open_source(project, spec.source_name)
     workspace = Path(project.workspace_dir).expanduser().resolve()
-    artifact_root = workspace if workspace.name == ".lazylabel" else workspace / ".lazylabel"
+    artifact_root = workspace if workspace.name in (".lazylabel", ".finlabel") else workspace / ".lazylabel"
     try:
         source.path.resolve().relative_to(artifact_root)
     except ValueError:
@@ -122,7 +122,7 @@ def load_trusted_labels(project, task) -> TrustedLabelBatch:
     for ordinal, (record_id, features, label, input_digest) in enumerate(pending_records):
         split_material = "{}\0{}\0{}\0{}".format(snapshot_sha256, ordinal, input_digest, spec.source_name)
         split_key = hashlib.sha256(split_material.encode("utf-8")).hexdigest()
-        record_ref = hashlib.sha256(("lazylabel:trusted-record:v1\0{}\0{}".format(
+        record_ref = hashlib.sha256(("finlabel:trusted-record:v1\0{}\0{}".format(
             snapshot_sha256, split_key)).encode("utf-8")).hexdigest()
         records.append(TrustedLabelRecord(record_ref,
                                           features, label, input_digest, split_key))

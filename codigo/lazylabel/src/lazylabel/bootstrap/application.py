@@ -42,8 +42,8 @@ def build_application(project_reference=".", *, backend_factory=None, workspace=
             backend = backend_factory(config)
         else:
             selected_model = model_id or (config.model_roles.get("analytics") if use_configured_model else None)
-            if selected_model and selected_model.startswith("gateway:"):
-                from lazylabel.adapters.outbound.models.gateway import GatewayTextGenerationBackend
+            from lazylabel.adapters.outbound.models.gateway import GatewayTextGenerationBackend, is_gateway_model
+            if is_gateway_model(selected_model):
                 backend = GatewayTextGenerationBackend(selected_model)
             elif selected_model:
                 from lazylabel.adapters.outbound.models.text_generation import TransformersTextGenerationBackend

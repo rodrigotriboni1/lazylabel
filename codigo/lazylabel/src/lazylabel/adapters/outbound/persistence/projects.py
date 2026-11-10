@@ -10,6 +10,10 @@ from lazylabel.adapters.outbound.sources.base import ProjectConfig, SourceSpec
 
 
 PathLike = Union[str, Path]
+WORKSPACE_DIR = ".lazylabel"
+# Projects created before the LazyLabel rename keep working from their original folder.
+LEGACY_WORKSPACE_DIR = ".finlabel"
+WORKSPACE_DIRS = (WORKSPACE_DIR, LEGACY_WORKSPACE_DIR)
 _ARTIFACT_DIRS = ("schemas", "analyses", "runs", "label-runs", "tasks", "models", "training", "supervision")
 
 
@@ -17,7 +21,10 @@ def _config_path(path: PathLike) -> Path:
     candidate = Path(path).expanduser()
     if candidate.name == "project.json":
         return candidate.resolve()
-    return (candidate / ".lazylabel" / "project.json").resolve()
+    legacy = candidate / LEGACY_WORKSPACE_DIR / "project.json"
+    if legacy.is_file() and not (candidate / WORKSPACE_DIR).exists():
+        return legacy.resolve()
+    return (candidate / WORKSPACE_DIR / "project.json").resolve()
 
 
 def init_project(path: PathLike) -> Path:

@@ -1,19 +1,24 @@
 {
   "root": "page",
   "elements": {
-    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "form"] },
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "form", "review"] },
     "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
     "title": { "type": "Heading", "props": { "text": "Perguntar", "level": "h1" } },
-    "lead": { "type": "Text", "props": { "text": "Faça uma pergunta sobre uma fonte. O LazyLabel calcula os números de forma exata e a IA monta a tela com eles.", "variant": "muted" } },
-    "form": { "type": "Card", "props": { "title": "Sua pergunta" }, "children": ["no-sources", "fields", "progress", "error"] },
+    "lead": { "type": "Text", "props": { "text": "Faça uma pergunta sobre uma fonte. Você revisa o plano, o LazyLabel calcula os números de forma exata e a IA monta a tela com eles.", "variant": "muted" } },
+
+    "form": { "type": "Card", "props": { "title": "1. Sua pergunta" }, "children": ["no-sources", "fields", "progress", "clarify", "error"] },
     "no-sources": { "type": "Text", "props": { "text": "Nenhuma fonte configurada. Adicione uma pelo comando lazylabel source para começar.", "variant": "muted" }, "visible": { "$state": "/noSources" } },
-    "fields": { "type": "Stack", "props": { "direction": "vertical", "gap": "md", "align": "stretch" }, "visible": { "$state": "/hasSources" }, "children": ["source", "question", "ask"] },
-    "source": { "type": "Choice", "props": { "label": "Fonte", "placeholder": null, "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } } },
+    "fields": { "type": "Stack", "props": { "direction": "vertical", "gap": "md", "align": "stretch" }, "visible": { "$state": "/hasSources" }, "children": ["source", "question", "plan-button"] },
+    "source": { "type": "Choice", "props": { "label": "Fonte", "placeholder": null, "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } }, "on": { "change": { "action": "reset" } } },
     "question": { "type": "Textarea", "props": { "label": "Pergunta", "name": "ask-question", "rows": 3, "placeholder": "Ex.: Como o saldo se divide por categoria ao longo dos meses?", "value": { "$bindState": "/question" } } },
-    "ask": { "type": "Button", "props": { "label": "Gerar tela",  "variant": "primary",
-      "disabled": { "$cond": { "$state": "/busy" }, "$then": true, "$else": { "$cond": { "$state": "/question", "eq": "" }, "$then": true, "$else": false } } },
-      "on": { "press": { "action": "ask" } } },
+    "plan-button": { "type": "Button", "props": { "label": "Propor plano", "variant": "secondary", "disabled": { "$state": "/busy" } }, "on": { "press": { "action": "propose" } } },
     "progress": { "type": "Status", "props": { "text": { "$state": "/progress" } }, "visible": { "$state": "/progress" } },
-    "error": { "type": "Alert", "props": { "title": "Não foi possível gerar a tela", "message": { "$state": "/error" }, "type": "error" }, "visible": { "$state": "/error" } }
+    "clarify": { "type": "Alert", "props": { "title": "É preciso esclarecer a pergunta", "message": { "$state": "/clarifications" }, "type": "warning" }, "visible": { "$state": "/clarifications" } },
+    "error": { "type": "Alert", "props": { "title": "Não foi possível gerar a tela", "message": { "$state": "/error" }, "type": "error" }, "visible": { "$state": "/error" } },
+
+    "review": { "type": "Card", "props": { "title": "2. Revise o plano", "description": "É este plano que será calculado. Edite se algo estiver errado." }, "visible": { "$state": "/planReady" }, "children": ["review-fields"] },
+    "review-fields": { "type": "Stack", "props": { "direction": "vertical", "gap": "md", "align": "stretch" }, "children": ["plan", "confirm"] },
+    "plan": { "type": "Textarea", "props": { "label": "Plano completo JSON", "name": "ask-plan", "rows": 12, "placeholder": null, "value": { "$bindState": "/planText" } } },
+    "confirm": { "type": "Button", "props": { "label": "Calcular e gerar tela", "variant": "primary", "disabled": { "$state": "/busy" } }, "on": { "press": { "action": "confirm" } } }
   }
 }

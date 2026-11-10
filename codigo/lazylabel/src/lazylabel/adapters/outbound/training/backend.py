@@ -62,11 +62,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+TRAINING_METADATA_NAMES = ("lazylabel-training.json", "finlabel-training.json")
+
+
+def read_training_metadata(directory: Path) -> dict:
+    """Adapter metadata; adapters trained before the rename carry the legacy file name."""
+    for name in TRAINING_METADATA_NAMES:
+        path = Path(directory) / name
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    raise FileNotFoundError(Path(directory) / TRAINING_METADATA_NAMES[0])
+
+
 def _artifact_tree_sha256(root: Path) -> str:
     """Hash adapter artifacts by relative path and content, excluding only root metadata."""
     entries = []
     for path in sorted((item for item in root.rglob("*") if item.is_file()
-                        and item.relative_to(root).as_posix() != "lazylabel-training.json"),
+                        and item.relative_to(root).as_posix() not in TRAINING_METADATA_NAMES),
                        key=lambda item: item.relative_to(root).as_posix()):
         entries.append({"path": path.relative_to(root).as_posix(), "sha256": _sha256(path)})
     encoded = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")

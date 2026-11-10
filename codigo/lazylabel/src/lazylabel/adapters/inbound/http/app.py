@@ -1,5 +1,6 @@
 """Local FastAPI panel with loopback, origin, CSRF, and size protections."""
 
+import asyncio
 import hmac
 import ipaddress
 import json
@@ -129,6 +130,8 @@ def create_app(
 
     package_dir = Path(assets_directory)
     react_index = package_dir / "static" / "app" / "index.html"
+    # Owned by the server so a page script cannot swap the display-only rules; kept in sync by a frontend test.
+    ui_system_prompt_path = package_dir / "ai_ui_system_prompt.txt"
     template_environment = Environment(
         loader=FileSystemLoader(str(package_dir / "templates")),
         autoescape=select_autoescape(("html", "htm", "xml")),
@@ -226,12 +229,14 @@ def create_app(
         payload, error = await _read_json(request)
         if error:
             return JSONResponse({"error": error}, status_code=400)
-        if (set(payload) != {"system", "prompt"} or not all(isinstance(payload[k], str) and payload[k].strip() for k in payload)):
-            return JSONResponse({"error": "system and prompt are required strings; extra fields are not accepted."}, status_code=400)
-        if ui_generator is None:
+        if set(payload) != {"prompt"} or not isinstance(payload["prompt"], str) or not payload["prompt"].strip():
+            return JSONResponse({"error": "prompt is required; extra fields are not accepted."}, status_code=400)
+        if ui_generator is None or not ui_system_prompt_path.is_file():
             return JSONResponse({"error": "UI generation is not configured."}, status_code=503)
+        system = ui_system_prompt_path.read_text(encoding="utf-8")
         try:
-            text = ui_generator().generate(payload["prompt"], max_new_tokens=6000, system=payload["system"])
+            # The gateway call blocks for up to a minute; keep the event loop serving other requests.
+            text = await asyncio.to_thread(ui_generator().generate, payload["prompt"], max_new_tokens=6000, system=system)
         except (OSError, RuntimeError, ValueError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=502)
         return JSONResponse({"text": text})
