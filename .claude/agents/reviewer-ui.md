@@ -53,7 +53,7 @@ Don't sign in or submit forms. When you're done, run
 
 If the branch has no visual change, write PASS and say so.
 
-Project note: the UI (if any) lives under `codigo/finlabel/`; match whatever
+Project note: the UI (if any) lives under `codigo/lazylabel/`; match whatever
 theme, tokens and shared components exist there and the dashboard-redesign
 decisions in `tcc/decisoes.md`.
 

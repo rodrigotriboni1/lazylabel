@@ -1,7 +1,7 @@
 # PRD: LazyLabel Local
 
 - **Estado:** Rascunho derivado do código e dos documentos existentes (2026-10-31). Não é uma especificação aprovada pelo orientador.
-- **Baseline do código:** branch `codex/finlabel-autonomous-mvp`, commit `257e90d` (`main` do repositório `codigo/finlabel` está desatualizada; ver `proximos-passos.md`).
+- **Baseline do código:** branch `codex/lazylabel-autonomous-mvp`, commit `257e90d` (`main` do repositório `codigo/lazylabel` está desatualizada; ver `proximos-passos.md`).
 - **Decisões:** `decisoes.md`. **Termos:** `glossario.md`.
 
 ## 1. Problema
@@ -88,4 +88,4 @@ Marcado conforme os documentos do commit `257e90d`; **não reexecutei a verifica
 
 ## 10. Entregáveis relacionados
 
-Evidências: `codigo/finlabel/docs/` e `tcc/experimentos/`.
+Evidências: `codigo/lazylabel/docs/` e `tcc/experimentos/`.

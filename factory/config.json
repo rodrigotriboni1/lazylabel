@@ -1,7 +1,7 @@
 {
   "concurrency": 3,
   "max_rounds": 3,
-  "base_branch": "docs/finlabel-mvp-artifacts",
+  "base_branch": "docs/lazylabel-mvp-artifacts",
   "merge_method": "merge",
   "labels": {
     "queue": "factory",
@@ -34,7 +34,7 @@
   "protected_paths": [
     "factory/checks.sh",
     "factory/config.json",
-    "codigo/finlabel/tests/*"
+    "codigo/lazylabel/tests/*"
   ],
   "ports": {
     "base": 5100,

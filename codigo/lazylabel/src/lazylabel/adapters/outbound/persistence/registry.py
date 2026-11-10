@@ -1,0 +1,726 @@
+"""Append-only local candidate registry and fail-closed automatic promotion."""
+
+import hashlib
+import json
+import os
+import re
+import tempfile
+import fcntl
+from contextlib import contextmanager
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Mapping
+
+from lazylabel.domain.training.promotion import (
+    PromotionPolicy as DomainPromotionPolicy, PromotionEvent, promotion_reasons, rollback_reasons,
+)
+from lazylabel.domain.training.metrics import _digest, _finite, _metrics_equal, _derive_holdout_metrics
+from lazylabel.domain.training.evaluation import labeling_policy_sha256
+from lazylabel.domain.training.task_spec import task_spec_sha256
+
+
+_SHA = re.compile(r"^[0-9a-f]{64}$")
+_EVALUATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+class PromotionPolicy(DomainPromotionPolicy):
+    """Compatibility policy with local configuration loading."""
+
+    @classmethod
+    def load(cls, path, *, task_id):
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls.from_dict(raw, task_id=task_id)
+
+
+class ModelRegistry:
+    """Small local state store. Events append; active pointer is atomically replaced."""
+    def __init__(self, workspace_dir):
+        self.root = Path(workspace_dir).expanduser().resolve() / "models"
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.events_path = self.root / "registry-events.jsonl"
+        self.active_path = self.root / "active-models.json"
+        self.candidates_path = self.root / "candidates.json"
+        self.lock_path = self.root / "registry.lock"
+        self._recover()
+
+    @contextmanager
+    def _locked(self):
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.lock_path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _read(self, path, default):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return default
+
+    def active(self, task_id):
+        return self._read(self.active_path, {}).get(task_id)
+
+    def history(self, task_id=None):
+        """Return validated lifecycle events, optionally scoped to one task."""
+        events = self._read_events()
+        if task_id is None:
+            return events
+        return [event for event in events if event.get("task_id") == task_id]
+
+    def candidate(self, candidate_id):
+        value = self._read(self.candidates_path, {}).get(candidate_id)
+        if value is None:
+            raise KeyError("Unknown candidate ID.")
+        return value
+
+    def transition(self, candidate_id, state, **fields):
+        with self._locked():
+            self._recover_unlocked()
+            return self._transition_unlocked(candidate_id, state, **fields)
+
+    def _transition_unlocked(self, candidate_id, state, **fields):
+        candidates = self._read(self.candidates_path, {})
+        value = candidates.get(candidate_id)
+        if value is None:
+            raise KeyError("Unknown candidate ID.")
+        allowed = {"queued": {"training", "rejected"}, "training": {"evaluated", "rejected"},
+                   "evaluated": {"promoted", "rejected"}, "promoted": set(), "rejected": set()}
+        if state not in allowed.get(value["status"], set()):
+            raise ValueError("Invalid candidate state transition: {} -> {}.".format(value["status"], state))
+        value.update(fields); value["status"] = state
+        self._write_atomic(self.candidates_path, candidates)
+
+    def create_candidate(self, candidate_id, payload):
+        with self._locked():
+            self._recover_unlocked()
+            candidates = self._read(self.candidates_path, {})
+            if candidate_id in candidates:
+                return candidates[candidate_id]
+            value = dict(payload); value.update({"candidate_id": candidate_id, "status": "queued"})
+            candidates[candidate_id] = value
+            self._write_atomic(self.candidates_path, candidates)
+            return value
+
+    def _write_atomic(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+                handle.flush(); os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            self._fsync_dir(path.parent)
+        finally:
+            try: os.unlink(temporary)
+            except FileNotFoundError: pass
+
+    def _append_event(self, event):
+        self._validate_event(event)
+        existing = self._read_events()
+        if any(row.get("event_id") == event.get("event_id") for row in existing):
+            return
+        with self.events_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+            handle.flush(); os.fsync(handle.fileno())
+        self._fsync_dir(self.events_path.parent)
+
+    @staticmethod
+    def _fsync_dir(path):
+        descriptor = os.open(path, os.O_RDONLY)
+        try: os.fsync(descriptor)
+        finally: os.close(descriptor)
+
+    @staticmethod
+    def _validate_event(event):
+        if not isinstance(event, dict):
+            raise ValueError("Registry journal entry must be an object.")
+        action = event.get("action")
+        promote_fields = {"event_id", "candidate_id", "evaluation_id", "task_id", "action", "reason_codes",
+                          "previous_model_ref", "active_model_ref", "policy_sha256", "evaluation_sha256", "created_at"}
+        rollback_fields = {"event_id", "task_id", "action", "reason_codes", "active_model_ref", "rollback_from",
+                           "health_sha256", "evaluation_id", "candidate_id", "policy_sha256", "created_at"}
+        expected = rollback_fields if action == "rollback" else promote_fields
+        if action not in {"promote", "reject", "rollback"} or set(event) != expected:
+            raise ValueError("Registry journal entry has an invalid schema.")
+        for key in ("event_id", "task_id", "created_at", "action"):
+            if not isinstance(event.get(key), str) or not event[key]:
+                raise ValueError("Registry journal entry has a missing identity field.")
+        if (not isinstance(event["reason_codes"], (list, tuple))
+                or any(not isinstance(reason, str) or not reason for reason in event["reason_codes"])):
+            raise ValueError("Registry journal reason codes are malformed.")
+        hash_fields = ["health_sha256"] if action == "rollback" else ["policy_sha256", "evaluation_sha256"]
+        if any(not isinstance(event.get(key), str) or not _SHA.fullmatch(event[key]) for key in hash_fields):
+            raise ValueError("Registry journal hashes are malformed.")
+        identity_fields = (("rollback_from", "active_model_ref", "evaluation_id", "candidate_id") if action == "rollback"
+                           else ("candidate_id", "evaluation_id") + (("active_model_ref",) if action == "promote" else ()))
+        if any(not isinstance(event.get(key), str) or not event[key] for key in identity_fields):
+            raise ValueError("Registry journal model or candidate identity is malformed.")
+        if any(_EVALUATION_ID.fullmatch(event[key]) is None
+               for key in ("task_id", "candidate_id", "evaluation_id")):
+            raise ValueError("Registry journal contains an unsafe task or evaluation identity.")
+        if action != "rollback" and event.get("previous_model_ref") is not None and not isinstance(event["previous_model_ref"], str):
+            raise ValueError("Registry journal previous model reference is malformed.")
+        if action == "reject" and event.get("active_model_ref") is not None and not isinstance(event["active_model_ref"], str):
+            raise ValueError("Registry journal active model reference is malformed.")
+        if action == "rollback" and (not isinstance(event.get("policy_sha256"), str)
+                                       or not _SHA.fullmatch(event["policy_sha256"])):
+            raise ValueError("Rollback journal policy digest is malformed.")
+        payload = {key: value for key, value in event.items() if key not in {"event_id", "created_at"}}
+        if event["event_id"] != _digest(payload):
+            raise ValueError("Registry journal event digest is invalid.")
+
+    def _repair_and_read_events(self):
+        if not self.events_path.exists():
+            return []
+        data = self.events_path.read_bytes()
+        chunks = data.splitlines(keepends=True)
+        valid, offset = [], 0
+        for index, chunk in enumerate(chunks):
+            final = index == len(chunks) - 1
+            complete = chunk.endswith(b"\n")
+            if final and not complete:
+                # A final unterminated fragment is the only recoverable journal damage.
+                with self.events_path.open("r+b") as handle:
+                    handle.truncate(offset); handle.flush(); os.fsync(handle.fileno())
+                break
+            try:
+                row = json.loads(chunk.decode("utf-8"))
+                self._validate_event(row)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
+                raise ValueError("Registry journal contains a malformed non-trailing entry.")
+            valid.append(row)
+            offset += len(chunk)
+        return valid
+
+    def _recover(self):
+        """Replay durable decision events so a crash cannot leave state behind the journal."""
+        if not self.events_path.exists():
+            return
+        with self._locked():
+            self._recover_unlocked()
+
+    def promote_if_eligible(self, candidate_id, evaluation_id, policy):
+        with self._locked():
+            self._recover_unlocked()
+            return self._promote_locked(candidate_id, evaluation_id, policy)
+
+    def _recover_unlocked(self):
+        # Same recovery routine without acquiring the already-held process lock.
+        active = self._read(self.active_path, {})
+        candidates = self._read(self.candidates_path, {})
+        changed_active = changed_candidates = False
+        events = self._read_events()
+        for event_index, event in enumerate(events):
+            if event.get("action") == "promote":
+                evaluation_path = self.root / "evaluations" / (event["evaluation_id"] + ".json")
+                evaluation_bytes = evaluation_path.read_bytes()
+                if hashlib.sha256(evaluation_bytes).hexdigest() != event["evaluation_sha256"]:
+                    raise ValueError("Registry promotion evaluation evidence changed after commit.")
+                evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+                if (evaluation.get("candidate_id") != event["candidate_id"]
+                        or evaluation.get("candidate_model_ref") != event["active_model_ref"]):
+                    raise ValueError("Registry promotion evaluation identity does not match its journal event.")
+                active[event["task_id"]] = {"model_ref": event["active_model_ref"],
+                    "previous_model_ref": event.get("previous_model_ref"), "candidate_id": event.get("candidate_id"),
+                    "evaluation_id": event.get("evaluation_id"),
+                    "adapter_path": evaluation["candidate_adapter_path"],
+                    "calibrator_path": evaluation["candidate_calibrator_path"]}; changed_active = True
+                if event.get("candidate_id") in candidates:
+                    candidates[event["candidate_id"]].update(status="promoted", decision_event_id=event["event_id"]); changed_candidates = True
+            elif event.get("action") == "reject" and event.get("candidate_id") in candidates:
+                candidates[event["candidate_id"]].update(status="rejected", decision_event_id=event["event_id"], rejection_reasons=event.get("reason_codes", [])); changed_candidates = True
+            elif event.get("action") == "rollback":
+                health_path = self.root / "health-evaluations" / (event["evaluation_id"] + ".json")
+                health_bytes = health_path.read_bytes()
+                if hashlib.sha256(health_bytes).hexdigest() != event["health_sha256"]:
+                    raise ValueError("Registry rollback health evidence changed after commit.")
+                health = json.loads(health_bytes.decode("utf-8"))
+                if (health.get("evaluation_id") != event["evaluation_id"]
+                        or health.get("task_id") != event["task_id"]
+                        or health.get("active_model_ref") != event["rollback_from"]
+                        or health.get("previous_model_ref") != event["active_model_ref"]):
+                    raise ValueError("Registry rollback evidence does not match its journal event.")
+                prior_promotions = [row for row in events[:event_index]
+                                    if row.get("action") == "promote" and row.get("task_id") == event["task_id"]]
+                target_event = self._promotion_for_model(event["task_id"], event["active_model_ref"],
+                                                         prior_promotions)
+                restored = self._pointer_from_promotion(target_event)
+                restored.update({"rollback_from": event["rollback_from"],
+                                 "health_sha256": event["health_sha256"]})
+                active[event["task_id"]] = restored
+                changed_active = True
+        if changed_active: self._write_atomic(self.active_path, active)
+        if changed_candidates: self._write_atomic(self.candidates_path, candidates)
+
+    def _promote_locked(self, candidate_id, evaluation_id, policy):
+        if not isinstance(policy, DomainPromotionPolicy) or policy.sha256_payload() != policy.policy_sha256:
+            raise ValueError("Promotion policy is invalid or changed after configuration.")
+        candidate = self.candidate(candidate_id)
+        evaluation_path = self.root / "evaluations" / (evaluation_id + ".json")
+        evaluation_bytes = evaluation_path.read_bytes()
+        evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+        evaluation_hash = hashlib.sha256(evaluation_bytes).hexdigest()
+        if candidate["status"] in {"promoted", "rejected"}:
+            events = self._read_events()
+            prior = next((row for row in events if row["candidate_id"] == candidate_id and row["evaluation_id"] == evaluation_id), None)
+            if prior:
+                return PromotionEvent(**prior)
+            raise ValueError("Terminal candidate already has a different promotion decision.")
+        if candidate.get("status") != "evaluated":
+            reasons = ["candidate_not_evaluated"]
+            previous = self.active(policy.task_id)
+            event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, "reject", reasons,
+                                   previous.get("model_ref") if previous else None,
+                                   previous.get("model_ref") if previous else None, policy.policy_sha256,
+                                   evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+            event_dict = asdict(event)
+            event_id = _digest({key: value for key, value in event_dict.items() if key not in {"event_id", "created_at"}})
+            event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, "reject", tuple(reasons),
+                                   event.previous_model_ref, event.active_model_ref, event.policy_sha256,
+                                   event.evaluation_sha256, event.created_at)
+            self._append_event(asdict(event))
+            self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
+            return event
+        previous = self.active(policy.task_id)
+        reasons = _promotion_reasons(candidate, evaluation, policy)
+        if _training_gate_failure(candidate, evaluation):
+            reasons = sorted(set(reasons) | {"training_gate_missing_or_changed"})
+        expected_incumbent = previous.get("model_ref") if previous else candidate.get("incumbent_model_ref")
+        if evaluation.get("incumbent_model_ref") != expected_incumbent:
+            reasons = sorted(set(reasons) | {"incumbent_changed_since_evaluation"})
+        action = "promote" if not reasons else "reject"
+        new_active = {"model_ref": candidate["model_ref"]} if action == "promote" else previous
+        event = PromotionEvent("", candidate_id, evaluation_id, policy.task_id, action,
+                               tuple(reasons), previous.get("model_ref") if previous else None,
+                               new_active.get("model_ref") if new_active else None, policy.policy_sha256,
+                               evaluation_hash, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+        event_dict = asdict(event)
+        event_id = _digest({key: value for key, value in event_dict.items() if key not in {"event_id", "created_at"}})
+        event = PromotionEvent(event_id, candidate_id, evaluation_id, policy.task_id, action,
+                               tuple(reasons), event.previous_model_ref, event.active_model_ref,
+                               event.policy_sha256, event.evaluation_sha256, event.created_at)
+        self.events_path.parent.mkdir(parents=True, exist_ok=True)
+        self._append_event(asdict(event))
+        if action == "promote":
+            active = self._read(self.active_path, {})
+            active[policy.task_id] = {"model_ref": candidate["model_ref"],
+                                      "adapter_path": evaluation["candidate_adapter_path"],
+                                      "calibrator_path": evaluation["candidate_calibrator_path"],
+                                      "previous_model_ref": previous.get("model_ref") if previous else None,
+                                      "candidate_id": candidate_id, "evaluation_id": evaluation_id}
+            self._write_atomic(self.active_path, active)
+            self._transition_unlocked(candidate_id, "promoted", decision_event_id=event_id)
+        else:
+            self._transition_unlocked(candidate_id, "rejected", decision_event_id=event_id, rejection_reasons=reasons)
+        return event
+
+    def _read_events(self):
+        return self._repair_and_read_events()
+
+    def rollback_if_unhealthy(self, task_id, health_evaluation):
+        with self._locked():
+            self._recover_unlocked()
+            return self._rollback_if_unhealthy_locked(task_id, health_evaluation)
+
+    def _rollback_if_unhealthy_locked(self, task_id, health_evaluation):
+        if not isinstance(task_id, str) or not task_id:
+            raise ValueError("health_evaluation_identity_mismatch")
+        if _EVALUATION_ID.fullmatch(task_id) is None:
+            raise ValueError("health_evaluation_identity_mismatch")
+        if not isinstance(health_evaluation, Mapping):
+            raise ValueError("health_evaluation_schema_invalid")
+        fields = {"schema_version", "evaluation_id", "task_id", "active_model_ref", "previous_model_ref",
+                  "promotion_evaluation_id", "policy_sha256", "trusted_snapshot_sha256", "evaluated_count",
+                  "row_evidence", "metrics", "health_sha256"}
+        if (set(health_evaluation) != fields or isinstance(health_evaluation.get("schema_version"), bool)
+                or health_evaluation.get("schema_version") != 1):
+            raise ValueError("health_evaluation_schema_invalid")
+        evaluation_id = health_evaluation.get("evaluation_id")
+        if not isinstance(evaluation_id, str) or _EVALUATION_ID.fullmatch(evaluation_id) is None:
+            raise ValueError("health_evaluation_schema_invalid")
+        health_payload = {key: value for key, value in health_evaluation.items() if key != "health_sha256"}
+        expected_health_digest = _digest(health_payload)
+        if health_evaluation.get("health_sha256") != expected_health_digest:
+            raise ValueError("health_evaluation_integrity_mismatch")
+
+        events = self._read_events()
+        if any(row.get("action") == "rollback" and row.get("evaluation_id") == evaluation_id
+               for row in events):
+            raise ValueError("rollback_already_applied")
+        active = self.active(task_id)
+        if active is None:
+            raise ValueError("active_model_missing")
+        if (health_evaluation.get("task_id") != task_id
+                or health_evaluation.get("active_model_ref") != active.get("model_ref")
+                or health_evaluation.get("previous_model_ref") != active.get("previous_model_ref")
+                or health_evaluation.get("promotion_evaluation_id") != active.get("evaluation_id")):
+            raise ValueError("health_evaluation_identity_mismatch")
+        previous_ref = active.get("previous_model_ref")
+        if not isinstance(previous_ref, str) or not previous_ref:
+            raise ValueError("rollback_target_missing")
+
+        policy_path = self.root / "promotion-policies" / (task_id + ".json")
+        policy = PromotionPolicy.load(policy_path, task_id=task_id)
+        if health_evaluation.get("policy_sha256") != policy.policy_sha256:
+            raise ValueError("health_evaluation_identity_mismatch")
+
+        try:
+            from lazylabel.adapters.outbound.persistence.projects import load_project
+            from lazylabel.adapters.outbound.persistence.tasks import load_task, load_task_policy, task_file_path
+            from lazylabel.adapters.outbound.sources.trusted_labels import load_trusted_labels
+            project = load_project(self.root.parent / "project.json")
+            task = load_task(task_file_path(project.workspace_dir, task_id))
+            labeling_policy = load_task_policy(task)
+            trusted_batch = load_trusted_labels(project, task)
+        except Exception as exc:
+            raise ValueError("trusted_labels_unavailable_or_stale") from exc
+        if (labeling_policy is None or trusted_batch.task_id != task_id
+                or trusted_batch.trust_kind not in {"provided_ground_truth", "validated_rule"}
+                or not isinstance(trusted_batch.snapshot_sha256, str)
+                or not _SHA.fullmatch(trusted_batch.snapshot_sha256)
+                or health_evaluation.get("trusted_snapshot_sha256") != trusted_batch.snapshot_sha256):
+            raise ValueError("trusted_labels_unavailable_or_stale")
+
+        rows = health_evaluation.get("row_evidence")
+        count = health_evaluation.get("evaluated_count")
+        if (not isinstance(rows, list) or isinstance(count, bool)
+                or not isinstance(count, int) or count != len(rows)):
+            raise ValueError("health_row_evidence_invalid")
+        if count < policy.min_holdout_count:
+            raise ValueError("health_evaluation_too_small")
+        trusted = {row.record_ref: row for row in trusted_batch.records}
+        seen = set()
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("health_row_evidence_invalid")
+            reference = row.get("record_ref")
+            source_row = trusted.get(reference)
+            if (source_row is None or reference in seen
+                    or row.get("input_digest") != source_row.input_digest
+                    or row.get("target") != source_row.label):
+                raise ValueError("health_row_evidence_invalid")
+            seen.add(reference)
+        try:
+            recomputed = _derive_holdout_metrics(rows, list(task.labels),
+                                                labeling_policy.min_calibrated_confidence)["metrics"]
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError("health_row_evidence_invalid") from exc
+        if not _metrics_equal(health_evaluation.get("metrics"), recomputed):
+            raise ValueError("health_metrics_do_not_match_row_evidence")
+
+        current_promotion = next((event for event in reversed(events)
+                                  if event.get("action") == "promote"
+                                  and event.get("task_id") == task_id
+                                  and event.get("candidate_id") == active.get("candidate_id")
+                                  and event.get("evaluation_id") == active.get("evaluation_id")), None)
+        if current_promotion is None:
+            raise ValueError("active_model_promotion_evidence_missing")
+        if (current_promotion.get("policy_sha256") != policy.policy_sha256
+                or self.candidate(active["candidate_id"]).get("policy_sha256") != policy.policy_sha256):
+            raise ValueError("health_evaluation_identity_mismatch")
+        current_pointer = self._pointer_from_promotion(current_promotion)
+        if any(current_pointer.get(key) != active.get(key)
+               for key in ("model_ref", "candidate_id", "evaluation_id", "adapter_path", "calibrator_path")):
+            raise ValueError("active_model_promotion_evidence_mismatch")
+        prior_events = [event for event in events if event.get("action") == "promote"
+                        and event.get("task_id") == task_id
+                        and events.index(event) < events.index(current_promotion)]
+        previous_promotion = self._promotion_for_model(task_id, previous_ref, prior_events)
+        restored = self._pointer_from_promotion(previous_promotion)
+
+        reasons = rollback_reasons(recomputed, policy)
+        if not reasons:
+            raise ValueError("health_gates_passed")
+
+        health_dir = self.root / "health-evaluations"
+        health_dir.mkdir(parents=True, exist_ok=True)
+        health_path = health_dir / (evaluation_id + ".json")
+        encoded = (json.dumps(dict(health_evaluation), sort_keys=True, ensure_ascii=False,
+                              separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+        if health_path.exists():
+            if health_path.read_bytes() != encoded:
+                raise ValueError("health_evaluation_id_conflict")
+        else:
+            descriptor = os.open(str(health_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                self._fsync_dir(health_dir)
+            except BaseException:
+                health_path.unlink(missing_ok=True)
+                raise
+
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        event = {"event_id": "", "candidate_id": active["candidate_id"],
+                 "evaluation_id": evaluation_id, "task_id": task_id, "action": "rollback",
+                 "reason_codes": sorted(reasons), "active_model_ref": previous_ref,
+                 "rollback_from": active["model_ref"], "health_sha256": hashlib.sha256(encoded).hexdigest(),
+                 "policy_sha256": policy.policy_sha256, "created_at": now}
+        event["event_id"] = _digest({key: value for key, value in event.items()
+                                     if key not in {"event_id", "created_at"}})
+        self._append_event(event)
+        restored.update({"rollback_from": active["model_ref"], "health_sha256": event["health_sha256"]})
+        active_models = self._read(self.active_path, {})
+        active_models[task_id] = restored
+        self._write_atomic(self.active_path, active_models)
+        return PromotionEvent(event["event_id"], event["candidate_id"], event["evaluation_id"],
+            event["task_id"], event["action"], tuple(event["reason_codes"]), event["rollback_from"],
+            event["active_model_ref"], event["policy_sha256"], event["health_sha256"], event["created_at"])
+
+    def _promotion_for_model(self, task_id, model_ref, promotion_events):
+        matches = [event for event in promotion_events
+                   if event.get("task_id") == task_id and event.get("active_model_ref") == model_ref]
+        if not matches:
+            raise ValueError("rollback_target_missing")
+        return matches[-1]
+
+    def _pointer_from_promotion(self, event):
+        if (_EVALUATION_ID.fullmatch(str(event.get("candidate_id", ""))) is None
+                or _EVALUATION_ID.fullmatch(str(event.get("evaluation_id", ""))) is None
+                or _EVALUATION_ID.fullmatch(str(event.get("task_id", ""))) is None):
+            raise ValueError("promotion_evaluation_evidence_mismatch")
+        evaluation_path = self.root / "evaluations" / (event["evaluation_id"] + ".json")
+        try:
+            evaluation_bytes = evaluation_path.read_bytes()
+            evaluation = json.loads(evaluation_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("promotion_evaluation_evidence_unavailable") from exc
+        if (hashlib.sha256(evaluation_bytes).hexdigest() != event.get("evaluation_sha256")
+                or evaluation.get("evaluation_id") != event.get("evaluation_id")
+                or evaluation.get("task_id") != event.get("task_id")
+                or evaluation.get("policy_sha256") != event.get("policy_sha256")
+                or evaluation.get("candidate_id") != event.get("candidate_id")
+                or evaluation.get("candidate_model_ref") != event.get("active_model_ref")):
+            raise ValueError("promotion_evaluation_evidence_mismatch")
+        candidate = self.candidate(event["candidate_id"])
+        if (candidate.get("task_id") != event.get("task_id")
+                or candidate.get("model_ref") != event.get("active_model_ref")):
+            raise ValueError("promotion_candidate_evidence_mismatch")
+        models = evaluation.get("models")
+        candidate_model = next((row for row in models if row.get("role") == "candidate"), None) \
+            if isinstance(models, list) else None
+        if candidate_model is not None:
+            adapter_path = Path(candidate_model.get("adapter_path", "")).expanduser().resolve()
+            calibrator_path = Path(candidate_model.get("calibrator_path", "")).expanduser().resolve()
+            try:
+                adapter_path.relative_to(self.root.resolve())
+                calibrator_path.relative_to(self.root.resolve())
+            except ValueError as exc:
+                raise ValueError("promoted_model_artifact_missing_or_mismatched") from exc
+            if (adapter_path != Path(evaluation.get("candidate_adapter_path", "")).expanduser().resolve()
+                    or calibrator_path != Path(evaluation.get("candidate_calibrator_path", "")).expanduser().resolve()
+                    or not adapter_path.is_dir() or any(item.is_symlink() for item in adapter_path.rglob("*"))
+                    or not calibrator_path.is_file()):
+                raise ValueError("promoted_model_artifact_missing_or_mismatched")
+            from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+            if (_artifact_tree_sha256(adapter_path) != candidate_model.get("adapter_sha256")
+                    or hashlib.sha256(calibrator_path.read_bytes()).hexdigest()
+                       != candidate_model.get("calibrator_sha256")):
+                raise ValueError("promoted_model_artifact_missing_or_mismatched")
+            return {"model_ref": event["active_model_ref"],
+                    "previous_model_ref": event.get("previous_model_ref"),
+                    "candidate_id": event["candidate_id"], "evaluation_id": event["evaluation_id"],
+                    "adapter_path": str(adapter_path), "calibrator_path": str(calibrator_path)}
+        raise ValueError("promoted_model_artifact_missing_or_mismatched")
+
+
+def _promotion_reasons(candidate, result, policy):
+    """Verify local evidence before applying the pure promotion gates."""
+    reasons = []
+    labeling_policy = None
+    try:
+        from lazylabel.adapters.outbound.persistence.tasks import load_task, load_task_policy
+        task = load_task(candidate["task_path"])
+        labeling_policy = load_task_policy(task)
+        if labeling_policy is None:
+            raise ValueError("labeling_policy_missing")
+        labels = list(task.labels)
+        threshold = labeling_policy.min_calibrated_confidence
+        if (not isinstance(labels, list) or not labels or len(set(labels)) != len(labels)
+                or not _finite(threshold) or not 0 <= threshold <= 1
+                or candidate.get("task_labels") != labels
+                or candidate.get("labeling_policy_min_confidence") != threshold
+                or labeling_policy_sha256(labeling_policy) != result.get("labeling_policy_sha256")
+                or candidate.get("labeling_policy_sha256") != result.get("labeling_policy_sha256")
+                or task_spec_sha256(task) != result.get("task_spec_sha256")):
+            raise ValueError("invalid_policy_snapshot")
+        candidate_rows = next(row["holdout_records"] for row in result["models"]
+                              if row.get("role") == "candidate")
+        incumbent_rows = next(row["holdout_records"] for row in result["models"]
+                               if row.get("role") == "incumbent")
+        manifest_path = Path(candidate["trusted_manifest_path"]).resolve()
+        _validate_holdout_row_binding(manifest_path, result.get("dataset_manifest_sha256"),
+            result.get("holdout_count"), task, labels, candidate_rows, incumbent_rows)
+        manifest_bytes = manifest_path.read_bytes()
+        trusted_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        holdout = trusted_manifest["partitions"]["holdout"]
+        from lazylabel.domain.labeling.prediction import Prediction
+        from lazylabel.adapters.outbound.training.evaluation import CalibrationArtifact
+        for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
+            model = next(row for row in result["models"] if row.get("role") == role)
+            calibration_path = Path(model["calibrator_path"])
+            calibration = CalibrationArtifact.load(calibration_path)
+            if (hashlib.sha256(calibration_path.read_bytes()).hexdigest() != model.get("calibrator_sha256")
+                    or calibration.model_ref != model.get("model_ref")
+                    or calibration.task_id != task.task_id
+                    or calibration.policy_id != labeling_policy.policy_id
+                    or calibration.source_hashes.get("labeling_policy_sha256")
+                        != labeling_policy_sha256(labeling_policy)):
+                raise ValueError("calibrator_identity_invalid")
+            for row in rows:
+                if row["prediction"] is None:
+                    continue
+                prediction = Prediction(row["prediction"], None, row["scores"], None, None,
+                    "label_json_mean_log_likelihood_v2", "0" * 64)
+                confidence = calibration.calibrate(prediction, task=task,
+                    policy=labeling_policy, model_ref=model["model_ref"]).confidence
+                if not _finite(row["confidence"]) or abs(confidence - row["confidence"]) > 1e-12:
+                    raise ValueError("calibrated_confidence_does_not_match_artifact")
+        candidate_derived = _derive_holdout_metrics(candidate_rows, labels, threshold)
+        incumbent_derived = _derive_holdout_metrics(incumbent_rows, labels, threshold)
+        if candidate_derived["records_sha256"] != next(
+                row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "candidate"):
+            raise ValueError("candidate_metric_evidence_digest_mismatch")
+        if incumbent_derived["records_sha256"] != next(
+                row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "incumbent"):
+            raise ValueError("incumbent_metric_evidence_digest_mismatch")
+        candidate_ref_targets = [(row["record_ref"], row["input_digest"], row["target"])
+                                 for row in candidate_rows]
+        incumbent_ref_targets = [(row["record_ref"], row["input_digest"], row["target"])
+                                 for row in incumbent_rows]
+        if candidate_ref_targets != incumbent_ref_targets:
+            raise ValueError("candidate_incumbent_holdout_rows_differ")
+        for role, derived in (("candidate", candidate_derived), ("incumbent", incumbent_derived)):
+            stored = next(row for row in result["models"] if row.get("role") == role)
+            if (not _metrics_equal(stored.get("metrics"), derived["metrics"])
+                    or stored.get("per_label") != derived["per_label"]
+                    or stored.get("confusion") != derived["confusion"]):
+                raise ValueError(role + "_metrics_do_not_match_row_evidence")
+        if (not _metrics_equal(result.get("candidate_metrics"), candidate_derived["metrics"])
+                or not _metrics_equal(result.get("incumbent_metrics"), incumbent_derived["metrics"])
+                or result.get("candidate_per_label") != candidate_derived["per_label_f1"]
+                or result.get("incumbent_per_label") != incumbent_derived["per_label_f1"]):
+            raise ValueError("aggregate_metrics_do_not_match_row_evidence")
+    except (OSError, KeyError, TypeError, ValueError, StopIteration):
+        reasons.append("holdout_metric_evidence_invalid")
+    try:
+        from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+        from lazylabel.adapters.outbound.training.evaluation import CalibrationArtifact
+        manifest_path = Path(candidate.get("trusted_manifest_path", "")).resolve()
+        manifest_bytes = manifest_path.read_bytes()
+        trusted_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        holdout = trusted_manifest["partitions"]["holdout"]
+        adapter_path = Path(result.get("candidate_adapter_path", "")).resolve()
+        calibration_path = Path(result.get("candidate_calibrator_path", "")).resolve()
+        calibration = CalibrationArtifact.load(calibration_path)
+        model = next(item for item in result.get("models", []) if item.get("role") == "candidate")
+        if (not adapter_path.is_dir() or _artifact_tree_sha256(adapter_path) != model.get("adapter_sha256")
+                or calibration.model_ref != result.get("candidate_model_ref")
+                or labeling_policy is None
+                or calibration.policy_id != labeling_policy.policy_id
+                or calibration.task_id != policy.task_id
+                or calibration.task_spec_sha256 != result.get("task_spec_sha256")
+                or calibration.source_hashes.get("labeling_policy_sha256")
+                    != result.get("labeling_policy_sha256")
+                or hashlib.sha256(calibration_path.read_bytes()).hexdigest() != model.get("calibrator_sha256")
+                or hashlib.sha256(manifest_bytes).hexdigest() != result.get("dataset_manifest_sha256")
+                or trusted_manifest.get("task_id") != policy.task_id
+                or trusted_manifest.get("trust_kind") not in {"provided_ground_truth", "validated_rule"}
+                or hashlib.sha256(json.dumps(
+                    [{"input_digest": row["input_digest"]} for row in holdout["records"]],
+                    sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+                    != result.get("holdout_sha256")
+                or holdout.get("dataset_sha256") != result.get("holdout_dataset_sha256")
+                or holdout.get("count") != result.get("holdout_count")
+                or result.get("trusted_label_provenance", {}).get("snapshot_sha256")
+                    != trusted_manifest.get("snapshot_sha256")
+                or not _SHA.fullmatch(str(model.get("holdout_scores_sha256", "")))):
+            reasons.append("candidate_model_or_calibrator_artifact_mismatch")
+    except (OSError, ValueError, KeyError, StopIteration, TypeError):
+        reasons.append("candidate_model_or_calibrator_artifact_missing")
+    return promotion_reasons(candidate, result, policy, evidence_reasons=reasons)
+
+
+def _training_gate_failure(candidate, evaluation):
+    """Recheck the exact authorized gate under the registry promotion lock."""
+    path_value = candidate.get("training_gate_path")
+    expected = candidate.get("training_gate_sha256")
+    if (not isinstance(path_value, str) or not path_value
+            or not isinstance(expected, str) or not _SHA.fullmatch(expected)
+            or evaluation.get("training_gate_sha256") != expected):
+        return True
+    try:
+        return hashlib.sha256(Path(path_value).read_bytes()).hexdigest() != expected
+    except OSError:
+        return True
+
+def _validate_holdout_row_binding(manifest_path, manifest_digest, holdout_count, task, labels,
+                                  candidate_rows, incumbent_rows):
+    """Bind both model evidence sequences to the exact frozen references and JSONL targets."""
+    manifest_path = Path(manifest_path).resolve()
+    manifest_bytes = manifest_path.read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != manifest_digest:
+        raise ValueError("holdout_manifest_digest_mismatch")
+    manifest = json.loads(manifest_bytes.decode("utf-8"))
+    holdout = manifest["partitions"]["holdout"]
+    refs = holdout.get("records")
+    if (isinstance(holdout_count, bool) or not isinstance(holdout_count, int)
+            or holdout_count < 0 or not isinstance(refs, list) or isinstance(holdout.get("count"), bool)
+            or not isinstance(holdout.get("count"), int) or holdout["count"] != len(refs)
+            or holdout["count"] != holdout_count):
+        raise ValueError("frozen_holdout_reference_manifest_invalid")
+    ordered_refs, seen_refs = [], set()
+    for ref in refs:
+        if (not isinstance(ref, Mapping) or set(ref) != {"record_ref", "input_digest"}
+                or not isinstance(ref.get("record_ref"), str) or not _SHA.fullmatch(ref["record_ref"])
+                or not isinstance(ref.get("input_digest"), str) or not _SHA.fullmatch(ref["input_digest"])
+                or ref["record_ref"] in seen_refs):
+            raise ValueError("frozen_holdout_reference_manifest_invalid")
+        seen_refs.add(ref["record_ref"])
+        ordered_refs.append((ref["record_ref"], ref["input_digest"]))
+    if holdout.get("path") != "holdout.jsonl":
+        raise ValueError("frozen_holdout_path_invalid")
+    holdout_bytes = (manifest_path.parent / holdout["path"]).read_bytes()
+    if hashlib.sha256(holdout_bytes).hexdigest() != holdout.get("dataset_sha256"):
+        raise ValueError("frozen_holdout_dataset_digest_mismatch")
+    from lazylabel.adapters.outbound.persistence.datasets import _trusted_prompt
+    from lazylabel.adapters.outbound.training.local_evaluator import _prompt_values
+    frozen_rows = []
+    for line in holdout_bytes.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if (not isinstance(item, dict) or set(item) != {"prompt", "completion"}
+                or not isinstance(item["prompt"], str) or not isinstance(item["completion"], str)):
+            raise ValueError("frozen_holdout_row_schema_invalid")
+        completion = json.loads(item["completion"])
+        if not isinstance(completion, dict) or set(completion) != {"label"}:
+            raise ValueError("frozen_holdout_completion_schema_invalid")
+        target = completion["label"]
+        if not isinstance(target, str) or target not in labels:
+            raise ValueError("frozen_holdout_target_invalid")
+        features = _prompt_values(item["prompt"], task)
+        canonical_features = json.dumps(features, ensure_ascii=False, sort_keys=True,
+                                        separators=(",", ":"), default=str)
+        input_digest = hashlib.sha256(canonical_features.encode("utf-8")).hexdigest()
+        if _trusted_prompt(task, features) != item["prompt"]:
+            raise ValueError("frozen_holdout_prompt_invalid")
+        frozen_rows.append((input_digest, target))
+    if len(frozen_rows) != len(ordered_refs):
+        raise ValueError("frozen_holdout_row_count_mismatch")
+    expected = [(ref, digest, row[1]) for (ref, digest), row in zip(ordered_refs, frozen_rows)]
+    if any(digest != row[0] for (_, digest), row in zip(ordered_refs, frozen_rows)):
+        raise ValueError("frozen_holdout_input_digest_does_not_match_prompt")
+    for role, rows in (("candidate", candidate_rows), ("incumbent", incumbent_rows)):
+        if not isinstance(rows, list):
+            raise ValueError(role + "_holdout_rows_malformed")
+        observed = [(row.get("record_ref"), row.get("input_digest"), row.get("target"))
+                    if isinstance(row, Mapping) else None for row in rows]
+        if observed != expected:
+            raise ValueError(role + "_holdout_rows_do_not_match_frozen_partition")
+    return expected

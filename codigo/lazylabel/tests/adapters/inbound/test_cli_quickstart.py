@@ -1,0 +1,80 @@
+import io
+from contextlib import redirect_stderr, redirect_stdout
+
+from lazylabel.bootstrap.application import build_application
+from lazylabel.bootstrap.cli import run
+from lazylabel.labeling.task import load_task, load_task_policy
+
+
+def cli(*argv):
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        try:
+            status = run(list(argv))
+        except SystemExit as exc:
+            status = exc.code
+    return status, out.getvalue(), err.getvalue()
+
+
+def test_happy_path(tmp_path):
+    target = tmp_path / "x"
+    status, out, _ = cli("quickstart", str(target), "--model-id", "some/model")
+    assert status == 0
+    for text in ("lazylabel label sample --task sample --project", "lazylabel serve --project",
+                 "uncalibrated", "illustrative"):
+        assert text in out
+    for name in ("lazylabel-sample-synthetic.csv", "task.json", "policy.json",
+                 ".lazylabel/project.json", ".lazylabel/tasks/sample.json"):
+        assert (target / name).is_file()
+    rows = (target / "lazylabel-sample-synthetic.csv").read_text(encoding="utf-8").splitlines()
+    assert rows[0] == "fake_amount,fake_days_past_due,fake_utilization,reference_label"
+    assert len(rows) == 41 and {row.split(",")[3] for row in rows[1:]} == {"low", "medium", "high"}
+    app = build_application(str(target))
+    (source,) = app.sources()["sources"]
+    assert source["name"] == "sample"
+    assert [c["name"] for c in source["columns"]] == rows[0].split(",")
+    for path in (target / "task.json", target / ".lazylabel/tasks/sample.json"):
+        task = load_task(str(path))
+        assert "reference_label" not in task.input_columns
+        assert (task.model_id, task.model_revision) == ("some/model", None)
+        policy = load_task_policy(task)
+        assert policy.calibration_ref is None and set(policy.allowed_labels) == {"low", "medium", "high"}
+
+
+def test_model_revision(tmp_path):
+    status, _, _ = cli("quickstart", str(tmp_path / "x"), "--model-id", "m", "--model-revision", "abc123")
+    assert status == 0
+    assert load_task(str(tmp_path / "x/.lazylabel/tasks/sample.json")).model_revision == "abc123"
+
+
+def test_missing_model_id(tmp_path):
+    status, _, err = cli("quickstart", str(tmp_path / "y"))
+    assert status == 2 and "usage" in err
+    assert not (tmp_path / "y").exists()
+
+
+def test_refuses_non_empty_directory(tmp_path):
+    target = tmp_path / "z"
+    target.mkdir()
+    (target / "a.txt").write_text("keep")
+    status, _, err = cli("quickstart", str(target), "--model-id", "m")
+    assert status == 2 and err.startswith("lazylabel:")
+    assert [p.name for p in target.iterdir()] == ["a.txt"] and (target / "a.txt").read_text() == "keep"
+
+
+def test_refuses_existing_project(tmp_path):
+    target = tmp_path / "x"
+    cli("quickstart", str(target), "--model-id", "m")
+    before = {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    status, _, err = cli("quickstart", str(target), "--model-id", "m")
+    assert status == 2 and err.startswith("lazylabel:")
+    assert before == {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+
+
+def test_tilde_path_lands_in_one_place(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    status, _, _ = cli("quickstart", "~/p", "--model-id", "m")
+    assert status == 0
+    assert (tmp_path / "home/p/task.json").is_file() and (tmp_path / "home/p/.lazylabel/project.json").is_file()
+    assert not (tmp_path / "~").exists()

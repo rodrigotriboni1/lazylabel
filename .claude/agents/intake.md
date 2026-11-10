@@ -27,7 +27,7 @@ that, scoped so it can land as one small pull request.
 
 ## Decide
 
-This project is FinLabel, a local-first Python tool (`codigo/finlabel/`) for
+This project is LazyLabel, a local-first Python tool (`codigo/lazylabel/`) for
 assisted labeling of financial data, built for a TCC thesis. Docs, ADRs and
 `tcc/glossario.md` at the repo root define what belongs.
 
