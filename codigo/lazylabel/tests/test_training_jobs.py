@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lazylabel.training.backend import TrainingConfig, TrainingResult
-from lazylabel.training.jobs import TrainingJobManager
+from lazylabel.adapters.outbound.training.backend import TrainingConfig, TrainingResult
+from lazylabel.adapters.outbound.training.jobs import TrainingJobManager
 
 
 class TrainingJobTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class TrainingJobTests(unittest.TestCase):
             root = Path(temporary)
             dataset, config = self.make_project(root)
             manager = TrainingJobManager(root)
-            with patch("lazylabel.training.jobs.train_adapter", return_value=TrainingResult(
+            with patch("lazylabel.adapters.outbound.training.jobs.train_adapter", return_value=TrainingResult(
                 config.output_dir, "local/model", hashlib.sha256(dataset.read_bytes()).hexdigest(), (), {"loss": 0.5},
             )):
                 job_id = manager.submit(dataset, config)
@@ -49,7 +49,7 @@ class TrainingJobTests(unittest.TestCase):
             dataset, config = self.make_project(root)
             (root / "training-gate.json").unlink()
             manager = TrainingJobManager(root)
-            with patch("lazylabel.training.jobs.train_adapter") as train:
+            with patch("lazylabel.adapters.outbound.training.jobs.train_adapter") as train:
                 with self.assertRaisesRegex(ValueError, "training gate"):
                     manager.submit(dataset, config)
                 train.assert_not_called()

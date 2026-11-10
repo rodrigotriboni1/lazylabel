@@ -5,12 +5,12 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from lazylabel.labeling.service import suggest_labels
-from lazylabel.labeling.task import LabelTask, save_task
-from lazylabel.review import ReviewAction, ReviewLog
-from lazylabel.sources.base import SourceSpec
-from lazylabel.sources.csv_source import CsvSource
-from lazylabel.project import init_project, load_project, save_project
+from lazylabel.adapters.outbound.models.labeling import suggest_labels
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task
+from lazylabel.adapters.outbound.persistence.reviews import ReviewAction, ReviewLog
+from lazylabel.adapters.outbound.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.csv_source import CsvSource
+from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
 
 
 class FixedBackend:
@@ -26,7 +26,7 @@ class FixedBackend:
 
 class LabelDatasetTests(unittest.TestCase):
     def test_historical_review_artifacts_remain_exportable(self):
-        from lazylabel.cli import main
+        from lazylabel.bootstrap.cli import run as main
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -56,7 +56,7 @@ class LabelDatasetTests(unittest.TestCase):
             self.assertNotIn("SECRET", output.read_text())
 
     def test_interactive_review_cli_command_is_retired(self):
-        from lazylabel.cli import main
+        from lazylabel.bootstrap.cli import run as main
 
         with redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as error:
@@ -64,7 +64,7 @@ class LabelDatasetTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
 
     def test_export_includes_only_latest_accepted_or_corrected_review_and_selected_fields(self):
-        from lazylabel.training.dataset import prepare_training_dataset
+        from lazylabel.adapters.outbound.persistence.datasets import prepare_training_dataset
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

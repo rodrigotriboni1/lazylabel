@@ -6,8 +6,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from lazylabel.bootstrap.application import build_application
-from lazylabel.cli import main
-from lazylabel.project import init_project
+from lazylabel.bootstrap.cli import run as main
+from lazylabel.adapters.outbound.persistence.projects import init_project
 
 CHECKS = ["labeling_policy", "trusted_label_source", "training_gate", "promotion_policy", "calibrator"]
 POLICY = {

@@ -12,9 +12,9 @@ Estado após o Milestone 6 (compatibilidade e enforcement). Para explicação do
 | `application` | Aplicação, domínio e biblioteca padrão pura aprovada | Adapters, bootstrap, frameworks, filesystem, rede e modelos concretos |
 | `adapters` | Adapters, aplicação e domínio | Bootstrap |
 | `bootstrap` | Bootstrap, adapters, aplicação e domínio | Código externo não conectado por uma camada própria |
-| Fachadas de compatibilidade | Apenas os destinos canônicos explicitamente declarados por fachada | Dependência lateral entre fachadas, lógica de implementação ou imports extras |
+| Raiz `lazylabel` | Nenhum import (só `__version__`) | Qualquer reexportação |
 
-O mesmo teste garante que novos módulos são classificados (falham fechados se não classificados) e que fachadas não acumulam lógica. `tests/compatibility/` protege os imports públicos/legados e a importação lazy dos extras de web e ML. No frontend, `frontend/src/pages/` e `components/` usam a porta tipada; `tests/architecture/` e testes de cliente verificam que a apresentação não chama `fetch` nem importa o adapter HTTP diretamente.
+O mesmo teste garante que novos módulos são classificados (falham fechados se não classificados) e que a raiz do pacote não reexporta nada. `tests/adapters/` garante a importação lazy dos extras de web e ML. No frontend, `frontend/src/pages/` e `components/` usam a porta tipada; `tests/architecture/` e testes de cliente verificam que a apresentação não chama `fetch` nem importa o adapter HTTP diretamente.
 
 ## Composição e módulos canônicos
 
@@ -39,23 +39,20 @@ O mesmo teste garante que novos módulos são classificados (falham fechados se 
 | UI: apresentação | `frontend/src/pages/`, `frontend/src/components/` | Páginas, navegação e componentes React; sem transporte HTTP próprio. |
 | UI: bootstrap | `frontend/src/main.tsx`, `frontend/src/App.tsx` | Criação do adapter HTTP, provider e seleção da rota/apresentação. |
 
-## Fachadas públicas preservadas
+## Caminhos antigos removidos (09/11/2026)
 
-As fachadas abaixo são intencionais. O import antigo continua válido, enquanto código novo deve usar o destino canônico à direita.
+As fachadas de compatibilidade foram removidas (decisão 3 em `tcc/decisoes.md`). Use os caminhos canônicos:
 
-| Import legado | Destino canônico/estado |
+| Caminho antigo | Caminho atual |
 | --- | --- |
-| `lazylabel` e exports do pacote | Exports públicos cobertos pelo contrato de compatibilidade; implementação em `domain/projects`, `adapters/outbound/sources` e `adapters/outbound/persistence`. |
-| `lazylabel.cli:main` | `bootstrap.cli` e adapter `adapters.inbound.cli`; entrypoint definido em `pyproject.toml`. |
-| `lazylabel.web.app:create_app` | Adapter `adapters.inbound.http.app:create_app` e composição `bootstrap.http:create_app`. |
-| `lazylabel.project`, `profile`, `monitor`, `review` | Adapters locais de persistência/fontes e valores de domínio correspondentes. |
-| `lazylabel.analysis.*` | `domain.analysis`, casos de uso de análise, adapters de planner/fonte/persistência. |
-| `lazylabel.labeling.*` | `domain.labeling`, caso de uso e adapters de tarefa, modelo e persistência. |
-| `lazylabel.sources.*` | Contratos em `adapters.outbound.sources.base` e conectores concretos em `adapters.outbound.sources`. |
-| `lazylabel.models.*` | `application.ports` para contratos e `adapters.outbound.models` para execução. |
-| `lazylabel.training.*` | `domain.training`, `application.use_cases.training`, `adapters.outbound.training` ou `persistence`, conforme a responsabilidade. |
-
-Compatibilidade é mantida sem prometer remoção futura. Algumas fachadas reexportam nomes; outras usam identidade de módulo para conservar monkeypatch/extensão histórica. Não importe uma fachada de dentro de um módulo novo e não adicione regras às fachadas. Qualquer remoção precisa de decisão/versionamento próprios e atualização explícita dos testes de compatibilidade.
+| `lazylabel.cli:main` | `lazylabel.bootstrap.cli:run` (entrypoint do comando `lazylabel`) |
+| `lazylabel.web.app:create_app` | `lazylabel.bootstrap.http:create_app` |
+| `lazylabel.project`, `profile`, `monitor`, `review` | `lazylabel.adapters.outbound.persistence.*` e `adapters.outbound.sources.profile` |
+| `lazylabel.analysis.*` | `lazylabel.domain.analysis.*` e adapters de planner, fonte e persistência |
+| `lazylabel.labeling.*` | `lazylabel.domain.labeling.*`, `adapters.outbound.models.labeling` e `adapters.outbound.persistence.tasks` |
+| `lazylabel.sources.*` | `lazylabel.adapters.outbound.sources.*` |
+| `lazylabel.models.*` | `lazylabel.adapters.outbound.models.*` |
+| `lazylabel.training.*` | `lazylabel.domain.training.*`, `adapters.outbound.training.*` ou `adapters.outbound.persistence.*` |
 
 ## Baseline e estado de validação
 

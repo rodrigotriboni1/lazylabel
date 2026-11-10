@@ -3,11 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.labeling.service import suggest_labels
-from lazylabel.labeling.suggestions import verify_suggestions_file
-from lazylabel.labeling.task import LabelTask
-from lazylabel.sources.base import SourceSpec
-from lazylabel.sources.csv_source import CsvSource
+from lazylabel.adapters.outbound.models.labeling import suggest_labels
+from lazylabel.adapters.outbound.persistence.suggestions import verify_suggestions_file
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
+from lazylabel.adapters.outbound.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.csv_source import CsvSource
 
 
 class MockBackend:
@@ -47,7 +47,7 @@ class LabelSuggestionTests(unittest.TestCase):
             spec = SourceSpec("aggregate", "sqlite", Path("unused"))
 
             def capabilities(self):
-                from lazylabel.sources.base import SourceCapabilities
+                from lazylabel.adapters.outbound.sources.base import SourceCapabilities
                 return SourceCapabilities(False, True, True, True)
 
         backend = MockBackend()

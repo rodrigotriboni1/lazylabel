@@ -4,12 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.project import init_project, load_project, save_project
-from lazylabel.sources.base import ProjectConfig, SourceSpec
-from lazylabel.training.trusted_labels import (
-    TrustedLabelSourceSpec, load_trusted_labels, snapshot_manifest, supervision_key,
-)
-from lazylabel.labeling.task import LabelTask
+from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+from lazylabel.adapters.outbound.sources.base import ProjectConfig, SourceSpec
+from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelSourceSpec, load_trusted_labels, snapshot_manifest, supervision_key
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
 
 
 class TrustedLabelSourceTests(unittest.TestCase):

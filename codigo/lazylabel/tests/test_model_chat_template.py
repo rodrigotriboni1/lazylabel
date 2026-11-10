@@ -5,12 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from lazylabel.labeling.service import _prompt
-from lazylabel.labeling.policy import LabelingPolicy
-from lazylabel.labeling.task import LabelTask
-from lazylabel.models.text_generation import TransformersTextGenerationBackend
-from lazylabel.training.backend import _artifact_tree_sha256, format_training_example
-from lazylabel.training.active_model import active_inference
+from lazylabel.adapters.outbound.models.labeling import _prompt
+from lazylabel.adapters.outbound.persistence.policies import LabelingPolicy
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
+from lazylabel.adapters.outbound.models.text_generation import TransformersTextGenerationBackend
+from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256, format_training_example
+from lazylabel.adapters.outbound.models.active_model import active_inference
 
 
 class FakeTensor:
@@ -158,8 +158,8 @@ class ActiveModelArtifactTests(unittest.TestCase):
         return SimpleNamespace(workspace_dir=root), task, policy, adapter, calibrator_path, model_ref
 
     def test_loads_only_matching_adapter_base_revision_and_calibrator(self):
-        from lazylabel.training.evaluation import labeling_policy_sha256
-        from lazylabel.training.task_spec import task_spec_sha256
+        from lazylabel.adapters.outbound.training.evaluation import labeling_policy_sha256
+        from lazylabel.domain.training.task_spec import task_spec_sha256
 
         with tempfile.TemporaryDirectory() as temporary:
             project, task, policy, adapter, calibrator_path, model_ref = self._project(Path(temporary))
@@ -167,7 +167,7 @@ class ActiveModelArtifactTests(unittest.TestCase):
                                          policy_id=policy.policy_id, calibration_ref=policy.calibration_ref,
                                          task_spec_sha256=task_spec_sha256(task), labels=tuple(task.labels),
                                          source_hashes={"labeling_policy_sha256": labeling_policy_sha256(policy)})
-            with patch("lazylabel.training.active_model.CalibrationArtifact.load", return_value=calibrator):
+            with patch("lazylabel.adapters.outbound.models.active_model.CalibrationArtifact.load", return_value=calibrator):
                 backend, loaded_calibrator = active_inference(project, task, policy, device="cpu")
             self.assertEqual(Path(backend.adapter_path), adapter.resolve())
             self.assertEqual(backend.generation_config["max_new_tokens"], 256)
@@ -201,8 +201,8 @@ class ActiveModelArtifactTests(unittest.TestCase):
             self.assertTrue(tokenizer_calls[0][1]["local_files_only"])
 
     def test_rejects_adapter_revision_mismatch_corrupt_artifact_and_missing_calibrator(self):
-        from lazylabel.training.evaluation import labeling_policy_sha256
-        from lazylabel.training.task_spec import task_spec_sha256
+        from lazylabel.adapters.outbound.training.evaluation import labeling_policy_sha256
+        from lazylabel.domain.training.task_spec import task_spec_sha256
 
         with tempfile.TemporaryDirectory() as temporary:
             project, task, policy, adapter, calibrator_path, model_ref = self._project(Path(temporary))
@@ -237,7 +237,7 @@ class ActiveModelArtifactTests(unittest.TestCase):
             second_root = Path(temporary) / "second"
             second_root.mkdir()
             project, task, policy, adapter, calibrator_path, model_ref = self._project(second_root)
-            with patch("lazylabel.training.active_model.CalibrationArtifact.load", return_value=calibrator):
+            with patch("lazylabel.adapters.outbound.models.active_model.CalibrationArtifact.load", return_value=calibrator):
                 (Path(project.workspace_dir) / "models" / "active-models.json").write_text(json.dumps({task.task_id: {
                     "adapter_path": str(adapter), "calibrator_path": str(Path(temporary) / "absent.json"),
                     "model_ref": model_ref}}))
@@ -245,8 +245,8 @@ class ActiveModelArtifactTests(unittest.TestCase):
                     active_inference(project, task, policy)
 
     def test_rejects_calibrator_bound_to_another_policy_or_model(self):
-        from lazylabel.training.evaluation import labeling_policy_sha256
-        from lazylabel.training.task_spec import task_spec_sha256
+        from lazylabel.adapters.outbound.training.evaluation import labeling_policy_sha256
+        from lazylabel.domain.training.task_spec import task_spec_sha256
 
         with tempfile.TemporaryDirectory() as temporary:
             project, task, policy, *_ = self._project(Path(temporary))
@@ -254,7 +254,7 @@ class ActiveModelArtifactTests(unittest.TestCase):
                                          calibration_ref="other-calibration", labels=tuple(task.labels),
                                          task_spec_sha256=task_spec_sha256(task),
                                          source_hashes={"labeling_policy_sha256": labeling_policy_sha256(policy)})
-            with patch("lazylabel.training.active_model.CalibrationArtifact.load", return_value=calibrator):
+            with patch("lazylabel.adapters.outbound.models.active_model.CalibrationArtifact.load", return_value=calibrator):
                 with self.assertRaisesRegex(ValueError, "(?i)calibrator.*identity"):
                     active_inference(project, task, policy)
 
@@ -266,11 +266,9 @@ class ActiveModelArtifactTests(unittest.TestCase):
                 active_inference(project, task, policy)
 
     def test_calibrated_score_requires_the_exact_model_task_and_policy_identity(self):
-        from lazylabel.labeling.prediction import Prediction
-        from lazylabel.training.evaluation import (
-            CALIBRATOR_METHOD, SUPPORTED_SCORE_METHOD, CalibrationArtifact, labeling_policy_sha256,
-        )
-        from lazylabel.training.task_spec import task_spec_sha256
+        from lazylabel.domain.labeling.prediction import Prediction
+        from lazylabel.adapters.outbound.training.evaluation import CALIBRATOR_METHOD, SUPPORTED_SCORE_METHOD, CalibrationArtifact, labeling_policy_sha256
+        from lazylabel.domain.training.task_spec import task_spec_sha256
 
         task, policy = task_and_policy()
         digest = "a" * 64

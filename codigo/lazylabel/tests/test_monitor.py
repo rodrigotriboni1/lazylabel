@@ -4,14 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class MonitorTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.monitor = importlib.import_module("lazylabel.monitor")
-            self.csv_source = importlib.import_module("lazylabel.sources.csv_source")
+            self.monitor = importlib.import_module("lazylabel.adapters.outbound.persistence.baselines")
+            self.csv_source = importlib.import_module("lazylabel.adapters.outbound.sources.csv_source")
         except ImportError:
             self.fail("Structural and quality monitoring is not implemented")
 
@@ -47,15 +47,15 @@ class MonitorTests(unittest.TestCase):
             self.assertFalse(candidate.allow_extra_columns)
 
     def test_schema_cli_writes_candidate_and_monitor_reports_it(self):
-        from lazylabel.cli import main
+        from lazylabel.bootstrap.cli import run as main
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            from lazylabel.project import init_project
+            from lazylabel.adapters.outbound.persistence.projects import init_project
             init_project(root)
             csv_path = root / "ledger.csv"
             csv_path.write_text("amount\n10\n", encoding="utf-8")
-            from lazylabel.project import load_project, save_project
+            from lazylabel.adapters.outbound.persistence.projects import load_project, save_project
             config = load_project(root)
             config.sources["ledger"] = SourceSpec("ledger", "csv", csv_path)
             save_project(config, config.path)

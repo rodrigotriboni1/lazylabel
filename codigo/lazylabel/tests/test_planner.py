@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.analysis.schema import AnalysisPlan, FilterSpec, MetricSpec
-from lazylabel.sources.base import SourceSpec
+from lazylabel.domain.analysis.schema import AnalysisPlan, FilterSpec, MetricSpec
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class FakeBackend:
@@ -21,10 +21,10 @@ class FakeBackend:
 class PlannerTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.planner = importlib.import_module("lazylabel.analysis.planner")
-            self.backend_module = importlib.import_module("lazylabel.models.text_generation")
-            self.csv_source = importlib.import_module("lazylabel.sources.csv_source")
-            self.engine = importlib.import_module("lazylabel.analysis.engine")
+            self.planner = importlib.import_module("lazylabel.adapters.outbound.models.analysis_planner")
+            self.backend_module = importlib.import_module("lazylabel.adapters.outbound.models.text_generation")
+            self.csv_source = importlib.import_module("lazylabel.adapters.outbound.sources.csv_source")
+            self.engine = importlib.import_module("lazylabel.adapters.outbound.sources.analysis")
         except ImportError:
             self.fail("Local analysis planner and optional model backend are not implemented")
 
@@ -125,7 +125,7 @@ class PlannerTests(unittest.TestCase):
             ))
             plan = AnalysisPlan(
                 1, MetricSpec("sum", "amount"), ["product"],
-                importlib.import_module("lazylabel.analysis.schema").TimeAxis("date", "month"), [], "line",
+                importlib.import_module("lazylabel.domain.analysis.schema").TimeAxis("date", "month"), [], "line",
             )
             result = self.engine.run_analysis(source, plan)
             backend = FakeBackend(json.dumps({
@@ -145,7 +145,7 @@ class PlannerTests(unittest.TestCase):
             source = self.csv_source.CsvSource(SourceSpec(
                 "sales", "csv", path, schema={"date": "date", "product": "string", "amount": "decimal"}
             ))
-            TimeAxis = importlib.import_module("lazylabel.analysis.schema").TimeAxis
+            TimeAxis = importlib.import_module("lazylabel.domain.analysis.schema").TimeAxis
             plan = AnalysisPlan(1, MetricSpec("sum", "amount"), ["product"], TimeAxis("date", "month"), [], "line")
             result = self.engine.run_analysis(source, plan)
             backend = FakeBackend(json.dumps({

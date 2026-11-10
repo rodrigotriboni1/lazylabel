@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.labeling.task import LabelTask, load_task, save_task, task_file_path
-from lazylabel.review import ReviewAction, ReviewLog
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, load_task, save_task, task_file_path
+from lazylabel.adapters.outbound.persistence.reviews import ReviewAction, ReviewLog
 
 
 class LabelTaskReviewTests(unittest.TestCase):

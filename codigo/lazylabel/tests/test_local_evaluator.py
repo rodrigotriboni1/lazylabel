@@ -5,17 +5,17 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from lazylabel.labeling.policy import LabelingPolicy
-from lazylabel.labeling.prediction import Prediction, PredictionError
-from lazylabel.labeling.task import LabelTask, save_task
-from lazylabel.training.backend import _artifact_tree_sha256
-from lazylabel.training.dataset import prepare_trusted_dataset
-from lazylabel.training.evaluation import CalibrationArtifact, fit_calibrator, labeling_policy_sha256
-from lazylabel.training.local_evaluator import _metrics, _read_partition, _score
-from lazylabel.training.registry import ModelRegistry, PromotionPolicy, _derive_holdout_metrics, _digest, _promotion_reasons, _validate_holdout_row_binding
-from lazylabel.training.task_spec import task_spec_sha256
-from lazylabel.training.trusted_labels import TrustedLabelBatch, TrustedLabelRecord
-from lazylabel.models.text_generation import RAW_SCORE_METHOD
+from lazylabel.adapters.outbound.persistence.policies import LabelingPolicy
+from lazylabel.domain.labeling.prediction import Prediction, PredictionError
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task
+from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+from lazylabel.adapters.outbound.persistence.datasets import prepare_trusted_dataset
+from lazylabel.adapters.outbound.training.evaluation import CalibrationArtifact, fit_calibrator, labeling_policy_sha256
+from lazylabel.adapters.outbound.training.local_evaluator import _metrics, _read_partition, _score
+from lazylabel.adapters.outbound.persistence.registry import ModelRegistry, PromotionPolicy, _derive_holdout_metrics, _digest, _promotion_reasons, _validate_holdout_row_binding
+from lazylabel.domain.training.task_spec import task_spec_sha256
+from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelBatch, TrustedLabelRecord
+from lazylabel.adapters.outbound.models.text_generation import RAW_SCORE_METHOD
 
 
 def _prediction(label="low"):

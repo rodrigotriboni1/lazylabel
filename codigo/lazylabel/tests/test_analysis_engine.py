@@ -3,15 +3,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class AnalysisEngineTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.schema = importlib.import_module("lazylabel.analysis.schema")
-            self.engine = importlib.import_module("lazylabel.analysis.engine")
-            self.csv_source = importlib.import_module("lazylabel.sources.csv_source")
+            self.schema = importlib.import_module("lazylabel.domain.analysis.schema")
+            self.engine = importlib.import_module("lazylabel.adapters.outbound.sources.analysis")
+            self.csv_source = importlib.import_module("lazylabel.adapters.outbound.sources.csv_source")
         except ImportError:
             self.fail("Typed analytics plans and deterministic aggregation are not implemented")
 

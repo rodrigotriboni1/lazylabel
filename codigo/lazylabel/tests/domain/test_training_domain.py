@@ -129,7 +129,7 @@ def calibration_values():
 
 
 def test_calibration_fits_values_and_preserves_legacy_artifact_serialization(tmp_path):
-    from lazylabel.training.evaluation import CalibrationArtifact as LocalCalibrationArtifact
+    from lazylabel.adapters.outbound.training.evaluation import CalibrationArtifact as LocalCalibrationArtifact
 
     predictions, labels, options = calibration_values()
     artifact = fit_calibrator_from_partition(predictions, labels, **options)

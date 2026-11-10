@@ -7,10 +7,10 @@ import json
 import time
 from pathlib import Path
 
-from lazylabel.labeling.service import _prompt
-from lazylabel.labeling.suggestions import parse_suggestion
-from lazylabel.labeling.task import task_from_dict
-from lazylabel.models.text_generation import TransformersTextGenerationBackend
+from lazylabel.adapters.outbound.models.labeling import _prompt
+from lazylabel.adapters.outbound.persistence.suggestions import parse_suggestion
+from lazylabel.adapters.outbound.persistence.tasks import task_from_dict
+from lazylabel.adapters.outbound.models.text_generation import TransformersTextGenerationBackend
 
 
 def _metrics(labels, expected, predicted):

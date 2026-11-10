@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from lazylabel.training.backend import _artifact_tree_sha256
-from lazylabel.training.registry import ModelRegistry, PromotionPolicy, _derive_holdout_metrics, _digest
+from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+from lazylabel.adapters.outbound.persistence.registry import ModelRegistry, PromotionPolicy, _derive_holdout_metrics, _digest
 
 
 class TrainingRollbackTests(unittest.TestCase):
@@ -99,7 +99,7 @@ class TrainingRollbackTests(unittest.TestCase):
         evaluation_path = self.registry.root / "evaluations" / (evaluation_id + ".json")
         evaluation_path.parent.mkdir(parents=True, exist_ok=True)
         evaluation_path.write_text(json.dumps(evaluation), encoding="utf-8")
-        with patch("lazylabel.training.registry._promotion_reasons", return_value=[]):
+        with patch("lazylabel.adapters.outbound.persistence.registry._promotion_reasons", return_value=[]):
             return self.registry.promote_if_eligible(candidate_id, evaluation_id, self.policy)
 
     def _row(self, record, prediction, confidence=0.9):
@@ -132,10 +132,10 @@ class TrainingRollbackTests(unittest.TestCase):
         return payload
 
     def _with_trusted_context(self, call):
-        with patch("lazylabel.project.load_project", return_value=self.workspace), \
-             patch("lazylabel.labeling.task.load_task", return_value=self.task), \
-             patch("lazylabel.labeling.task.load_task_policy", return_value=self.labeling_policy), \
-             patch("lazylabel.training.trusted_labels.load_trusted_labels", return_value=SimpleNamespace(
+        with patch("lazylabel.adapters.outbound.persistence.projects.load_project", return_value=self.workspace), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task", return_value=self.task), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task_policy", return_value=self.labeling_policy), \
+             patch("lazylabel.adapters.outbound.sources.trusted_labels.load_trusted_labels", return_value=SimpleNamespace(
                  task_id=self.task_id, trust_kind="provided_ground_truth",
                  snapshot_sha256=self.snapshot_sha256, records=self.records)):
             return call()
@@ -180,10 +180,10 @@ class TrainingRollbackTests(unittest.TestCase):
 
     def test_stale_trusted_labels_fail_closed(self):
         health = self._health()
-        with patch("lazylabel.project.load_project", return_value=self.workspace), \
-             patch("lazylabel.labeling.task.load_task", return_value=self.task), \
-             patch("lazylabel.labeling.task.load_task_policy", return_value=self.labeling_policy), \
-             patch("lazylabel.training.trusted_labels.load_trusted_labels", side_effect=ValueError("stale")):
+        with patch("lazylabel.adapters.outbound.persistence.projects.load_project", return_value=self.workspace), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task", return_value=self.task), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task_policy", return_value=self.labeling_policy), \
+             patch("lazylabel.adapters.outbound.sources.trusted_labels.load_trusted_labels", side_effect=ValueError("stale")):
             before = self.registry.active_path.read_bytes()
             with self.assertRaisesRegex(ValueError, "trusted_labels_unavailable_or_stale"):
                 self.registry.rollback_if_unhealthy(self.task_id, health)
@@ -259,10 +259,10 @@ class TrainingRollbackTests(unittest.TestCase):
         # Patch shared module lookups once outside the worker threads. Patching
         # the same globals concurrently can restore mocks out of order and leak
         # a test double into later CLI tests.
-        with patch("lazylabel.project.load_project", return_value=self.workspace), \
-             patch("lazylabel.labeling.task.load_task", return_value=self.task), \
-             patch("lazylabel.labeling.task.load_task_policy", return_value=self.labeling_policy), \
-             patch("lazylabel.training.trusted_labels.load_trusted_labels", return_value=trusted_batch), \
+        with patch("lazylabel.adapters.outbound.persistence.projects.load_project", return_value=self.workspace), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task", return_value=self.task), \
+             patch("lazylabel.adapters.outbound.persistence.tasks.load_task_policy", return_value=self.labeling_policy), \
+             patch("lazylabel.adapters.outbound.sources.trusted_labels.load_trusted_labels", return_value=trusted_batch), \
              ThreadPoolExecutor(max_workers=2) as workers:
             results = list(workers.map(attempt, registries))
 

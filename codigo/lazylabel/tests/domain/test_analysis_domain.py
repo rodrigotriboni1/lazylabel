@@ -11,7 +11,7 @@ from lazylabel.domain.analysis import (
 )
 from lazylabel.domain.analysis.charts import MAX_CHART_POINTS, chart_specification
 from lazylabel.domain.projects import ColumnProfile, DatasetProfile
-from lazylabel.analysis.engine import run_analysis as legacy_run_analysis
+from lazylabel.adapters.outbound.sources.analysis import run_analysis as legacy_run_analysis
 
 
 PROFILES = [ColumnProfile(name, kind, 0, 4) for name, kind in
@@ -30,7 +30,7 @@ def calculate(plan, rows=ROWS, types=TYPES):
 
 
 def test_profile_values_keep_identity_and_serialization():
-    from lazylabel.profile import ColumnProfile as LegacyColumn, DatasetProfile as LegacyDataset
+    from lazylabel.adapters.outbound.sources.profile import ColumnProfile as LegacyColumn, DatasetProfile as LegacyDataset
     assert LegacyColumn is ColumnProfile
     assert LegacyDataset is DatasetProfile
     assert ColumnProfile.__module__.startswith("lazylabel.domain.projects")
@@ -181,7 +181,7 @@ def test_legacy_bridge_projects_only_required_fields_and_defers_reading():
 ])
 def test_legacy_renderer_preserves_plotly_trace_values(monkeypatch, kind, trace_type, mode):
     import plotly.io
-    from lazylabel.analysis.charts import render_chart
+    from lazylabel.adapters.outbound.persistence.charts import render_chart
     captured = []
     def capture(figure, **options):
         captured.append((figure.to_plotly_json(), options))

@@ -3,12 +3,12 @@ import json
 import tempfile
 import unittest
 
-from lazylabel.training.trusted_labels import TrustedLabelRecord
-from lazylabel.training.split import split_trusted_records
-from lazylabel.training.dataset import prepare_trusted_dataset
-from lazylabel.training.autopipeline import _manifest_for
-from lazylabel.labeling.task import LabelTask
-from lazylabel.training.trusted_labels import TrustedLabelBatch
+from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelRecord
+from lazylabel.domain.training.split import split_trusted_records
+from lazylabel.adapters.outbound.persistence.datasets import prepare_trusted_dataset
+from lazylabel.adapters.outbound.training.lifecycle import _manifest_for
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
+from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelBatch
 
 
 def _record(index, label, *, group=None):

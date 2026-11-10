@@ -10,9 +10,9 @@ from unittest.mock import patch
 class CsvSourceTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.project = importlib.import_module("lazylabel.project")
-            self.base = importlib.import_module("lazylabel.sources.base")
-            self.csv_source = importlib.import_module("lazylabel.sources.csv_source")
+            self.project = importlib.import_module("lazylabel.adapters.outbound.persistence.projects")
+            self.base = importlib.import_module("lazylabel.adapters.outbound.sources.base")
+            self.csv_source = importlib.import_module("lazylabel.adapters.outbound.sources.csv_source")
         except ImportError:
             self.fail("Read-only CSV source adapter is not implemented")
 
@@ -65,8 +65,8 @@ class CsvSourceTests(unittest.TestCase):
 class SqliteSourceTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.base = importlib.import_module("lazylabel.sources.base")
-            self.sqlite_source = importlib.import_module("lazylabel.sources.sqlite_source")
+            self.base = importlib.import_module("lazylabel.adapters.outbound.sources.base")
+            self.sqlite_source = importlib.import_module("lazylabel.adapters.outbound.sources.sqlite_source")
         except ImportError:
             self.fail("Read-only SQLite source adapter is not implemented")
 
@@ -128,7 +128,7 @@ class SqliteSourceTests(unittest.TestCase):
 
 class SourceCliTests(unittest.TestCase):
     def test_source_add_commands_store_csv_and_sqlite_sources(self):
-        from lazylabel.cli import main
+        from lazylabel.bootstrap.cli import run as main
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -146,7 +146,7 @@ class SourceCliTests(unittest.TestCase):
             self.assertEqual(main(["source", "set-type", "csv-ledger", "amount", "decimal", "--project", str(root)]), 0)
             self.assertEqual(main(["source", "add-sqlite", "db-ledger", str(db_path), "--table", "ledger", "--project", str(root)]), 0)
 
-            loaded = importlib.import_module("lazylabel.project").load_project(config_path)
+            loaded = importlib.import_module("lazylabel.adapters.outbound.persistence.projects").load_project(config_path)
             self.assertEqual(loaded.sources["csv-ledger"].kind, "csv")
             self.assertEqual(loaded.sources["csv-ledger"].schema["amount"], "decimal")
             self.assertEqual(loaded.sources["db-ledger"].table, "ledger")

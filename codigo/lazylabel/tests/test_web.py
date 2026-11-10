@@ -6,11 +6,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lazylabel.analysis.schema import AnalysisPlan, MetricSpec
-from lazylabel.project import init_project, load_project, save_project
-from lazylabel.sources.base import SourceSpec
-from lazylabel.labeling.task import LabelTask, save_task
-from lazylabel.review import ReviewLog
+from lazylabel.domain.analysis.schema import AnalysisPlan, MetricSpec
+from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+from lazylabel.adapters.outbound.sources.base import SourceSpec
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task
+from lazylabel.adapters.outbound.persistence.reviews import ReviewLog
 
 
 class QueueBackend:
@@ -29,7 +29,7 @@ class QueueBackend:
 class WebPanelTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.web_app = importlib.import_module("lazylabel.web.app")
+            self.web_app = importlib.import_module("lazylabel.bootstrap.http")
         except ImportError:
             self.fail("Local FastAPI panel and browser security controls are not implemented")
         self.temporary = tempfile.TemporaryDirectory()

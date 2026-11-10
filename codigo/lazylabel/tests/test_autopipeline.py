@@ -5,14 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lazylabel.labeling.policy import LabelingPolicy
-from lazylabel.labeling.task import LabelTask, save_task, task_file_path
-from lazylabel.project import init_project, save_project
-from lazylabel.sources.base import ProjectConfig, SourceSpec
-from lazylabel.training.backend import TrainingResult
-from lazylabel.training.autopipeline import run_training_cycle
-from lazylabel.training.registry import ModelRegistry, PromotionPolicy
-from lazylabel.training.trusted_labels import TrustedLabelSourceSpec, load_trusted_labels, supervision_key
+from lazylabel.adapters.outbound.persistence.policies import LabelingPolicy
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task, task_file_path
+from lazylabel.adapters.outbound.persistence.projects import init_project, save_project
+from lazylabel.adapters.outbound.sources.base import ProjectConfig, SourceSpec
+from lazylabel.adapters.outbound.training.backend import TrainingResult
+from lazylabel.adapters.outbound.training.lifecycle import run_training_cycle
+from lazylabel.adapters.outbound.persistence.registry import ModelRegistry, PromotionPolicy
+from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelSourceSpec, load_trusted_labels, supervision_key
 
 
 class AutonomousTrainingCycleTests(unittest.TestCase):
@@ -94,10 +94,10 @@ class AutonomousTrainingCycleTests(unittest.TestCase):
 
         output = models / "adapters" / "candidate"
         output.mkdir(parents=True)
-        with patch("lazylabel.training.autopipeline.validate_training_request"), \
-             patch("lazylabel.training.autopipeline.train_adapter", return_value=TrainingResult(
+        with patch("lazylabel.adapters.outbound.training.lifecycle.validate_training_request"), \
+             patch("lazylabel.adapters.outbound.training.lifecycle.train_adapter", return_value=TrainingResult(
                  output, self.base_ref, "f" * 64, (), {}, "d" * 64)), \
-             patch("lazylabel.training.autopipeline.evaluate_candidate", side_effect=fake_evaluate):
+             patch("lazylabel.adapters.outbound.training.lifecycle.evaluate_candidate", side_effect=fake_evaluate):
             summary = run_training_cycle(self.config_path, "risk")
         self.assertEqual(summary.state, "blocked")
         self.assertIn("training_gate_changed_during_cycle", summary.reason_codes)
@@ -127,10 +127,10 @@ class AutonomousTrainingCycleTests(unittest.TestCase):
 
         output = models / "adapters" / "candidate"
         output.mkdir(parents=True)
-        with patch("lazylabel.training.autopipeline.validate_training_request"), \
-             patch("lazylabel.training.autopipeline.train_adapter", return_value=TrainingResult(
+        with patch("lazylabel.adapters.outbound.training.lifecycle.validate_training_request"), \
+             patch("lazylabel.adapters.outbound.training.lifecycle.train_adapter", return_value=TrainingResult(
                  output, self.base_ref, "f" * 64, (), {}, "d" * 64)), \
-             patch("lazylabel.training.autopipeline.evaluate_candidate", side_effect=fake_evaluate):
+             patch("lazylabel.adapters.outbound.training.lifecycle.evaluate_candidate", side_effect=fake_evaluate):
             summary = run_training_cycle(self.config_path, "risk")
         expected = "cycle_prerequisite_failed:FileNotFoundError"
         self.assertEqual(summary.state, "blocked")
@@ -164,10 +164,10 @@ class AutonomousTrainingCycleTests(unittest.TestCase):
 
         output = models / "adapters" / "candidate"
         output.mkdir(parents=True)
-        with patch("lazylabel.training.autopipeline.validate_training_request"), \
-             patch("lazylabel.training.autopipeline.train_adapter", return_value=TrainingResult(
+        with patch("lazylabel.adapters.outbound.training.lifecycle.validate_training_request"), \
+             patch("lazylabel.adapters.outbound.training.lifecycle.train_adapter", return_value=TrainingResult(
                  output, self.base_ref, "f" * 64, (), {}, "d" * 64)), \
-             patch("lazylabel.training.autopipeline.evaluate_candidate", side_effect=fake_evaluate):
+             patch("lazylabel.adapters.outbound.training.lifecycle.evaluate_candidate", side_effect=fake_evaluate):
             summary = run_training_cycle(self.config_path, "risk")
         self.assertEqual(summary.state, "blocked")
         self.assertIn("task_or_promotion_policy_changed_during_cycle", summary.reason_codes)
@@ -179,7 +179,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from lazylabel.training.autopipeline import evaluate_post_promotion_health
+from lazylabel.adapters.outbound.training.lifecycle import evaluate_post_promotion_health
 
 
 class PostPromotionHealthTests(unittest.TestCase):
@@ -188,7 +188,7 @@ class PostPromotionHealthTests(unittest.TestCase):
         health_evaluation = {"evaluation_id": "a" * 32}
         event = object()
         registry = SimpleNamespace(rollback_if_unhealthy=lambda task_id, evaluation: event)
-        with patch("lazylabel.training.autopipeline.ModelRegistry", return_value=registry) as factory:
+        with patch("lazylabel.adapters.outbound.training.lifecycle.ModelRegistry", return_value=registry) as factory:
             result = evaluate_post_promotion_health(project, "risk", health_evaluation)
 
         factory.assert_called_once_with(project.workspace_dir)

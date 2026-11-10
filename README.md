@@ -17,7 +17,7 @@ Biblioteca para analisar e rotular dados financeiros, com linha de comando e pai
 - Painel web com 6 telas feitas em JSON ([json-render](https://github.com/vercel-labs/json-render) + shadcn), modo claro e escuro: Visão geral, **Perguntar**, Análises, Monitoramento, Rotulagem e Treinamento.
 - **Perguntar:** você faz uma pergunta, revisa o plano, o LazyLabel calcula os números de forma exata e a IA só monta a tela com eles. Telas com números que não vieram do cálculo são descartadas.
 - Modelos na nuvem: qualquer id `gateway:<provedor>/<modelo>` usa o Vercel AI Gateway.
-- Testes: 436 Python e 57 do painel passando (`bash factory/checks.sh`).
+- Testes: 340 Python e 57 do painel passando (`bash factory/checks.sh`).
 
 **Falta**
 - Testar a nuvem com uma chave real (`AI_GATEWAY_API_KEY`).
