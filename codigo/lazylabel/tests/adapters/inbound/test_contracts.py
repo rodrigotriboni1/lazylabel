@@ -12,10 +12,10 @@ from lazylabel.web.app import create_app
 
 POST_ROUTES = (
     "/api/autonomy/run", "/api/schema/capture", "/api/schema/confirm", "/api/plan",
-    "/api/analyze", "/api/label/start", "/api/label/review", "/api/dataset/prepare", "/api/train/submit",
+    "/api/analyze", "/api/ai/ui", "/api/label/start", "/api/label/review", "/api/dataset/prepare", "/api/train/submit",
 )
 GET_ROUTES = (
-    "/", "/analysis", "/monitor", "/review", "/labeling", "/training", "/api/health",
+    "/", "/analysis", "/monitor", "/review", "/ask", "/labeling", "/training", "/api/health",
     "/api/sources", "/api/autonomy/overview", "/api/autonomy/runs/{run_id}", "/api/monitor",
     "/api/label/suggestions", "/api/train/jobs/{job_id}", "/analysis/{run_id}",
     "/api/analyses/{run_id}", "/analysis/{run_id}/chart",

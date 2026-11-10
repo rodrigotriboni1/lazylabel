@@ -10,6 +10,6 @@ describe('overview shell', () => {
     render(<App client={new LazyLabelMemoryClient()} />)
     expect(await screen.findAllByRole('heading', { name: 'Seu espaço de trabalho' })).toHaveLength(1)
     expect(await screen.findByText('Servidor local ativo')).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Navegação móvel' }).querySelectorAll('a')).toHaveLength(5)
+    expect(screen.getByRole('navigation', { name: 'Navegação móvel' }).querySelectorAll('a')).toHaveLength(6)
   })
 })

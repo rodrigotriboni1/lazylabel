@@ -51,7 +51,7 @@ export AI_GATEWAY_API_KEY=...   # chave criada no painel da Vercel
 lazylabel analyze <fonte> --question "..." --model-id gateway:anthropic/claude-haiku-4.5 --project ./meu-projeto
 ```
 
-Por enquanto vale para o planejador de análise, que recebe só nomes e tipos de colunas. A rotulagem continua com modelo local: ela precisa da probabilidade de cada rótulo para calibrar a confiança, e o Gateway não fornece isso.
+Vale para o planejador de análise e para a tela **Perguntar** do painel (`/ask`): você pergunta, o LazyLabel calcula as linhas de forma exata e o modelo (`LAZYLABEL_UI_MODEL`, padrão `gateway:anthropic/claude-haiku-4.5`) só monta o layout com esses valores, usando um catálogo json-render de exibição, sem botões nem formulários. A tela gerada aponta para a análise com os números exatos. A rotulagem continua com modelo local: ela precisa da probabilidade de cada rótulo para calibrar a confiança, e o Gateway não fornece isso.
 
 ## Painel web local
 

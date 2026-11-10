@@ -27,14 +27,15 @@ class GatewayTextGenerationBackend:
         self._opener = opener
         self._timeout = timeout
 
-    def generate(self, prompt: str, *, max_new_tokens: int) -> str:
+    def generate(self, prompt: str, *, max_new_tokens: int, system=None) -> str:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string.")
         if max_new_tokens < 1 or max_new_tokens > 8192:
             raise ValueError("max_new_tokens must be between 1 and 8192.")
         if not self._api_key:
             raise RuntimeError("Set AI_GATEWAY_API_KEY to use a gateway: model.")
-        body = json.dumps({"model": self.model, "messages": [{"role": "user", "content": prompt}],
+        messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
+        body = json.dumps({"model": self.model, "messages": messages,
                            "max_tokens": max_new_tokens, "temperature": 0}).encode("utf-8")
         request = urllib.request.Request(GATEWAY_URL, data=body, method="POST", headers={
             "Authorization": "Bearer " + self._api_key, "Content-Type": "application/json"})

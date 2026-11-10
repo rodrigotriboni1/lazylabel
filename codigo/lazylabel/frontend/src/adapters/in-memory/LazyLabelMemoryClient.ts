@@ -45,4 +45,5 @@ export class LazyLabelMemoryClient implements LazyLabelClient {
   proposeAnalysis: LazyLabelClient['proposeAnalysis'] = () => this.result('proposeAnalysis')
   runAnalysis: LazyLabelClient['runAnalysis'] = () => this.result('runAnalysis')
   getAnalysisRun: LazyLabelClient['getAnalysisRun'] = () => this.result('getAnalysisRun')
+  generateUi: LazyLabelClient['generateUi'] = () => this.result('generateUi')
 }

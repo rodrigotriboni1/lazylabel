@@ -111,7 +111,9 @@ def create_app(
     *,
     host: str = "127.0.0.1",
     port: int = 8765,
+    ui_generator=None,
 ):
+    """``ui_generator()`` returns a text backend with ``generate(prompt, *, max_new_tokens, system)``."""
     if not _loopback(host):
         raise ValueError("LazyLabel web panel only binds to a loopback host.")
     if not 1 <= int(port) <= 65535:
@@ -199,6 +201,7 @@ def create_app(
     @app.get("/analysis", response_class=HTMLResponse)
     @app.get("/monitor", response_class=HTMLResponse)
     @app.get("/review", response_class=HTMLResponse)
+    @app.get("/ask", response_class=HTMLResponse)
     async def react_routes(request: Request):
         return react_page(request)
 
@@ -216,6 +219,22 @@ def create_app(
             return JSONResponse(response_payload)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/ai/ui")
+    async def generate_ui(request: Request):
+        """Lay out a json-render spec from already-computed results; the model does no arithmetic."""
+        payload, error = await _read_json(request)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        if (set(payload) != {"system", "prompt"} or not all(isinstance(payload[k], str) and payload[k].strip() for k in payload)):
+            return JSONResponse({"error": "system and prompt are required strings; extra fields are not accepted."}, status_code=400)
+        if ui_generator is None:
+            return JSONResponse({"error": "UI generation is not configured."}, status_code=503)
+        try:
+            text = ui_generator().generate(payload["prompt"], max_new_tokens=6000, system=payload["system"])
+        except (OSError, RuntimeError, ValueError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"text": text})
 
     @app.get("/api/autonomy/overview")
     async def autonomy_overview(application=Depends(get_application)):
