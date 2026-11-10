@@ -4,7 +4,7 @@ Atualizado em 09/11/2026. Faça na ordem; cada passo destrava o seguinte.
 
 ## Estado hoje
 
-- **Funciona:** 427 testes Python e 53 do painel passam (`bash factory/checks.sh`).
+- **Funciona:** 436 testes Python e 57 do painel passam (`bash factory/checks.sh`).
 - **Falta evidência:** o único experimento é sintético (24 exemplos, Qwen 0.5B, em `experimentos/sintetico-qwen-0.5b/`); o ciclo de treino só rodou com stub; não há comparação com baseline nem segunda base.
 
 ## 1. Fechar o tema com o orientador
