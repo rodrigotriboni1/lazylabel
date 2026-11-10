@@ -38,18 +38,19 @@ class AiUiRouteTest(unittest.TestCase):
 
     def test_forwards_system_and_prompt_and_returns_text(self):
         client, token = self.client(lambda: self.generator)
-        response = client.post("/api/ai/ui", json={"system": "catalog", "prompt": "rows"}, headers={"x-csrf-token": token})
+        response = client.post("/api/ai/ui", json={"prompt": "rows"}, headers={"x-csrf-token": token})
         self.assertEqual(response.status_code, 200)
         self.assertIn('"/root"', response.json()["text"])
-        self.assertEqual(self.generator.calls, [("rows", "catalog")])
+        self.assertEqual(self.generator.calls[0][0], "rows")
+        self.assertEqual(self.generator.calls[0][1], (WEB_ASSETS / "ai_ui_system_prompt.txt").read_text(encoding="utf-8"))
 
     def test_rejects_missing_csrf_extra_fields_and_unconfigured_generator(self):
         client, token = self.client(lambda: self.generator)
-        self.assertEqual(client.post("/api/ai/ui", json={"system": "s", "prompt": "p"}).status_code, 403)
-        self.assertEqual(client.post("/api/ai/ui", json={"system": "s", "prompt": "p", "model": "x"},
+        self.assertEqual(client.post("/api/ai/ui", json={"prompt": "p"}).status_code, 403)
+        self.assertEqual(client.post("/api/ai/ui", json={"prompt": "p", "system": "override"},
                                      headers={"x-csrf-token": token}).status_code, 400)
         client, token = self.client(None)
-        self.assertEqual(client.post("/api/ai/ui", json={"system": "s", "prompt": "p"},
+        self.assertEqual(client.post("/api/ai/ui", json={"prompt": "p"},
                                      headers={"x-csrf-token": token}).status_code, 503)
         self.assertEqual(self.generator.calls, [])
 

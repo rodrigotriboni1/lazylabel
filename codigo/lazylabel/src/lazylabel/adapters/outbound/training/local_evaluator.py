@@ -9,7 +9,7 @@ from uuid import uuid4
 from lazylabel.adapters.outbound.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
 from lazylabel.domain.labeling.prediction import Prediction, PredictionError
 from lazylabel.domain.labeling.decisions import rules_match as _rules_match
-from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256, read_training_metadata
 from lazylabel.adapters.outbound.training.evaluation import fit_calibrator
 from lazylabel.domain.training.evaluation import labeling_policy_sha256
 from lazylabel.domain.training.task_spec import task_spec_sha256
@@ -66,7 +66,7 @@ def _model_identity(adapter_dir, task):
     if adapter_dir is None:
         return None, {}, base, hashlib.sha256(base.encode("utf-8")).hexdigest()
     directory = Path(adapter_dir).expanduser().resolve()
-    meta = json.loads((directory / "lazylabel-training.json").read_text(encoding="utf-8"))
+    meta = read_training_metadata(directory)
     if meta.get("base_model_ref") != base:
         raise ValueError("adapter_base_model_mismatch")
     tree_hash = _artifact_tree_sha256(directory)
@@ -206,7 +206,7 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                        "training_dataset_sha256": meta.get("dataset_sha256")})
     evaluation_id = uuid4().hex
     payload = {"schema_version": 1, "evaluation_id": evaluation_id,
-               "evaluator": "lazylabel-transformers-peft-v1", "task_id": task.task_id,
+               "evaluator": "finlabel-local-transformers-peft-v1", "task_id": task.task_id,
                "task_spec_sha256": task_spec_sha256(task), "policy_id": policy.policy_id,
                "policy_sha256": policy.policy_sha256,
                "labeling_policy_sha256": labeling_policy_sha256(policy),

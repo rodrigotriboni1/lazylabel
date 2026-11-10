@@ -162,7 +162,7 @@ export interface LazyLabelClient {
   getTrainingVersions(): Promise<TrainingVersions>
   evaluateTrainingCandidate(version_id: string): Promise<{ job_id: string; state: EvaluationJob['state']; progress: string }>
   getEvaluationJob(jobId: string): Promise<EvaluationJob>
-  /** Ask the cloud model to lay out a json-render spec; returns its raw JSONL text. */
-  generateUi(system: string, prompt: string): Promise<{ text: string }>
+  /** Ask the cloud model (server-owned display-only rules) to lay out a json-render spec; returns its raw JSONL. */
+  generateUi(prompt: string): Promise<{ text: string }>
   transitionTrainingVersion(body: TransitionTrainingRequest): Promise<{ version: TrainingVersion; active_version: string | null }>
 }

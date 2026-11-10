@@ -57,8 +57,8 @@ getFindings(source: string): Promise<{ findings: Finding[] }> {
   return this.request(`/api/monitor?source=${encodeURIComponent(source)}`)
 }
 
-generateUi(system: string, prompt: string) {
-  return this.request<{ text: string }>('/api/ai/ui', { method: 'POST', body: JSON.stringify({ system, prompt }) })
+generateUi(prompt: string) {
+  return this.request<{ text: string }>('/api/ai/ui', { method: 'POST', body: JSON.stringify({ prompt }) })
 }
 
 proposeAnalysis(source: string, question: string) {

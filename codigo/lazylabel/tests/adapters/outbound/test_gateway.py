@@ -25,7 +25,9 @@ def test_sends_openai_style_request_and_returns_content():
     assert request.get_header("Authorization") == "Bearer k"
     body = json.loads(request.data)
     assert body["model"] == "anthropic/claude-haiku-4.5" and body["max_tokens"] == 64 and body["temperature"] == 0
-    assert backend.model_ref == "gateway:anthropic/claude-haiku-4.5"
+    assert backend.model_ref == backend.model_id == "gateway:anthropic/claude-haiku-4.5"
+    backend.generate("x", max_new_tokens=8, system="rules")
+    assert json.loads(opener.requests[1].data)["messages"][0] == {"role": "system", "content": "rules"}
 
 
 def test_missing_key_fails_before_any_request(monkeypatch):

@@ -25,4 +25,4 @@ lazylabel = "lazylabel.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lazylabel = ["web/templates/*.html", "web/static/*.css", "web/static/*.js", "web/static/app/index.html", "web/static/app/icons.svg", "web/static/app/assets/*"]
+lazylabel = ["web/ai_ui_system_prompt.txt", "web/templates/*.html", "web/static/*.css", "web/static/*.js", "web/static/app/index.html", "web/static/app/icons.svg", "web/static/app/assets/*"]

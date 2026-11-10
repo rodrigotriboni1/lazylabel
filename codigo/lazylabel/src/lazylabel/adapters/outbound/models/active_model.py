@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from lazylabel.adapters.outbound.models.text_generation import RAW_SCORE_METHOD, TransformersTextGenerationBackend
-from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256
+from lazylabel.adapters.outbound.training.backend import _artifact_tree_sha256, read_training_metadata
 from lazylabel.adapters.outbound.training.evaluation import CalibrationArtifact, labeling_policy_sha256
 from lazylabel.domain.training.task_spec import task_spec_sha256
 
@@ -28,7 +28,7 @@ def active_inference(project, task, policy, *, device="auto"):
     calibrator_path = Path(active.get("calibrator_path", "")).resolve()
     if not adapter.is_dir() or not calibrator_path.is_file():
         raise ValueError("active_adapter_artifact_missing")
-    metadata = json.loads((adapter / "lazylabel-training.json").read_text(encoding="utf-8"))
+    metadata = read_training_metadata(adapter)
     base_ref = task.model_id + ("@" + task.model_revision if task.model_revision else "")
     adapter_digest = _artifact_tree_sha256(adapter)
     if (metadata.get("base_model_ref") != base_ref

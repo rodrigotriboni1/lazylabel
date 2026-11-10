@@ -66,7 +66,7 @@ def prepare_trusted_dataset(batch, task, *, workspace_dir) -> TrustedDatasetMani
     coverage = built["label_coverage"]
     partition_meta = built["partitions"]
     root = Path(workspace_dir).expanduser().resolve()
-    artifact_root = root if root.name == ".lazylabel" else root / ".lazylabel"
+    artifact_root = root if root.name in (".lazylabel", ".finlabel") else root / ".lazylabel"
     destination = artifact_root / "trusted-datasets" / task.task_id / batch.snapshot_sha256
     destination.mkdir(parents=True, exist_ok=False)
     try:

@@ -23,6 +23,7 @@ class GatewayTextGenerationBackend:
             raise ValueError("gateway model id must name a provider/model, e.g. gateway:anthropic/claude-haiku-4.5")
         self.model = model
         self.model_ref = PREFIX + model
+        self.model_id = self.model_ref  # read by the analysis planner for run provenance
         self._api_key = api_key if api_key is not None else os.environ.get("AI_GATEWAY_API_KEY", "")
         self._opener = opener
         self._timeout = timeout

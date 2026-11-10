@@ -83,7 +83,7 @@ def promotion_reasons(candidate, result, policy, *, evidence_reasons):
         raise ValueError("Promotion policy is invalid or changed after configuration.")
     reasons = list(evidence_reasons)
     # This is a format/version check, not an authenticated evaluator identity.
-    if result.get("evaluator") != "lazylabel-transformers-peft-v1":
+    if result.get("evaluator") != "finlabel-local-transformers-peft-v1":
         reasons.append("unsupported_evaluator_contract")
     unsigned = dict(result)
     recorded = unsigned.pop("evaluation_sha256", None)
