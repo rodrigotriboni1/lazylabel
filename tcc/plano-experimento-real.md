@@ -1,58 +1,107 @@
 # Plano do primeiro experimento real do LazyLabel
 
-- **Data:** 2026-11-01
-- **Estado:** rascunho, não executado. Depende da aprovação do orientador para o escopo (decisão 7) e para a base e o baseline (perguntas 1–4 de [proposta-biblioteca.md](proposta-biblioteca.md)).
-- **Objetivo:** produzir a primeira evidência com dados reais: o ciclo `lazylabel run` com rótulos confiáveis reais, comparado a um baseline simples no mesmo recorte. Hoje só existe experimento sintético (24 exemplos) e o ciclo de treino só foi exercitado com stub.
-- **Base:** South German Credit corrigida, conforme [protocolo-experimental.md](protocolo-experimental.md): 1000 registros, 20 variáveis, alvo `kredit` (0 = ruim, 1 = bom), amostra estratificada de 300 ruins e 700 bons.
+- **Atualizado:** 09/11/2026 (rascunho anterior: 01/11/2026)
+- **Estado:** não executado. O tema (decisão 7) ainda depende do orientador; a base e o baseline estão nas perguntas 3 e 4 de [perguntas-orientador.md](perguntas-orientador.md).
+- **Objetivo:** a primeira evidência com dados reais. O ciclo `lazylabel run` com rótulos confiáveis reais, comparado a um baseline simples no mesmo teste final. Hoje só existe o experimento sintético (24 exemplos, em [experimentos/sintetico-qwen-0.5b/](experimentos/sintetico-qwen-0.5b/)), e o ciclo de treino só rodou com stub.
+- **Base:** South German Credit corrigida (UCI), conforme o [protocolo](protocolo-experimental.md): 1000 registros, 20 variáveis, alvo `kredit` (0 = ruim, 1 = bom), 300 ruins e 700 bons.
 
-## O que já está pronto
+## Pergunta e hipóteses
 
-- Baseline: `codigo/experimento/baseline_logreg.py`. Faz a divisão 80/20 com semente 42 e salva os índices, roda validação cruzada de 5 partições só no desenvolvimento e só abre o teste final com `--final`. Foi testado apenas com dados sintéticos gerados para este plano; não foi executado na base real.
-- Ciclo do LazyLabel: `lazylabel project init`, `source add-csv`, `task add`, `supervision add`, `run`, `run-status`, `model-status` (ver `codigo/lazylabel/README.md` e `docs/verified-training-cycle.md`).
+**Pergunta:** nos registros em que o LazyLabel aplica um rótulo, ele acerta tanto quanto um baseline simples? E em quantos registros ele aplica?
 
-## O que falta e só você pode fazer
+Escreva as hipóteses e os limiares abaixo **antes** de ver qualquer resultado, com a data. Mudar depois invalida a comparação.
 
-1. **Obter a base** na página da UCI citada no protocolo e guardar o original em `dados/brutos/`, sem alterar. Registrar fonte, data, hash SHA-256, número de linhas e dicionário (o protocolo já pede isso). Não baixei nada.
-2. **Escolher o modelo, verificar a licença e o hardware.** O `training-gate.json` exige `model_id`, `license`, `hardware`, `data_policy`, `evaluation_protocol` e `authorized: true`. Sem isso o ciclo não treina.
-3. **Definir os limiares.** O LazyLabel não presume nenhum: política de rotulagem (`min_calibrated_confidence`, regras) e política de promoção (`required_metrics`, `minimum_coverage`, `max_calibration_error`, `min_holdout_count`). Defina-os antes de ver resultados e registre a data.
-4. **Rodar o treino**, que precisa dos extras `models`/`train` (torch) na sua máquina.
+| | Hipótese | Como medir |
+|---|---|---|
+| H1 | Nos registros aplicados, a acurácia do LazyLabel é ≥ à do baseline nesses mesmos registros | Acurácia e macro-F1 no teste final, restritas aos aplicados |
+| H2 | Depois de um ciclo com promoção, a cobertura é maior que zero | Cobertura = aplicados ÷ total do teste |
+| H3 | A confiança do LazyLabel é calibrada | Erro de calibração e Brier no teste final |
 
-## Desenho para evitar vazamento
+Se o baseline empatar ou vencer, esse é o resultado e deve ser reportado assim: dados tabulares podem não justificar um modelo de linguagem.
 
-O ciclo do LazyLabel cria suas próprias partições de treino, calibração e holdout a partir da fonte de rótulos confiáveis. O protocolo exige também um teste final intocado. Por isso:
+## Limiares (preencher antes de rodar)
 
-1. Rode o baseline sem `--final` para gerar `split-indices.json`.
-2. Escreva dois CSVs a partir desses índices: `dev.csv` (80%) e `teste.csv` (20%). Só `dev.csv` vira fonte do LazyLabel.
-3. Rode o ciclo do LazyLabel só em `dev.csv` (rotulagem + rótulos confiáveis + treino + holdout interno).
-4. Congele a configuração do baseline e a do LazyLabel, registre-as, e só então avalie `teste.csv` **uma única vez** com os dois (`--final` no baseline).
-5. Compare no mesmo teste: acurácia, macro-F1, Brier, erro de calibração e cobertura. Cobertura só existe para o LazyLabel, porque ele pode se abster; compare também o baseline restrito aos mesmos registros aplicados.
+O LazyLabel não presume nenhum valor. Registre os escolhidos e a data:
 
-Se algo exigir repetir o teste final, registre a correção e não o apresente como intocado depois disso (regra do protocolo).
+| Arquivo | Campo | Valor | Data |
+|---|---|---|---|
+| política de rotulagem | `min_calibrated_confidence` | | |
+| política de promoção | `required_metrics` | | |
+| política de promoção | `minimum_coverage` | | |
+| política de promoção | `max_calibration_error` | | |
+| política de promoção | `min_holdout_count` | | |
 
-## Comandos (modelo, a ajustar)
+## Modelo
+
+- **Rotulagem e treino: modelo local.** A rotulagem precisa da probabilidade de cada rótulo para calibrar a confiança, e o Vercel AI Gateway não fornece isso. Candidato: `Qwen/Qwen2.5-0.5B-Instruct`, o mesmo do experimento sintético. Precisa dos extras `models` e `train` (torch).
+- **Nuvem:** autorizada pela decisão 8, mas fora deste experimento. Ela entra quando a rotulagem pela nuvem existir (opção a ser escolhida em [proximos-passos.md](proximos-passos.md)).
+- O `training-gate.json` exige `model_id`, `license`, `hardware`, `data_policy`, `evaluation_protocol` e `authorized: true`. Sem ele, o ciclo não treina.
+
+## Desenho contra vazamento
+
+O LazyLabel cria as próprias partições (treino, calibração, holdout) a partir dos rótulos confiáveis. O protocolo exige, além disso, um teste final intocado:
+
+1. Rode o baseline **sem** `--final`. Ele grava a divisão 80/20 (semente 42) em `split-indices.json` e faz validação cruzada só no desenvolvimento.
+2. A partir desses índices, gere `dev.csv` (80%) e `teste.csv` (20%). Só `dev.csv` vira fonte do LazyLabel.
+3. Rode o ciclo do LazyLabel só em `dev.csv`.
+4. Congele e registre as duas configurações. Só então avalie `teste.csv` **uma única vez** com os dois (`--final` no baseline).
+5. Compare no mesmo teste: acurácia, macro-F1, Brier, erro de calibração e cobertura. Compare também o baseline restrito aos registros que o LazyLabel aplicou.
+
+Se algo exigir repetir o teste final, registre a correção e não apresente mais o teste como intocado.
+
+## Checklist
+
+| # | Passo | Quem |
+|---|---|---|
+| 1 | Aprovar base e baseline com o orientador (perguntas 3 e 4) | Você |
+| 2 | Baixar a base da UCI e guardar o original sem alterar em `tcc/experimentos/sgc-real/dados/brutos/`, com fonte, data, SHA-256, número de linhas e dicionário | Você |
+| 3 | Preencher hipóteses e limiares acima, com data | Você |
+| 4 | Escolher modelo, conferir licença e hardware; escrever `training-gate.json` | Você |
+| 5 | Rodar o baseline sem `--final` e gerar `dev.csv` e `teste.csv` | Claude |
+| 6 | Escrever `tarefa-risco.json` e as políticas, a partir do `lazylabel quickstart` | Claude |
+| 7 | Rodar o ciclo do LazyLabel em `dev.csv` e guardar `run-status` e `model-status` | Você (precisa de torch) |
+| 8 | Avaliar o teste final uma vez com os dois e preencher a tabela de resultados | Claude |
+
+## Comandos
 
 ```bash
-# 1. baseline (não abre o teste)
-uv run --with scikit-learn --with pandas python codigo/experimento/baseline_logreg.py \
-  --csv dados/brutos/<arquivo>.csv --target kredit --numeric <colunas-numericas> --out resultados/baseline
+E=tcc/experimentos/sgc-real
 
-# 2. projeto LazyLabel só com dev.csv
-lazylabel project init ./projeto-sgc
-lazylabel source add-csv dev ./dados/processados/dev.csv --project ./projeto-sgc
-lazylabel task add ./tarefa-risco.json --project ./projeto-sgc
+# 5. baseline (não abre o teste)
+uv run --with scikit-learn --with pandas python codigo/experimento/baseline_logreg.py \
+  --csv $E/dados/brutos/<arquivo>.csv --target kredit --numeric <colunas-numericas> --out $E/resultados/baseline
+
+# 7. LazyLabel só com dev.csv
+lazylabel project init $E/projeto
+lazylabel source add-csv dev $E/dados/processados/dev.csv --project $E/projeto
+lazylabel task add $E/tarefa-risco.json --project $E/projeto
 lazylabel supervision add dev --task risco --label-column kredit \
-  --provenance <origem-registrada> --trust-kind provided_ground_truth \
-  --label-map '{"0":"bad","1":"good"}' --project ./projeto-sgc
-lazylabel run --task risco --source dev --project ./projeto-sgc
-lazylabel run-status RUN_ID --project ./projeto-sgc
-lazylabel model-status risco --project ./projeto-sgc
+  --provenance "UCI South German Credit, baixado em <data>" --trust-kind provided_ground_truth \
+  --label-map '{"0":"bad","1":"good"}' --project $E/projeto
+lazylabel run --task risco --source dev --project $E/projeto
+lazylabel run-status <RUN_ID> --project $E/projeto
+lazylabel model-status risco --project $E/projeto
+
+# 8. teste final (uma única vez)
+uv run --with scikit-learn --with pandas python codigo/experimento/baseline_logreg.py \
+  --csv $E/dados/brutos/<arquivo>.csv --target kredit --numeric <colunas-numericas> --out $E/resultados/baseline --final
 ```
 
-`lazylabel quickstart` gera um projeto de exemplo com arquivos iniciais de tarefa e política, que servem de modelo para `tarefa-risco.json` e para a política.
+Detalhes do ciclo de treino: [codigo/lazylabel/docs/verified-training-cycle.md](../codigo/lazylabel/docs/verified-training-cycle.md).
+
+## Resultados (preencher no passo 8)
+
+| Métrica (teste final) | Baseline (todos) | Baseline (só aplicados) | LazyLabel |
+|---|---|---|---|
+| Acurácia | | | |
+| Macro-F1 | | | |
+| Brier | | | |
+| Erro de calibração | | | |
+| Cobertura | 100% | | |
 
 ## Riscos
 
-- A coluna de rótulo confiável nunca pode estar em `input_columns` da tarefa.
-- Dados tabulares podem não justificar um LLM: se o baseline empatar ou vencer, esse é o resultado e deve ser reportado como tal.
-- Antes da primeira promoção, toda previsão pode ficar em quarentena (`uncalibrated`). A pergunta ao orientador em [pergunta-orientador-calibracao-modelo-base.md](perguntas-orientador.md) trata disso; o resultado do ciclo pode ser "cobertura zero" até haver promoção.
-- South German Credit não permite afirmar nada sobre carteiras brasileiras nem sobre inadimplência em horizonte definido.
+- A coluna `kredit` nunca pode estar em `input_columns` da tarefa.
+- Antes da primeira promoção, toda previsão pode ir para quarentena (`uncalibrated`), e o resultado pode ser "cobertura zero". Ver a pergunta 8 em [perguntas-orientador.md](perguntas-orientador.md).
+- Com 800 registros de desenvolvimento divididos em três partições, o holdout interno fica pequeno; `min_holdout_count` precisa ser compatível com isso.
+- A South German Credit não permite afirmar nada sobre carteiras brasileiras nem sobre inadimplência num horizonte definido.
