@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.labeling.policy import LabelingPolicy
-from lazylabel.labeling.prediction import Prediction, PredictionError
-from lazylabel.labeling.service import run_labeling
-from lazylabel.labeling.task import LabelTask
-from lazylabel.sources.base import SourceSpec
-from lazylabel.sources.csv_source import CsvSource
+from lazylabel.adapters.outbound.persistence.policies import LabelingPolicy
+from lazylabel.domain.labeling.prediction import Prediction, PredictionError
+from lazylabel.adapters.outbound.models.labeling import run_labeling
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
+from lazylabel.adapters.outbound.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.csv_source import CsvSource
 
 
 def _prediction(label="low", rationale="private rationale"):

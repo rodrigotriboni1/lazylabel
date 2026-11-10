@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from lazylabel.adapters.inbound.http.app import create_app
 from lazylabel.bootstrap.application import build_application
-from lazylabel.project import init_project
+from lazylabel.adapters.outbound.persistence.projects import init_project
 
 WEB_ASSETS = Path(__file__).resolve().parent.parent / "src" / "lazylabel" / "web"
 

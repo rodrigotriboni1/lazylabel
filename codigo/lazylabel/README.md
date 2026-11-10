@@ -160,7 +160,7 @@ Exemplo de `risk-policy.json` para a tarefa `risk` acima:
 - `max_staleness_seconds`: inteiro positivo que limita, por registro, o tempo entre o início da inferência e a conclusão da calibração. O tempo gasto processando outros registros não entra nesse limite.
 
 ```python
-from lazylabel.labeling.task import load_task, load_task_policy
+from lazylabel.adapters.outbound.persistence.tasks import load_task, load_task_policy
 
 # load_task rejeita políticas ilegíveis, malformadas ou incompatíveis.
 task = load_task("./risk.json")
@@ -234,7 +234,7 @@ O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica a
 ## Contrato de previsão local estruturada
 
 Backends locais implementam `predict(selected_values, *, task, max_new_tokens)`
-e retornam `lazylabel.labeling.prediction.Prediction`, um objeto imutável com rótulo,
+e retornam `lazylabel.domain.labeling.prediction.Prediction`, um objeto imutável com rótulo,
 justificativa opcional, evidência por classe, método e digest SHA-256 da resposta.
 O mapa de evidência também é imutável. JSON inválido recebe `PredictionError`
 com `reason_code="invalid_output"`; classe fora da tarefa recebe `unknown_label`.

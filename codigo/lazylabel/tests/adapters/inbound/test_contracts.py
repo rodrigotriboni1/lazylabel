@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from lazylabel.web.app import create_app
+from lazylabel.bootstrap.http import create_app
 
 POST_ROUTES = (
     "/api/autonomy/run", "/api/schema/capture", "/api/schema/confirm", "/api/plan",
@@ -52,8 +52,8 @@ def test_host_check_protects_page_static_and_api_delivery(path):
 def test_entrypoint_imports_do_not_load_optional_web_or_model_libraries():
     script = '''
 import sys
-import lazylabel.cli
-import lazylabel.web.app
+import lazylabel.bootstrap.cli
+import lazylabel.bootstrap.http
 from lazylabel.bootstrap.application import build_application
 build_application('/unused')
 assert not {'fastapi', 'uvicorn', 'torch', 'transformers', 'peft', 'datasets', 'trl', 'plotly', 'jinja2'} & set(sys.modules)

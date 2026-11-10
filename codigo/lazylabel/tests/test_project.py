@@ -8,8 +8,8 @@ from pathlib import Path
 class ProjectContractTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.project = importlib.import_module("lazylabel.project")
-            self.source_base = importlib.import_module("lazylabel.sources.base")
+            self.project = importlib.import_module("lazylabel.adapters.outbound.persistence.projects")
+            self.source_base = importlib.import_module("lazylabel.adapters.outbound.sources.base")
         except ImportError:
             self.fail("LazyLabel project workspace and source contracts are not implemented")
 

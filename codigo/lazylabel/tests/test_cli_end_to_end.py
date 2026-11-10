@@ -7,11 +7,11 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from lazylabel.analysis.schema import AnalysisPlan, MetricSpec, TimeAxis, plan_to_dict
-from lazylabel.cli import main
+from lazylabel.domain.analysis.schema import AnalysisPlan, MetricSpec, TimeAxis, plan_to_dict
+from lazylabel.bootstrap.cli import run as main
 from lazylabel.adapters.inbound.cli.commands import main as inbound_cli_main
-from lazylabel.project import init_project, load_project, save_project
-from lazylabel.sources.base import SourceSpec
+from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class AnalysisCliEndToEndTests(unittest.TestCase):

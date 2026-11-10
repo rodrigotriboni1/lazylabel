@@ -5,9 +5,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lazylabel.labeling.task import LabelTask, save_task
-from lazylabel.project import init_project, load_project, save_project
-from lazylabel.sources.base import SourceSpec
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task
+from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class AutonomousWebTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class AutonomousWebTests(unittest.TestCase):
         config.sources["portfolio"] = SourceSpec("portfolio", "csv", source_path, schema={"amount": "decimal", "private": "string"})
         save_project(config, config.path)
         save_task(LabelTask("risk", "Classify portfolio risk", ("amount",), ("low", "high"), "local-test-model"), config.workspace_dir / "tasks" / "risk.json")
-        from lazylabel.web.app import create_app
+        from lazylabel.bootstrap.http import create_app
         self.client = TestClient(create_app(self.root, host="127.0.0.1", port=8765), base_url="http://127.0.0.1:8765")
 
     def tearDown(self):
@@ -57,7 +57,7 @@ class AutonomousWebTests(unittest.TestCase):
         self.assertNotIn("Classify portfolio risk", response.text)
 
     def test_autonomy_overview_rejects_a_tampered_model_event(self):
-        from lazylabel.training.registry import ModelRegistry, _digest
+        from lazylabel.adapters.outbound.persistence.registry import ModelRegistry, _digest
         event = {
             "candidate_id": "c" * 32, "evaluation_id": "e" * 32, "task_id": "risk",
             "action": "reject", "reason_codes": [], "previous_model_ref": None,

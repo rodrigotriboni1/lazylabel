@@ -4,7 +4,7 @@ import unittest
 import sys
 from pathlib import Path
 
-from lazylabel.training.backend import TrainingConfig, validate_training_request
+from lazylabel.adapters.outbound.training.backend import TrainingConfig, validate_training_request
 
 
 class TrainingGateTests(unittest.TestCase):

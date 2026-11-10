@@ -9,16 +9,16 @@ from contextlib import redirect_stdout
 from decimal import Decimal
 from pathlib import Path
 
-from lazylabel.analysis.schema import AnalysisPlan, MetricSpec, TimeAxis
-from lazylabel.sources.base import SourceSpec
+from lazylabel.domain.analysis.schema import AnalysisPlan, MetricSpec, TimeAxis
+from lazylabel.adapters.outbound.sources.base import SourceSpec
 
 
 class AnalysisServiceTests(unittest.TestCase):
     def setUp(self):
         try:
-            self.service = importlib.import_module("lazylabel.analysis.service")
-            self.csv_source = importlib.import_module("lazylabel.sources.csv_source")
-            self.sqlite_source = importlib.import_module("lazylabel.sources.sqlite_source")
+            self.service = importlib.import_module("lazylabel.adapters.outbound.persistence.analysis_runs")
+            self.csv_source = importlib.import_module("lazylabel.adapters.outbound.sources.csv_source")
+            self.sqlite_source = importlib.import_module("lazylabel.adapters.outbound.sources.sqlite_source")
         except ImportError:
             self.fail("Analysis run persistence and offline charts are not implemented")
 
@@ -112,15 +112,15 @@ class AnalysisServiceTests(unittest.TestCase):
             self.assertFalse(parent.exists())
 
     def test_cli_executes_reviewable_plan_and_saves_local_artifacts(self):
-        from lazylabel.cli import main
-        from lazylabel.project import init_project
+        from lazylabel.bootstrap.cli import run as main
+        from lazylabel.adapters.outbound.persistence.projects import init_project
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             init_project(root)
             source_path = root / "sales.csv"
             source_path.write_text("date,product,amount\n2025-01-01,A,10\n", encoding="utf-8")
-            project = importlib.import_module("lazylabel.project")
+            project = importlib.import_module("lazylabel.adapters.outbound.persistence.projects")
             config = project.load_project(root)
             config.sources["sales"] = SourceSpec(
                 "sales", "csv", source_path,

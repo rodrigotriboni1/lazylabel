@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.labeling.policy import LabelingPolicy, load_policy
-from lazylabel.labeling.task import LabelTask
+from lazylabel.adapters.outbound.persistence.policies import LabelingPolicy, load_policy
+from lazylabel.adapters.outbound.persistence.tasks import LabelTask
 
 
 class LabelingPolicyTests(unittest.TestCase):

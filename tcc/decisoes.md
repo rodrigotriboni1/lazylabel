@@ -30,7 +30,8 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 
 - **Por quê:** trocar modelo, fonte ou interface sem reescrever as regras. É o que sustenta a tese de reutilização.
 - **Como:** `domain` ← `application` ← `adapters` (CLI, HTTP, fontes, modelos) ← `bootstrap`. Testes de arquitetura impedem dependência na direção errada. Módulos antigos ficam como fachadas.
-- **Custo:** mais arquivos; fachadas antigas precisam de data para sair.
+- **Custo:** mais arquivos.
+- **Atualização (09/11/2026):** as fachadas de compatibilidade (`lazylabel.cli`, `lazylabel.labeling.*` etc.) foram removidas; não havia usuários externos. Correspondência dos caminhos em `codigo/lazylabel/docs/architecture/clean-hexagonal-module-map.md`.
 
 ## 4. Aplicado ou quarentena
 

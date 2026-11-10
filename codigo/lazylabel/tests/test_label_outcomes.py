@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lazylabel.cli import _verified_label_run
-from lazylabel.labeling.outcomes import LabelOutcome, write_label_run
+from lazylabel.adapters.outbound.persistence.pipeline_runs import _verified_label_run
+from lazylabel.adapters.outbound.persistence.label_runs import LabelOutcome, write_label_run
 
 
 def _outcome(run_id, *, state="applied", reason_code=None, label="low"):

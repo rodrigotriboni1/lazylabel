@@ -8,10 +8,10 @@ import pytest
 
 @pytest.fixture
 def training_project(tmp_path):
-    from lazylabel.project import init_project, load_project, save_project
-    from lazylabel.sources.base import ProjectConfig, SourceSpec
-    from lazylabel.labeling.task import LabelTask, save_task, task_file_path
-    from lazylabel.training.trusted_labels import TrustedLabelSourceSpec, supervision_key
+    from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+    from lazylabel.adapters.outbound.sources.base import ProjectConfig, SourceSpec
+    from lazylabel.adapters.outbound.persistence.tasks import LabelTask, save_task, task_file_path
+    from lazylabel.adapters.outbound.sources.trusted_labels import TrustedLabelSourceSpec, supervision_key
     config_path = init_project(tmp_path)
     source = tmp_path / 'reference.csv'
     source.write_text('amount,class\n' + ''.join('{},{}\n'.format(i, 'L' if i < 14 else 'H') for i in range(28)))

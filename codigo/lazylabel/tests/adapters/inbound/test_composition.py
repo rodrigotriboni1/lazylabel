@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 
 def test_cli_inspection_uses_injected_application_without_accessing_a_file():
-    from lazylabel.cli import main
+    from lazylabel.bootstrap.cli import run as main
     calls = []
     def inspect(path, target=None):
         calls.append((path, target))
@@ -23,7 +23,7 @@ def test_cli_inspection_uses_injected_application_without_accessing_a_file():
 
 
 def test_http_dependency_override_replaces_application_without_a_real_project():
-    from lazylabel.web.app import create_app
+    from lazylabel.bootstrap.http import create_app
     from lazylabel.adapters.inbound.http.app import get_application
     app = create_app("/does-not-exist", application=object())
     app.dependency_overrides[get_application] = lambda: SimpleNamespace(
@@ -36,8 +36,8 @@ def test_http_dependency_override_replaces_application_without_a_real_project():
 
 def test_bootstrap_analysis_accepts_overridden_run_store_and_runtime(tmp_path):
     from lazylabel.bootstrap.application import build_application
-    from lazylabel.project import init_project, load_project, save_project
-    from lazylabel.sources.base import SourceSpec
+    from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+    from lazylabel.adapters.outbound.sources.base import SourceSpec
     from lazylabel.domain.analysis.schema import plan_from_dict
     init_project(tmp_path)
     path = tmp_path / "data.csv"
@@ -61,9 +61,9 @@ def test_bootstrap_analysis_accepts_overridden_run_store_and_runtime(tmp_path):
 
 
 def test_cli_explicit_plan_does_not_implicitly_use_configured_analytics_model(tmp_path):
-    from lazylabel.cli import main
-    from lazylabel.project import init_project, load_project, save_project
-    from lazylabel.sources.base import SourceSpec
+    from lazylabel.bootstrap.cli import run as main
+    from lazylabel.adapters.outbound.persistence.projects import init_project, load_project, save_project
+    from lazylabel.adapters.outbound.sources.base import SourceSpec
     init_project(tmp_path)
     csv = tmp_path / "data.csv"
     csv.write_text("amount\n12\n")

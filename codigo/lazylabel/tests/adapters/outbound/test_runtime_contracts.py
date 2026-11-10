@@ -10,38 +10,32 @@ import sys
 import pytest
 
 
-MODULE_PAIRS = [
-    ('lazylabel.monitor', 'lazylabel.adapters.outbound.persistence.baselines'),
-    ('lazylabel.review', 'lazylabel.adapters.outbound.persistence.reviews'),
-    ('lazylabel.labeling.task', 'lazylabel.adapters.outbound.persistence.tasks'),
-    ('lazylabel.labeling.policy', 'lazylabel.adapters.outbound.persistence.policies'),
-    ('lazylabel.labeling.outcomes', 'lazylabel.adapters.outbound.persistence.label_runs'),
-    ('lazylabel.labeling.suggestions', 'lazylabel.adapters.outbound.persistence.suggestions'),
-    ('lazylabel.analysis.service', 'lazylabel.adapters.outbound.persistence.analysis_runs'),
-    ('lazylabel.analysis.planner', 'lazylabel.adapters.outbound.models.analysis_planner'),
-    ('lazylabel.analysis.charts', 'lazylabel.adapters.outbound.persistence.charts'),
-    ('lazylabel.labeling.service', 'lazylabel.adapters.outbound.models.labeling'),
-    ('lazylabel.models.text_generation', 'lazylabel.adapters.outbound.models.text_generation'),
-    ('lazylabel.training.backend', 'lazylabel.adapters.outbound.training.backend'),
-    ('lazylabel.training.jobs', 'lazylabel.adapters.outbound.training.jobs'),
-    ('lazylabel.training.dataset', 'lazylabel.adapters.outbound.persistence.datasets'),
-    ('lazylabel.training.evaluation', 'lazylabel.adapters.outbound.training.evaluation'),
-    ('lazylabel.training.registry', 'lazylabel.adapters.outbound.persistence.registry'),
-    ('lazylabel.training.trusted_labels', 'lazylabel.adapters.outbound.sources.trusted_labels'),
-    ('lazylabel.training.active_model', 'lazylabel.adapters.outbound.models.active_model'),
-    ('lazylabel.training.local_evaluator', 'lazylabel.adapters.outbound.training.local_evaluator'),
-    ('lazylabel.training.autopipeline', 'lazylabel.adapters.outbound.training.lifecycle'),
+ADAPTER_MODULES = [
+    'lazylabel.adapters.outbound.persistence.baselines',
+    'lazylabel.adapters.outbound.persistence.reviews',
+    'lazylabel.adapters.outbound.persistence.tasks',
+    'lazylabel.adapters.outbound.persistence.policies',
+    'lazylabel.adapters.outbound.persistence.label_runs',
+    'lazylabel.adapters.outbound.persistence.suggestions',
+    'lazylabel.adapters.outbound.persistence.analysis_runs',
+    'lazylabel.adapters.outbound.models.analysis_planner',
+    'lazylabel.adapters.outbound.persistence.charts',
+    'lazylabel.adapters.outbound.models.labeling',
+    'lazylabel.adapters.outbound.models.text_generation',
+    'lazylabel.adapters.outbound.training.backend',
+    'lazylabel.adapters.outbound.training.jobs',
+    'lazylabel.adapters.outbound.persistence.datasets',
+    'lazylabel.adapters.outbound.training.evaluation',
+    'lazylabel.adapters.outbound.persistence.registry',
+    'lazylabel.adapters.outbound.sources.trusted_labels',
+    'lazylabel.adapters.outbound.models.active_model',
+    'lazylabel.adapters.outbound.training.local_evaluator',
+    'lazylabel.adapters.outbound.training.lifecycle',
 ]
 
 
-@pytest.mark.parametrize('legacy,concrete', MODULE_PAIRS)
-def test_public_module_identity_preserves_extensions_and_exception_types(legacy, concrete):
-    # Losing module identity silently breaks legacy extension/patch points.
-    assert importlib.import_module(legacy) is importlib.import_module(concrete)
-
-
-def test_importing_all_adapters_and_legacy_entry_points_keeps_optional_libraries_lazy():
-    names = [new for old, new in MODULE_PAIRS] + ['lazylabel', 'lazylabel.cli']
+def test_importing_all_adapters_and_entry_points_keeps_optional_libraries_lazy():
+    names = ADAPTER_MODULES + ['lazylabel', 'lazylabel.bootstrap.cli']
     script = ('import importlib, sys\n' +
               '\n'.join('importlib.import_module({!r})'.format(name) for name in names) +
               '\nassert not set(sys.modules).intersection({"torch", "transformers", "peft", "trl", "fastapi"})\n')

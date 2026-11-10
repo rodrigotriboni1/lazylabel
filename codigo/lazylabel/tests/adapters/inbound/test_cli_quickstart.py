@@ -3,7 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 
 from lazylabel.bootstrap.application import build_application
 from lazylabel.bootstrap.cli import run
-from lazylabel.labeling.task import load_task, load_task_policy
+from lazylabel.adapters.outbound.persistence.tasks import load_task, load_task_policy
 
 
 def cli(*argv):

@@ -3,10 +3,10 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 
-from lazylabel.analysis.engine import run_analysis
-from lazylabel.analysis.schema import AnalysisPlan, FilterSpec, MetricSpec, TimeAxis
-from lazylabel.sources.base import SourceSpec
-from lazylabel.sources.csv_source import CsvSource
+from lazylabel.adapters.outbound.sources.analysis import run_analysis
+from lazylabel.domain.analysis.schema import AnalysisPlan, FilterSpec, MetricSpec, TimeAxis
+from lazylabel.adapters.outbound.sources.base import SourceSpec
+from lazylabel.adapters.outbound.sources.csv_source import CsvSource
 
 
 class AnalysisEdgeCaseTests(unittest.TestCase):

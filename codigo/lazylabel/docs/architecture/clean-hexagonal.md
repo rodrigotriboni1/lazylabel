@@ -1,6 +1,6 @@
 # LazyLabel: Clean Architecture e arquitetura hexagonal
 
-Este documento descreve a arquitetura implementada no LazyLabel. Os caminhos abaixo são relativos à raiz do repositório. As regras de dependência executáveis estão em `tests/architecture/test_layer_dependencies.py`; os contratos das fachadas estão em `tests/compatibility/`.
+Este documento descreve a arquitetura implementada no LazyLabel. Os caminhos abaixo são relativos à raiz do repositório. As regras de dependência executáveis estão em `tests/architecture/test_layer_dependencies.py`.
 
 ## Fluxo e dependências
 
@@ -16,7 +16,7 @@ flowchart LR
   end
 
   FHTTP -->|HTTP local · DTOs wire| HIN["adapters/inbound/http/app.py\nFastAPI, rotas e segurança"]
-  CLI["cli.py\nlazylabel.cli:main"] --> CBOOT["bootstrap/cli.py"]
+  CLI["comando lazylabel"] --> CBOOT["bootstrap/cli.py"]
   HBOOT["bootstrap/http.py"] --> HIN
   HIN --> APP
   CBOOT --> APP["application/use_cases/*\nWorkspaceApplication + casos de uso"]
@@ -30,7 +30,7 @@ flowchart LR
   OUT --> MODELS["Transformers / PEFT\nimportação e uso opcionais"]
 ```
 
-No diagrama, `lazylabel.cli:main` é a fachada pública que delega à composição/adapter CLI. `lazylabel.web.app:create_app` preserva o import público e delega à composição HTTP. Na interface, `frontend/src/main.tsx` cria o `LazyLabelHttpClient`, e `frontend/src/App.tsx` fornece o cliente tipado às páginas. Apenas `frontend/src/adapters/http/LazyLabelHttpClient.ts` faz requests de rede; `LazyLabelMemoryClient.ts` implementa a mesma porta para testes.
+No diagrama, `lazylabel.bootstrap.cli:run` é o entrypoint do comando `lazylabel` e delega ao adapter CLI. `lazylabel.bootstrap.http:create_app` compõe o adapter HTTP. Na interface, `frontend/src/main.tsx` cria o `LazyLabelHttpClient`, e `frontend/src/App.tsx` fornece o cliente tipado às páginas. Apenas `frontend/src/adapters/http/LazyLabelHttpClient.ts` faz requests de rede; `LazyLabelMemoryClient.ts` implementa a mesma porta para testes.
 
 ## Camadas Python
 
@@ -75,11 +75,9 @@ Hoje o bootstrap seleciona CSV e SQLite a partir de `SourceSpec.kind`. Adicionar
 
 As páginas e componentes em `frontend/src/pages/` e `frontend/src/components/` consomem `LazyLabelClient` pelo provider. Uma nova operação começa na porta tipada, recebe implementação no adapter HTTP e no adapter em memória, e só então é usada pela apresentação. O backend Python permanece a fonte única para regras de negócio.
 
-## Compatibilidade e fachadas
+## Caminhos de import
 
-Imports e entrypoints antigos continuam suportados por fachadas em `src/lazylabel/`, incluindo `lazylabel.cli:main`, `lazylabel.web.app:create_app` e os exports públicos cobertos pelos testes de compatibilidade. Módulos legados como `lazylabel.project`, `lazylabel.profile`, `lazylabel.sources.*`, `lazylabel.analysis.*`, `lazylabel.labeling.*`, `lazylabel.models.*` e `lazylabel.training.*` encaminham para destinos canônicos. Algumas fachadas usam alias de identidade de módulo para preservar pontos de extensão e monkeypatch já utilizados.
-
-Regra para código novo: importe pelo caminho canônico (`lazylabel.domain`, `lazylabel.application`, `lazylabel.adapters` ou `lazylabel.bootstrap`), nunca pela fachada legada. A fachada existe para compatibilidade, não para adicionar lógica. Testes em `tests/architecture/test_layer_dependencies.py` mantêm uma lista explícita de destinos permitidos e bloqueiam implementação/lógica e imports laterais nas fachadas; `tests/compatibility/` fixa os símbolos e entrypoints públicos. Não remova nem altere esses caminhos sem uma decisão de versão e depreciação separada.
+Importe sempre pelo caminho canônico (`lazylabel.domain`, `lazylabel.application`, `lazylabel.adapters` ou `lazylabel.bootstrap`). As antigas fachadas de compatibilidade foram removidas em 09/11/2026; a tabela de correspondência está em `clean-hexagonal-module-map.md`. `tests/architecture/test_layer_dependencies.py` bloqueia módulos fora dessas camadas.
 
 ## Verificações reproduzíveis
 
@@ -104,4 +102,4 @@ npm --prefix frontend run lint
 git diff --check
 ```
 
-Os testes de dependência/compatibilidade também podem ser executados isoladamente: `.venv/bin/python -m pytest tests/architecture tests/compatibility -q`. O build produz os assets React locais usados pelo FastAPI; o servidor deve ficar ligado somente ao loopback. Consulte o relatório da etapa final em `.superpowers/sdd/2026-10-26-lazylabel-clean-hexagonal/task-13-report.md` para resultados da integração e limites do QA feito nesta revisão.
+Os testes de dependência também podem ser executados isoladamente: `.venv/bin/python -m pytest tests/architecture -q`. O build produz os assets React locais usados pelo FastAPI; o servidor deve ficar ligado somente ao loopback.

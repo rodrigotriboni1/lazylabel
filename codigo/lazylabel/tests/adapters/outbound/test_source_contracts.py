@@ -12,8 +12,8 @@ def adapters():
 
 @pytest.mark.parametrize('kind', ['csv', 'sqlite'])
 def test_project_source_adapters_project_selected_values_without_mutating_source(tmp_path, kind):
-    from lazylabel.project import init_project, save_project
-    from lazylabel.sources.base import ProjectConfig, SourceSpec
+    from lazylabel.adapters.outbound.persistence.projects import init_project, save_project
+    from lazylabel.adapters.outbound.sources.base import ProjectConfig, SourceSpec
     config_path = init_project(tmp_path)
     if kind == 'csv':
         path = tmp_path / 'ledger.csv'
@@ -48,7 +48,7 @@ def test_project_source_adapters_project_selected_values_without_mutating_source
 
 
 def test_unknown_source_preserves_lookup_exception(tmp_path):
-    from lazylabel.project import init_project
+    from lazylabel.adapters.outbound.persistence.projects import init_project
     init_project(tmp_path)
     _, sources = adapters()
     with pytest.raises(KeyError, match='Unknown source'):
@@ -56,7 +56,7 @@ def test_unknown_source_preserves_lookup_exception(tmp_path):
 
 
 def test_legacy_capabilities_require_all_flags_and_records_cross_application_boundary():
-    from lazylabel.sources.base import SourceCapabilities, SourceRecord
+    from lazylabel.adapters.outbound.sources.base import SourceCapabilities, SourceRecord
     from lazylabel.application.ports.sources import SourceRecord as ApplicationRecord
     with pytest.raises(TypeError):
         SourceCapabilities()
