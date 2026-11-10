@@ -1,16 +1,21 @@
 ## Agent skills
 
-### Issue tracker
+### Issue tracker (local Markdown)
 
-Issues and specs live as Markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues and specs live as Markdown files under `.scratch/` (created on demand).
+
+- One feature per directory: `.scratch/<feature-slug>/`; the spec is `spec.md`; tickets are `issues/<NN>-<slug>.md`, numbered from `01`, one file each.
+- Triage state is a `Status:` line near the top; comments append under `## Comments`.
+- "Publish to the issue tracker" = create a file under `.scratch/<feature-slug>/`. "Fetch the ticket" = read the path the user gives.
+- Wayfinding: map in `.scratch/<effort>/map.md`; child tickets in `issues/NN-<slug>.md` with `Type:` (`research`/`prototype`/`grilling`/`task`), `Status:` (`claimed`/`resolved`) and optional `Blocked by: NN, NN`. Claim before working; resolve by appending `## Answer`, setting `Status: resolved` and adding a pointer to the map's Decisions-so-far.
 
 ### Triage labels
 
-Use the five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+The five canonical labels are used as-is: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 
 ### Domain docs
 
-This is a single-context repo; consult `tcc/glossario.md` and `tcc/decisoes.md`. See `docs/agents/domain.md`.
+Single-context repo. Before exploring, read `tcc/glossario.md` (use its terms in issues, specs, tests and names) and `tcc/decisoes.md`. If your output contradicts a decision, say so explicitly ("contradicts decisão 1, because…") instead of overriding it.
 
 ## Software factory
 

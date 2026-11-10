@@ -1,4 +1,4 @@
-# PRD: LazyLabel Local
+# Produto: LazyLabel
 
 - **Estado:** Rascunho derivado do código e dos documentos existentes (2026-10-31). Não é uma especificação aprovada pelo orientador.
 - **Baseline do código:** branch `codex/lazylabel-autonomous-mvp`, commit `257e90d` (`main` do repositório `codigo/lazylabel` está desatualizada; ver `proximos-passos.md`).
@@ -89,3 +89,17 @@ Marcado conforme os documentos do commit `257e90d`; **não reexecutei a verifica
 ## 10. Entregáveis relacionados
 
 Evidências: `codigo/lazylabel/docs/` e `tcc/experimentos/`.
+
+## 11. Como demonstrar reutilização
+
+Vem da proposta original da biblioteca (19/10/2026), escolhida por Rodrigo: mostrar as duas formas de reuso, reconfigurar sem reescrever o núcleo e aplicar a uma segunda base.
+
+- **Separação:** documentar o que é genérico (preparação, ajuste, inferência, registro) e o que depende da tarefa.
+- **Reprodução por configuração:** repetir o ciclo mudando só configuração ou tarefa.
+- **Portabilidade:** aplicar a uma segunda base e separar adaptações de configuração de mudanças no código.
+- **Rastreabilidade:** registrar dados, partições, modelo, parâmetros, métricas e hipóteses de cada execução.
+- **Esforço:** descrever os passos com protocolo observável; não alegar economia de tempo sem medir.
+- **Usabilidade:** só com avaliação formal planejada; não alegar facilidade por inspeção do próprio autor.
+
+**Segunda base candidata:** UCI Default of Credit Card Clients (30.000 registros, 23 atributos, alvo binário de inadimplência no mês seguinte; Taiwan, 2005). É só candidata: precisa de aprovação e de checagem de vazamento temporal nos atributos mensais, e não permite afirmar que o fluxo vale para toda análise financeira.
+
