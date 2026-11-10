@@ -1,0 +1,24 @@
+{
+  "root": "page",
+  "elements": {
+    "page": { "type": "Stack", "props": { "direction": "vertical", "gap": "lg", "align": "stretch" }, "children": ["header", "controls", "error", "loading", "result", "no-sources"] },
+    "header": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "children": ["title", "lead"] },
+    "title": { "type": "Heading", "props": { "text": "Monitoramento", "level": "h1" } },
+    "lead": { "type": "Text", "props": { "text": "Compara a estrutura atual da fonte com o esquema confirmado. Os valores dos registros não são exibidos.", "variant": "muted" } },
+
+    "controls": { "type": "Card", "props": { "title": "Fonte" }, "visible": { "$state": "/hasSources" }, "children": ["controls-row"] },
+    "controls-row": { "type": "Stack", "props": { "direction": "horizontal", "gap": "md", "align": "end" }, "children": ["source-select", "refresh"] },
+    "source-select": { "type": "Choice", "props": { "label": "Fonte", "placeholder": null, "options": { "$state": "/sourceOptions" }, "value": { "$bindState": "/source" } }, "on": { "change": { "action": "refresh" } } },
+    "refresh": { "type": "Button", "props": { "label": "Atualizar", "variant": "secondary", "disabled": { "$state": "/busy" } }, "on": { "press": { "action": "refresh" } } },
+
+    "error": { "type": "Alert", "props": { "title": "Monitor indisponível", "message": { "$state": "/error" }, "type": "warning" }, "visible": { "$state": "/error" } },
+    "loading": { "type": "Spinner", "props": { "label": "Consultando esquema e estrutura…" }, "visible": { "$state": "/busy" } },
+
+    "result": { "type": "Card", "props": { "title": "Resultado da verificação", "description": { "$state": "/resultSummary" } }, "visible": { "$state": "/checked" }, "children": ["clean", "finding-list"] },
+    "clean": { "type": "Alert", "props": { "title": "Nenhuma divergência estrutural", "message": "A estrutura atende ao esquema confirmado. Isso não valida o conteúdo dos registros.", "type": "success" }, "visible": { "$state": "/clean" } },
+    "finding-list": { "type": "Stack", "props": { "direction": "vertical", "gap": "sm" }, "repeat": { "statePath": "/findings", "key": "id" }, "children": ["finding"] },
+    "finding": { "type": "Alert", "props": { "title": { "$item": "title" }, "message": { "$item": "detail" }, "type": { "$item": "type" } } },
+
+    "no-sources": { "type": "Text", "props": { "text": "Nenhuma fonte local configurada para monitorar.", "variant": "muted" }, "visible": { "$state": "/noSources" } }
+  }
+}

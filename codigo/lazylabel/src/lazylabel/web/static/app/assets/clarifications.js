@@ -1,0 +1,1 @@
+import{t as e}from"./index.js";function t(t){return t instanceof e&&t.status===422&&typeof t.body==`object`&&t.body!==null&&`questions`in t.body&&Array.isArray(t.body.questions)?t.body.questions:null}export{t};

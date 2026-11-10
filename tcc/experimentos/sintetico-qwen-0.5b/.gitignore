@@ -1,0 +1,6 @@
+.venv/
+model-cache/
+__pycache__/
+*.pyc
+adapter/adapter_model.safetensors
+adapter/tokenizer.json

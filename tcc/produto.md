@@ -1,0 +1,105 @@
+# Produto: LazyLabel
+
+- **Estado:** Rascunho derivado do código e dos documentos existentes (2026-10-31). Não é uma especificação aprovada pelo orientador.
+- **Baseline do código:** branch `codex/lazylabel-autonomous-mvp`, commit `257e90d` (`main` do repositório `codigo/lazylabel` está desatualizada; ver `proximos-passos.md`).
+- **Decisões:** `decisoes.md`. **Termos:** `glossario.md`.
+
+## 1. Problema
+
+Equipes que lidam com dados financeiros querem analisar e rotular tabelas com modelos de linguagem leves, mas não podem enviar registros a terceiros, precisam de resultados numéricos exatos e de rastreabilidade do que foi aplicado, rejeitado e treinado. Hoje isso exige montar scripts ad hoc a cada base/tarefa.
+
+## 2. Usuário
+
+**Principal:** desenvolvedor/analista que conecta uma fonte local, configura uma tarefa reutilizável e opera por biblioteca Python, CLI ou painel local.
+**Secundário:** orientador/banca do TCC, que avalia reutilização e rastreabilidade.
+
+## 3. Objetivos
+
+| # | Objetivo | Como se observa |
+|---|---|---|
+| G1 | Processar dados financeiros **sem sair da máquina** | decisão 1; testes de privacidade; nenhuma chamada externa de dados |
+| G2 | **Reutilizar** o mesmo fluxo em outra tarefa/base mudando só configuração | Experimento de portabilidade (ainda não feito) |
+| G3 | Análises numéricas exatas e reproduzíveis | decisão 6 |
+| G4 | Rotular sem revisão por linha, **abstendo-se** quando não há evidência | decisão 4; taxa de cobertura e motivos de quarentena |
+| G5 | Melhorar o modelo só com evidência e poder reverter | decisão 5 |
+| G6 | Rastrear cada execução | Manifests, hashes, eventos de registry |
+
+## 4. Escopo atual (construído)
+
+Marcado conforme os documentos do commit `257e90d`; **não reexecutei a verificação**.
+
+- Projeto e fontes CSV/SQLite somente leitura (`project init`, `source add-*`, `source set-type`).
+- Captura de esquema, baseline e monitoramento (`schema capture`, `monitor`).
+- Análise por plano JSON ou planejador local; gráficos offline; heatmap categoria × período; painel com KPIs.
+- Tarefas declarativas (`task add`); rotulagem autônoma (`label`, `label-run`) com política, calibração e quarentena.
+- Supervisão confiável (`supervision add`); ciclo `run` / `run-status` / `model-status`; promoção, rejeição, rollback.
+- CLI e painel React/FastAPI local (`serve`) com rotas `/`, `/analysis`, `/monitor`, `/labeling`, `/training`.
+- Arquitetura hexagonal com testes de camadas e de compatibilidade.
+
+## 5. Fora de escopo
+
+- Compliance ou adequação regulatória automática; decisão de concessão de crédito; afirmações causais ou de lucro.
+- Detecção de PII e validação do significado da variável-alvo.
+- Revisão humana por registro no fluxo normal (legado `ReviewLog` apenas legível).
+- Fontes além de CSV/SQLite; escrita na origem; LLM externo; serviço daemon de treino contínuo.
+- Distribuir pesos de modelos ou presumir licença/compatibilidade.
+- Alegar suporte a "qualquer base" sem adaptação.
+
+## 6. Requisitos funcionais (resumo)
+
+| ID | Requisito | Origem |
+|---|---|---|
+| RF1 | Abrir CSV/SQLite somente leitura e nunca alterar a origem | decisão 2 |
+| RF2 | Mapear tipos explicitamente; baseline só salvo após confirmação | README |
+| RF3 | Executar análise a partir de plano revisável e gravar plano, resultados, `chart.html` e hashes | decisão 6 |
+| RF4 | Enviar ao modelo apenas `input_columns` da tarefa | decisões 1 e 4 |
+| RF5 | Aplicar rótulo só com política válida, regras satisfeitas, origem atual e confiança calibrada; senão quarentena com motivo codificado | decisão 4 |
+| RF6 | Treinar só com rótulos confiáveis em partições congeladas | decisão 5 |
+| RF7 | Promover somente se todos os gates passam; registrar rejeição e rollback | decisão 5 |
+| RF8 | Expor estado de execução e modelo na CLI e no painel sem controles por registro | decisão 4 |
+| RF9 | Painel somente em loopback, com validação de Host/Origin/CSRF | decisão 1 |
+
+## 7. Requisitos não funcionais
+
+- **Privacidade:** referências opacas e digests; sem linhas, prompts ou notas livres em logs/evidências.
+- **Falha segura:** ausência de política, rótulos, artefatos ou gates → não aplica/não promove.
+- **Portabilidade de dependências:** núcleo sem dependências obrigatórias (`dependencies = []`); extras `[web]` e `[models]`; Python ≥ 3.10 (`pyproject.toml` do baseline).
+- **Manutenibilidade:** regras de camada executáveis por teste.
+- **Acessibilidade/layout:** sem overflow horizontal de documento em 1440×900 e 390×844 (verificação divergente entre documentos; ver proximos-passos.md).
+
+## 8. Métricas de sucesso (propostas, ainda não medidas)
+
+| Métrica | Definição | Estado |
+|---|---|---|
+| Cobertura | Aplicados ÷ total (quarentena no denominador) | Medida apenas em sintético |
+| Qualidade do rótulo | Acurácia / macro-F1 no holdout contra rótulo confiável | Sintético: 70,83% / 0,7056 (24 exemplos) |
+| Erro de calibração | Calibration error no holdout | Sem dado real |
+| Reuso | Passos de configuração vs. alterações no núcleo ao mudar de base | Não medido |
+| Esforço de adaptação | Passos/tempo observáveis, com tarefa de referência | Não medido; sem base para alegar economia |
+
+## 9. Riscos e perguntas abertas
+
+1. **Pergunta de pesquisa e escopo do TCC não aprovados** (decisão 7).
+2. **Sem validação em dados reais:** só experimento sintético com Qwen2.5-0.5B-Instruct (revisão `7ae5576…`, Apple MPS); ciclo de treino verificado com stub.
+3. Dados tabulares podem não justificar um LLM; falta baseline simples (modelo tabular, regras).
+4. Calibrador depende de política/rótulos que o usuário precisa produzir.
+5. Escolha de modelo (família Gemma citada na proposta; Qwen usado nos testes), licença e hardware em aberto.
+6. Segunda base candidata (UCI Default of Credit Card Clients) sem aprovação; risco de vazamento temporal.
+
+## 10. Entregáveis relacionados
+
+Evidências: `codigo/lazylabel/docs/` e `tcc/experimentos/`.
+
+## 11. Como demonstrar reutilização
+
+Vem da proposta original da biblioteca (19/10/2026), escolhida por Rodrigo: mostrar as duas formas de reuso, reconfigurar sem reescrever o núcleo e aplicar a uma segunda base.
+
+- **Separação:** documentar o que é genérico (preparação, ajuste, inferência, registro) e o que depende da tarefa.
+- **Reprodução por configuração:** repetir o ciclo mudando só configuração ou tarefa.
+- **Portabilidade:** aplicar a uma segunda base e separar adaptações de configuração de mudanças no código.
+- **Rastreabilidade:** registrar dados, partições, modelo, parâmetros, métricas e hipóteses de cada execução.
+- **Esforço:** descrever os passos com protocolo observável; não alegar economia de tempo sem medir.
+- **Usabilidade:** só com avaliação formal planejada; não alegar facilidade por inspeção do próprio autor.
+
+**Segunda base candidata:** UCI Default of Credit Card Clients (30.000 registros, 23 atributos, alvo binário de inadimplência no mês seguinte; Taiwan, 2005). É só candidata: precisa de aprovação e de checagem de vazamento temporal nos atributos mensais, e não permite afirmar que o fluxo vale para toda análise financeira.
+

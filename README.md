@@ -1,46 +1,60 @@
-# TCC de Rodrigo Mialichi Triboni
+# LazyLabel — TCC de Rodrigo Mialichi Triboni
 
-**Tema:** Redes bayesianas e utilidade esperada aplicadas à seleção de *next best action* em sistemas automatizados de decisão.
+Biblioteca para analisar e rotular dados financeiros, com linha de comando e painel web. Roda com modelos locais ou na nuvem pelo Vercel AI Gateway. É também o objeto do TCC (Engenharia de Controle e Automação, UFU).
 
-## Por onde começar
+> **Tema em aprovação.** O tema submetido foi redes bayesianas para *next best action*; a direção atual é o LazyLabel. Falta o aval do orientador para o tema ([decisão 7](tcc/decisoes.md)); o uso da nuvem já foi autorizado pelo coordenador ([decisão 8](tcc/decisoes.md)).
 
-- [Agenda semanal](Agenda_semanal_TCC.md)
-- [Protocolo experimental preliminar](planejamento/Protocolo_experimental.md)
-- [Fluxo de uso de IA no TCC](planejamento/Uso_de_IA_no_TCC.md)
-- [Épico do TCC](.scratch/proximas-etapas-tcc/epico.md)
-- [Mapa das próximas etapas](.scratch/proximas-etapas-tcc/map.md)
-- [Primeira tarefa: reconciliar progresso e fechar o protocolo](.scratch/proximas-etapas-tcc/issues/01-reconciliar-progresso-e-protocolo.md)
-- [Guia de estudo da Semana 1](planejamento/Guia_de_estudo_Semana_01.md)
-- [Registro da Semana 1](planejamento/Semana_01.md)
+## Comece aqui
 
-## Estrutura
+1. **Onde estou e o que fazer agora:** [tcc/proximos-passos.md](tcc/proximos-passos.md)
+2. **O que levar ao orientador:** [tcc/perguntas-orientador.md](tcc/perguntas-orientador.md)
+3. **Como usar o LazyLabel:** [codigo/lazylabel/README.md](codigo/lazylabel/README.md) e [guia rápido](codigo/lazylabel/docs/quickstart.md)
 
-| Local | Conteúdo |
+## Estado atual (09/11/2026)
+
+**Funciona**
+- CLI `lazylabel`: fontes CSV/SQLite só leitura, monitoramento de esquema, análises exatas, rotulagem com quarentena, treino com gates, promoção e rollback.
+- Painel web com 6 telas feitas em JSON ([json-render](https://github.com/vercel-labs/json-render) + shadcn), modo claro e escuro: Visão geral, **Perguntar**, Análises, Monitoramento, Rotulagem e Treinamento.
+- **Perguntar:** você faz uma pergunta, revisa o plano, o LazyLabel calcula os números de forma exata e a IA só monta a tela com eles. Telas com números que não vieram do cálculo são descartadas.
+- Modelos na nuvem: qualquer id `gateway:<provedor>/<modelo>` usa o Vercel AI Gateway.
+- Testes: 340 Python e 57 do painel passando (`bash factory/checks.sh`).
+
+**Falta**
+- Testar a nuvem com uma chave real (`AI_GATEWAY_API_KEY`).
+- Rotulagem pela nuvem: hoje ela usa só modelo local, porque precisa da probabilidade de cada rótulo para calibrar a confiança.
+- Evidência para a tese: experimento com dados reais, baseline e segunda base ([próximos passos](tcc/proximos-passos.md)).
+
+## Onde está cada coisa
+
+| Pasta | O que tem |
 |---|---|
-| `planejamento/` | Guias de estudo, registros semanais e protocolo experimental |
-| `referencias/` | Fontes e fichamentos bibliográficos |
-| `dados/brutos/` | Cópias originais das bases, preservadas sem alteração |
-| `dados/processados/` | Dados derivados por scripts e prontos para análise |
-| `codigo/` | Preparação de dados, treinamento e avaliação dos modelos |
-| `resultados/` | Métricas, tabelas e figuras produzidas pelos experimentos |
-| `texto/` | Capítulos e versões de trabalho da monografia |
-| `entregas/` | Documentos preparados para compartilhar ou entregar |
-| `docs/agents/` | Regras de tracker, labels e documentação de domínio para as skills |
-| `.scratch/` | Mapa e tickets locais das próximas tarefas |
-| `codigo/finlabel/` | Primeiro incremento da biblioteca local de rotulagem financeira (`finlabel-local`) |
-| `.documentos_qa/` | PDFs, imagens renderizadas e arquivos auxiliares de conferência de documentos |
+| `codigo/lazylabel/` | A biblioteca: backend Python, painel (`frontend/`), testes |
+| `codigo/lazylabel/frontend/src/specs/` | As telas do painel, uma por arquivo JSON |
+| `codigo/experimento/` | Script do baseline (regressão logística) |
+| `tcc/` | Tudo do TCC: decisões, produto, protocolo, glossário, perguntas |
+| `tcc/experimentos/` | Experimentos executados, com dados e resultados |
+| `tcc/pesquisa/` | Notas de pesquisa (fontes de dados de crédito, painéis) |
+| `tcc/entregas/` | Documentos já entregues (.docx) |
+| `factory/` | Automação que transforma issues do GitHub em PRs |
 
-## Entregas existentes
+## No dia a dia
 
-- `entregas/Apresentacao_do_andamento_TCC_Rodrigo.docx` — apresentação de andamento.
-- `entregas/TCC_Research_Proposal_Rodrigo_English.docx` — versão em inglês da proposta.
+```bash
+bash factory/checks.sh                                        # roda todos os testes; use antes de cada commit
+cd codigo/lazylabel
+.venv/bin/lazylabel quickstart ./demo --model-id <modelo>      # projeto de exemplo com dados sintéticos
+.venv/bin/lazylabel serve --project ./demo                     # painel em http://127.0.0.1:8765
+```
 
-## Estado do trabalho
+Para usar a nuvem (análises e Perguntar):
 
-Em 19/10/2026, Rodrigo informou que concluiu as atividades das Semanas 2 e 3. As pastas `codigo/`, `dados/`, `resultados/`, `referencias/` e `texto/` ainda não contêm os artefatos dessas atividades; registrá-los no [ticket 01](.scratch/proximas-etapas-tcc/issues/01-reconciliar-progresso-e-protocolo.md). Ele também informou que o professor autorizou IA como apoio para otimizar o tempo; consulte o fluxo de uso e registre as ferramentas e validações. As datas da agenda são uma proposta e precisam ser ajustadas ao prazo oficial.
+```bash
+export AI_GATEWAY_API_KEY=...                                  # criada no painel da Vercel, ou: vercel env pull
+export LAZYLABEL_UI_MODEL=gateway:anthropic/claude-haiku-4.5   # opcional; modelo que monta as telas
+```
 
-South German Credit havia sido escolhida para o plano experimental anterior; a documentação da base indica código bruto 0 = risco ruim e 1 = risco bom. Em 19/10/2026, Rodrigo refinou a direção do TCC para uma biblioteca open source de rotulagem assistida de dados financeiros com modelos leves locais. O protocolo antigo de comparação entre regressão logística e redes bayesianas precisa ser revisto antes de continuar sua execução.
-
-## Biblioteca de rotulagem financeira
-
-A direção mais recente do projeto está registrada na [proposta da biblioteca](planejamento/Proposta_fluxo_reutilizavel.md) e no [épico atualizado](.scratch/proximas-etapas-tcc/epico.md). O primeiro incremento em `codigo/finlabel/` inspeciona CSVs localmente; fine-tuning de modelos leves, revisão humana e avaliação ainda serão implementados em etapas posteriores, após definição do modelo, hardware e protocolo.
+- **Mudar uma tela:** edite o JSON dela em `frontend/src/specs/`.
+- **Mudança no código:** abra uma issue no GitHub com o label `factory` e rode `/factory run` (ver `AGENTS.md`).
+- **Decisão nova:** acrescente em [tcc/decisoes.md](tcc/decisoes.md).
+- **Termo novo:** acrescente em [tcc/glossario.md](tcc/glossario.md).
+- **Projeto antigo em `.finlabel/`:** continua funcionando; projetos novos usam `.lazylabel/`.
