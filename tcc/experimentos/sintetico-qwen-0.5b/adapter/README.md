@@ -207,3 +207,13 @@ Carbon emissions can be estimated using the [Machine Learning Impact calculator]
 ### Framework versions
 
 - PEFT 0.21.2
+## Arquivos fora do git
+
+Os pesos (17 MB) e o tokenizer (11 MB) não são versionados desde 09/11/2026. As cópias locais continuam nesta pasta; para conferir a integridade ou regenerar, use estes hashes:
+
+| Arquivo | SHA-256 |
+|---|---|
+| `adapter_model.safetensors` | `05edf565c2e86bd846b62bc92fa1f726b6f9fab407819ffc93af5c523304f018` |
+| `tokenizer.json` | `3fd169731d2cbde95e10bf356d66d5997fd885dd8dbb6fb4684da3f23b2585d8` |
+
+O tokenizer é o do modelo-base `Qwen/Qwen2.5-0.5B-Instruct` (revisão `7ae557604adf67be50417f59c2c2f167def9a775`). Os pesos vêm do treino descrito em `../README.md`; o histórico do git antes desta data ainda os contém.
