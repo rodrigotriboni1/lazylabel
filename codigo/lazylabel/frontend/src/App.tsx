@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Activity, BarChart3, Database, FlaskConical, LayoutDashboard, ListChecks, ShieldCheck } from 'lucide-react'
+import { Activity, BarChart3, MessageSquareText, Database, FlaskConical, LayoutDashboard, ListChecks, ShieldCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { LazyLabelClient, Health } from '@/application/ports/LazyLabelClient'
@@ -11,9 +11,11 @@ const AnalysisPage = lazy(() => import('@/pages/AnalysisPage'))
 const MonitorPage = lazy(() => import('@/pages/MonitorPage'))
 const LabelingPage = lazy(() => import('@/pages/LabelingPage'))
 const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
+const AskPage = lazy(() => import('@/pages/AskPage'))
 
 const navigation = [
   { label: 'Visão geral', mobileLabel: 'Início', path: '/', icon: LayoutDashboard },
+  { label: 'Perguntar', mobileLabel: 'Perguntar', path: '/ask', icon: MessageSquareText },
   { label: 'Análises', mobileLabel: 'Análises', path: '/analysis', icon: BarChart3 },
   { label: 'Monitoramento', mobileLabel: 'Monitor', path: '/monitor', icon: Activity },
   { label: 'Rotulagem', mobileLabel: 'Rótulos', path: '/labeling', icon: ListChecks },
@@ -74,11 +76,11 @@ function AppShell() {
 
         <section className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-10">
           <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Carregando página…</p>}>
-          {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' || path === '/review' ? <LabelingPage /> : path === '/training' ? <TrainingPage /> : error ? <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 p-5"><p className="font-medium">Não foi possível conectar</p><p className="text-sm text-muted-foreground">{error}</p><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></div> : <OverviewPage />}
+          {path === '/analysis' || analysisRunId ? <AnalysisPage runId={analysisRunId} /> : path === '/monitor' ? <MonitorPage /> : path === '/labeling' || path === '/review' ? <LabelingPage /> : path === '/training' ? <TrainingPage /> : path === '/ask' ? <AskPage /> : error ? <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 p-5"><p className="font-medium">Não foi possível conectar</p><p className="text-sm text-muted-foreground">{error}</p><Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button></div> : <OverviewPage />}
           </Suspense>
         </section>
       </main>
-      <nav aria-label="Navegação móvel" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t bg-background px-1 py-2 md:hidden">
+      <nav aria-label="Navegação móvel" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t bg-background px-1 py-2 md:hidden">
         {navigation.map(({ mobileLabel, path: itemPath, icon: Icon }) => <a key={itemPath} href={itemPath} aria-current={activePath === itemPath ? 'page' : undefined} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[11px] leading-tight ${activePath === itemPath ? 'font-medium text-foreground' : 'text-muted-foreground'}`}><Icon size={17} /><span className="whitespace-nowrap">{mobileLabel}</span></a>)}
       </nav>
     </div>

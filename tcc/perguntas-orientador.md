@@ -14,6 +14,7 @@ Levar na próxima conversa. Registrar a resposta embaixo de cada pergunta, com d
 ## Nuvem (decisão 8)
 
 7. Posso usar modelos na nuvem (Vercel AI Gateway) em vez de só modelos locais? Isso muda o princípio de "nenhum dado sai da máquina". Se sim, só com dados públicos ou sintéticos?
+   - **Resposta (09/11/2026):** sim, o coordenador autorizou colocar os dados na nuvem (decisão 8).
 
 ## Primeiro uso sem rótulos aplicados
 

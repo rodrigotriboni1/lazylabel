@@ -42,6 +42,17 @@ Planos JSON revisáveis podem ser executados sem modelo. Alternativamente, `--mo
 
 Cada execução cria `.lazylabel/analyses/<run_id>/` com plano, resultados, `chart.html` independente de CDN e hashes. A saída tabulada é a referência numérica. O painel limita visualização a 100 linhas, 2.000 pontos e 1 MiB por resposta JSON.
 
+## Modelos na nuvem (Vercel AI Gateway)
+
+Um id de modelo com prefixo `gateway:` usa o Vercel AI Gateway em vez de um modelo local (decisão 8 em `tcc/decisoes.md`):
+
+```bash
+export AI_GATEWAY_API_KEY=...   # chave criada no painel da Vercel
+lazylabel analyze <fonte> --question "..." --model-id gateway:anthropic/claude-haiku-4.5 --project ./meu-projeto
+```
+
+Vale para o planejador de análise e para a tela **Perguntar** do painel (`/ask`): você pergunta, o LazyLabel calcula as linhas de forma exata e o modelo (`LAZYLABEL_UI_MODEL`, padrão `gateway:anthropic/claude-haiku-4.5`) só monta o layout com esses valores, usando um catálogo json-render de exibição, sem botões nem formulários. A tela gerada aponta para a análise com os números exatos. A rotulagem continua com modelo local: ela precisa da probabilidade de cada rótulo para calibrar a confiança, e o Gateway não fornece isso.
+
 ## Painel web local
 
 ```bash

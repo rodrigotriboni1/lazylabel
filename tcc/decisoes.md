@@ -4,20 +4,21 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 
 | # | Decisão | Situação |
 |---|---|---|
-| 1 | Tudo roda na máquina do usuário; nenhum dado sai dela | Aceita · **em revisão** (ver 8) |
+| 1 | Tudo roda na máquina do usuário; nenhum dado sai dela | Substituída pela 8 (local continua como opção) |
 | 2 | Fontes CSV e SQLite abertas só para leitura | Aceita |
 | 3 | Código em camadas (domínio no centro, adaptadores em volta) | Aceita |
 | 4 | Rotulagem autônoma: cada registro é aplicado ou vai para quarentena | Aceita |
 | 5 | Treino só com rótulos confiáveis; promoção só se todos os gates passam; rollback automático | Aceita |
 | 6 | Análises calculadas de forma exata (Decimal), a partir de um plano revisável | Aceita |
 | 7 | Tema do TCC passa a ser a biblioteca LazyLabel, avaliada por reutilização | Proposta · falta o orientador |
-| 8 | Usar modelos na nuvem pela Vercel (AI Gateway) e painel feito com json-render | Proposta · falta o orientador |
+| 8 | Usar modelos na nuvem pela Vercel (AI Gateway) e painel feito com json-render | Aceita (09/11/2026, autorizada pelo coordenador) |
 
 ## 1. Tudo local
 
 - **Por quê:** dados financeiros são sensíveis; a biblioteca deve servir a quem não pode enviar registros a terceiros.
 - **Como:** modelos locais (Transformers, LoRA) como dependência opcional; o modelo vê só as colunas da tarefa, nunca linhas inteiras; painel só em `localhost`, com checagem de Host, Origin e CSRF; logs com referências opacas, sem linhas.
 - **Custo:** qualidade limitada a modelos leves que cabem no computador do usuário.
+- **Hoje:** substituída pela decisão 8. Rodar tudo local continua possível, mas deixou de ser obrigatório.
 
 ## 2. Fontes só leitura
 
@@ -57,6 +58,7 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 
 ## 8. Nuvem pela Vercel
 
-- **Proposta (09/11/2026):** usar modelos pelo Vercel AI Gateway (incluindo um modelo ajustado em provedor, ligado por chave própria) e refazer o painel com json-render e shadcn.
-- **Atenção:** contraria a decisão 1. A Vercel não treina nem hospeda pesos próprios; o ajuste fino precisaria ser feito num provedor (por exemplo, Azure ou OpenAI) e os dados sairiam da máquina.
-- **Falta:** aval do orientador antes de mudar a tese; definir que dados podem ir à nuvem (só sintéticos ou públicos?).
+- **Decisão (09/11/2026):** dados e modelos podem ir para a nuvem. Autorizado pelo coordenador.
+- **Como:** modelos pelo Vercel AI Gateway (API compatível com OpenAI, chave em `AI_GATEWAY_API_KEY`); painel feito com json-render + shadcn. O modelo local continua como opção.
+- **Limites:** a Vercel não treina nem hospeda pesos próprios. Um modelo ajustado nosso precisa ser treinado num provedor (por exemplo, OpenAI ou Azure) e ligado ao Gateway com chave própria (BYOK).
+- **Continua valendo:** o modelo recebe só as colunas da tarefa; logs sem linhas; quarentena quando não há confiança calibrada (decisão 4).

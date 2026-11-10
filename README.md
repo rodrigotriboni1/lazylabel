@@ -2,7 +2,7 @@
 
 Biblioteca para analisar e rotular dados financeiros com modelos leves, com linha de comando e painel web. É também o objeto do TCC (Engenharia de Controle e Automação, UFU).
 
-> **Tema em aprovação.** O tema submetido foi redes bayesianas para *next best action*; a direção atual é o LazyLabel. Falta o aval do orientador ([decisões 7 e 8](tcc/decisoes.md)).
+> **Tema em aprovação.** O tema submetido foi redes bayesianas para *next best action*; a direção atual é o LazyLabel. Falta o aval do orientador para o tema ([decisão 7](tcc/decisoes.md)); o uso da nuvem já foi autorizado ([decisão 8](tcc/decisoes.md)).
 
 ## Comece aqui
 
