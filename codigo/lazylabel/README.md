@@ -229,7 +229,7 @@ O ciclo valida a fonte confiável, congela partições disjuntas de treino/calib
 
 O comando `lazylabel train` continua disponível como backend explícito de fine-tuning, mas não promove um modelo nem substitui o ciclo verificado. `ReviewLog` e artefatos de revisão anteriores permanecem legíveis por compatibilidade histórica; não fazem parte da rotulagem autônoma atual.
 
-O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica adapters e desativa telemetria do trainer. LazyLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, memória disponível e protocolo de avaliação. Consulte [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). O smoke real local do Qwen com exemplos sintéticos está em `docs/local-model-inference-2026-10-26.md`; não demonstra desempenho financeiro e o adapter histórico não pode ser promovido pelo ciclo atual.
+O backend usa Transformers, TRL `SFTTrainer` e PEFT `LoraConfig`, não publica adapters e desativa telemetria do trainer. LazyLabel não distribui pesos nem presume compatibilidade: verifique licença, termos de uso, memória disponível e protocolo de avaliação. Consulte [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer) e [PEFT LoRA](https://huggingface.co/docs/peft/en/package_reference/lora). O smoke real local do Qwen com exemplos sintéticos está em `tcc/experimentos/sintetico-qwen-0.5b/inferencia-local-2026-10-26.md`; não demonstra desempenho financeiro e o adapter histórico não pode ser promovido pelo ciclo atual.
 
 ## Contrato de previsão local estruturada
 

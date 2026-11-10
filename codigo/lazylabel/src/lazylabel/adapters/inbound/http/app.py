@@ -123,8 +123,6 @@ def create_app(
         from fastapi import Depends, FastAPI, Request
         from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
         from fastapi.staticfiles import StaticFiles
-        from fastapi.templating import Jinja2Templates
-        from jinja2 import Environment, FileSystemLoader, select_autoescape
     except ImportError as exc:
         raise RuntimeError("Install lazylabel[web] to run the local panel.") from exc
 
@@ -132,11 +130,6 @@ def create_app(
     react_index = package_dir / "static" / "app" / "index.html"
     # Owned by the server so a page script cannot swap the display-only rules; kept in sync by a frontend test.
     ui_system_prompt_path = package_dir / "ai_ui_system_prompt.txt"
-    template_environment = Environment(
-        loader=FileSystemLoader(str(package_dir / "templates")),
-        autoescape=select_autoescape(("html", "htm", "xml")),
-    )
-    templates = Jinja2Templates(env=template_environment)
     app = FastAPI(title="LazyLabel local", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     app.state.application = application
