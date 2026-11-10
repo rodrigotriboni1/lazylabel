@@ -30,6 +30,14 @@ const fixture: Plugin = {
       } else if (request.url === '/api/train/overview') {
         response.setHeader('Content-Type', 'application/json')
         response.end(JSON.stringify({ datasets: [], tasks: [], gate: { authorized: false, missing: ['dataset confiável'], model_id: null }, active_version: null, active_diagnostic: null, registry_diagnostics: [], versions: [], jobs: [], evaluation_jobs: [] }))
+      } else if (request.url === '/api/autonomy/overview') {
+        response.setHeader('Content-Type', 'application/json')
+        response.end(JSON.stringify({
+          sources: [{ name: 'carteira_demo', kind: 'csv', columns: [] }],
+          tasks: [{ task_id: 'risco', input_columns: ['saldo', 'atraso_dias'], labels: ['baixo', 'alto'], model_ref: 'Qwen/Qwen2.5-0.5B-Instruct', policy_configured: false }],
+          runs: [], active_models: [], model_events: [],
+          training_cycles: [{ cycle_id: 'c1', task_id: 'risco', state: 'blocked', reason_codes: ['trusted_labels_missing'], candidate_id: null, evaluation_id: null, promotion_action: null, active_model_ref: null, created_at: null, evaluation: null }],
+        }))
       } else if (request.url === `/api/analyses/${runId}`) {
         response.setHeader('Content-Type', 'application/json')
         response.end(JSON.stringify(result))

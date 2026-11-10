@@ -25,7 +25,7 @@ describe('workspace pages using the in-memory client', () => {
     expect(screen.getByText('Carregando fontes…')).toBeInTheDocument()
     await act(async () => { release(await new LazyLabelMemoryClient({ responses: { getSources: { sources: [source] } } }).getSources()) })
     expect(await screen.findByText('portfolio')).toBeInTheDocument()
-    expect(screen.getByText('amount · decimal')).toBeInTheDocument()
+    expect(screen.getByText(/amount \(decimal\)/)).toBeInTheDocument()
   })
 
   it('shows the empty overview and source error separately', async () => {
@@ -41,10 +41,10 @@ describe('workspace pages using the in-memory client', () => {
     show(<MonitorPage />, new LazyLabelMemoryClient({ responses: { getSources: { sources: [source] }, getFindings: { findings: [{
       code: 'missing_column', severity: 'error', column: 'category', expected: 'category', observed: null, message: 'Coluna category ausente',
     }] } } }))
-    expect(await screen.findByText('Coluna category ausente')).toBeInTheDocument()
-    expect(screen.getByText('1 achados')).toBeInTheDocument()
+    expect(await screen.findByText(/Coluna category ausente/)).toBeInTheDocument()
+    expect(screen.getByText(/1 achado/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
-    expect(await screen.findByText('Coluna category ausente')).toBeInTheDocument()
+    expect(await screen.findByText(/Coluna category ausente/)).toBeInTheDocument()
   })
 
   it('shows the empty monitor and errors without fabricating a healthy result', async () => {
