@@ -1,4 +1,4 @@
-# FinLabel — mapa final da arquitetura
+# LazyLabel — mapa final da arquitetura
 
 Estado após o Milestone 6 (compatibilidade e enforcement). Para explicação do fluxo, composição e procedimento para adicionar conectores, veja [clean-hexagonal.md](clean-hexagonal.md).
 
@@ -34,7 +34,7 @@ O mesmo teste garante que novos módulos são classificados (falham fechados se 
 | Saída: modelos | `src/finlabel/adapters/outbound/models/` | Backend de geração, planner, inferência de labeling e modelo ativo. |
 | Saída: treino | `src/finlabel/adapters/outbound/training/` | Runtime de PEFT/TRL, jobs, avaliação e efeitos do ciclo. |
 | Composição | `src/finlabel/bootstrap/` | `application.py` conecta portas/implementações; `cli.py` e `http.py` constroem cada entrypoint. |
-| UI: porta e composição | `frontend/src/application/` | Contrato `FinLabelClient`, contexto e provider injetado. |
+| UI: porta e composição | `frontend/src/application/` | Contrato `LazyLabelClient`, contexto e provider injetado. |
 | UI: adapters | `frontend/src/adapters/http/`, `frontend/src/adapters/in-memory/` | Cliente wire e implementação em memória de teste. |
 | UI: apresentação | `frontend/src/pages/`, `frontend/src/components/` | Páginas, navegação e componentes React; sem transporte HTTP próprio. |
 | UI: bootstrap | `frontend/src/main.tsx`, `frontend/src/App.tsx` | Criação do adapter HTTP, provider e seleção da rota/apresentação. |

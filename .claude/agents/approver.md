@@ -52,9 +52,9 @@ ESCALATE if any of them fails, or if the change:
 - rests on a spec Assumption that is really a product or business decision, such
   as pricing, public copy about the business, or what is free versus paid.
 
-In this project a human must also always see changes to: `docs/adr/`,
-`GLOSSARY.md` or the TCC text and deliverables (`texto/`, `entregas/`,
-`planejamento/`); anything that sends data over the network, reads files outside
+In this project a human must also always see changes to: `tcc/decisoes.md`,
+`tcc/glossario.md` or the TCC text and deliverables (`texto/`, `tcc/entregas/`,
+`tcc/`); anything that sends data over the network, reads files outside
 the path the user gave, or prints dataset rows (FinLabel is local-first and
 privacy-first); and claims about model accuracy or evaluation results.
 

@@ -1,6 +1,6 @@
 """Baseline de regressão logística para o experimento real do FinLabel.
 
-Segue planejamento/Protocolo_experimental.md: divisão estratificada 80/20 com
+Segue tcc/protocolo-experimental.md: divisão estratificada 80/20 com
 semente 42 e índices salvos, validação cruzada de 5 partições só no
 desenvolvimento, e o teste final só é aberto com --final.
 

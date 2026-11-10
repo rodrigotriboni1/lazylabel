@@ -29,7 +29,7 @@ that, scoped so it can land as one small pull request.
 
 This project is FinLabel, a local-first Python tool (`codigo/finlabel/`) for
 assisted labeling of financial data, built for a TCC thesis. Docs, ADRs and
-`GLOSSARY.md` at the repo root define what belongs.
+`tcc/glossario.md` at the repo root define what belongs.
 
 - **ACCEPT** when the request is clear, fits the project, and can be built and
   reviewed as one pull request. If it is too big, accept a smaller first slice

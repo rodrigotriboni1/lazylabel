@@ -1,13 +1,13 @@
-# Inferência FinLabel com adapter local — 26/10/2026
+# Inferência LazyLabel com adapter local — 26/10/2026
 
 ## Execução reproduzida
 
-O smoke foi executado pela implementação `TransformersTextGenerationBackend` do FinLabel, com o adapter Qwen LoRA existente e os 24 exemplos reservados sintéticos. A geração usa o chat template salvo no tokenizer do adapter, o prompt comum da tarefa e decodificação gulosa. O script salva apenas índice e rótulos de referência/previsão; não copia as descrições dos exemplos para o resultado.
+O smoke foi executado pela implementação `TransformersTextGenerationBackend` do LazyLabel, com o adapter Qwen LoRA existente e os 24 exemplos reservados sintéticos. A geração usa o chat template salvo no tokenizer do adapter, o prompt comum da tarefa e decodificação gulosa. O script salva apenas índice e rótulos de referência/previsão; não copia as descrições dos exemplos para o resultado.
 
 Reproduzido em 26/10/2026 a partir da branch integrada `codex/finlabel-autonomous-mvp`. Execute a partir da raiz `Documents/ChatGPT/TCC`:
 
 ```bash
-EXP="$PWD/.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20"
+EXP="$PWD/tcc/experimentos/sintetico-qwen-0.5b"
 REPO="$PWD/codigo/finlabel/.worktrees/autonomous-mvp"
 HF_HOME="$EXP/model-cache" HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
 PYTHONPATH="$REPO/src" "$EXP/.venv/bin/python" \
@@ -21,7 +21,7 @@ PYTHONPATH="$REPO/src" "$EXP/.venv/bin/python" \
 - Modelo `Qwen/Qwen2.5-0.5B-Instruct`, revisão `7ae557604adf67be50417f59c2c2f167def9a775`.
 - Dispositivo Apple MPS; `do_sample=false`; `max_new_tokens=64`.
 - Resultado reproduzido na integração: 24 previsões válidas em 24; acurácia exata 17/24 (70,83%); macro-F1 0,7056; duração 12,099 s.
-- JSON de previsões sem texto de origem: `.scratch/biblioteca-rotulagem-financeira/experiments/qwen25-05b-synthetic-2026-10-20/results/live-inference-2026-10-26-integration-final.json`.
+- JSON de previsões sem texto de origem: `tcc/experimentos/sintetico-qwen-0.5b/results/live-inference-2026-10-26-integration-final.json`.
 
 ## Limites e identidade
 

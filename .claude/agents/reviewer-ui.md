@@ -55,7 +55,7 @@ If the branch has no visual change, write PASS and say so.
 
 Project note: the UI (if any) lives under `codigo/finlabel/`; match whatever
 theme, tokens and shared components exist there and the dashboard-redesign
-decisions in `docs/adr/`.
+decisions in `tcc/decisoes.md`.
 
 ## Write review-ui.md
 
