@@ -63,3 +63,17 @@ As escolhas que moldam o LazyLabel e o TCC, em uma linha cada, com o motivo e o 
 - **Como:** modelos pelo Vercel AI Gateway (API compatível com OpenAI, chave em `AI_GATEWAY_API_KEY`); painel feito com json-render + shadcn. O modelo local continua como opção.
 - **Limites:** a Vercel não treina nem hospeda pesos próprios. Um modelo ajustado nosso precisa ser treinado num provedor (por exemplo, OpenAI ou Azure) e ligado ao Gateway com chave própria (BYOK).
 - **Continua valendo:** o modelo recebe só as colunas da tarefa; logs sem linhas; quarentena quando não há confiança calibrada (decisão 4).
+
+## 9. Desenho final do experimento (10/11/2026)
+
+Proposta fixada antes de qualquer resultado; ainda sujeita ao orientador (perguntas 2, 3, 4 e 8). Revisada por um segundo modelo (Fable) contra o código.
+
+- **Baseline:** regressão logística. O script passa a gravar previsões por caso, ECE e curva risco-cobertura, com classe positiva `bad`.
+- **Base contra ajuste:** comparar o modelo-base calibrado com o ajustado por LoRA (Qwen2.5-0.5B-Instruct), por script em `codigo/experimento/`, sem mudar o núcleo.
+- **Segunda base:** UCI Default of Credit Card Clients, 1000 registros, estratificada na prevalência original, semente 42, sem duplicatas.
+- **Primeiro uso (pergunta 8):** a opção C fica para depois do E2, porque mudaria o núcleo no meio da medida de reutilização e contraria a decisão 5.
+- **Correções no núcleo antes do congelamento** (entram no E1, não contam como mudança do E2):
+  1. o mesmo prompt para treino, calibração e rotulagem;
+  2. a calibração tolera poucas saídas inválidas (mínimo de 95% válidas) em vez de abortar;
+  3. épocas de treino configuráveis na política.
+- **Por quê:** sem essas correções, o ciclo provavelmente aborta na calibração, ou o calibrador é ajustado num prompt diferente do usado na rotulagem.

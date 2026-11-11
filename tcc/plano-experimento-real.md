@@ -25,11 +25,28 @@ O LazyLabel não presume nenhum valor. Registre os escolhidos e a data:
 
 | Arquivo | Campo | Valor | Data |
 |---|---|---|---|
-| política de rotulagem | `min_calibrated_confidence` | | |
-| política de promoção | `required_metrics` | | |
-| política de promoção | `minimum_coverage` | | |
-| política de promoção | `max_calibration_error` | | |
-| política de promoção | `min_holdout_count` | | |
+| política de rotulagem | `min_calibrated_confidence` | 0,80 | 10/11/2026 |
+| política de promoção | `required_metrics` | `{"macro_f1": 0.55}` | 10/11/2026 |
+| política de promoção | `minimum_coverage` | 0,10 | 10/11/2026 |
+| política de promoção | `max_calibration_error` | 0,12 | 10/11/2026 |
+| política de promoção | `min_holdout_count` | 100 | 10/11/2026 |
+| política de promoção | `allowed_per_label_regression` | `{"bad": 0.10, "good": 0.10}` | 10/11/2026 |
+| política de promoção | `rollback_monitor_limits` | `{"macro_f1": 0.50, "calibration_error": 0.20}` | 10/11/2026 |
+
+Justificativas:
+- **0,80:** prever sempre `good` acerta 70%, e 0,80 fica 10 pontos acima disso.
+- **macro-F1 0,55:** prever sempre `good` dá cerca de 0,41.
+- **ECE 0,12:** simulando um modelo perfeitamente calibrado com n = 120, o percentil 95 do ECE é cerca de 0,107.
+- **Holdout de 100:** a partição real fica em torno de 120 (70/15/15 de 800).
+- **Mudar limiar depois:** exige projeto novo, porque o calibrador colide (`calibration_artifact_collision`).
+
+**Desfechos pré-registrados:** "sem promoção" e "cobertura zero" são resultados válidos e serão reportados como tais.
+
+**Hipóteses refinadas (10/11/2026), substituem as da tabela acima:**
+- **H1 (descritiva):** a acurácia nos aplicados não fica mais de 5 pontos abaixo da do baseline na mesma cobertura (curva risco-cobertura). Os intervalos são declarados largos.
+- **H2:** o ciclo promove um modelo e a cobertura no teste é de pelo menos 0,10.
+- **H3:** ECE e Brier são medidos em todas as previsões do teste, não só nos aplicados, como confiança no rótulo previsto (top-label) nos dois sistemas.
+- **Também reportar** a matriz de confusão nos aplicados.
 
 ## Modelo
 
@@ -60,7 +77,8 @@ Se algo exigir repetir o teste final, registre a correção e não apresente mai
 | 5 | Rodar o baseline sem `--final` e gerar `dev.csv` e `teste.csv` | Claude |
 | 6 | Escrever `tarefa-risco.json` e as políticas, a partir do `lazylabel quickstart` | Claude |
 | 7 | Rodar o ciclo do LazyLabel em `dev.csv` e guardar `run-status` e `model-status` | Você (precisa de torch) |
-| 8 | Avaliar o teste final uma vez com os dois e preencher a tabela de resultados | Claude |
+| 7b | Teste de fumaça: taxa de saídas válidas do modelo-base em 50 registros do dev, registrada antes do congelamento | Claude |
+| 8 | Avaliar o teste final uma vez com os dois (LazyLabel: `source add-csv teste` + `lazylabel label`, junção por `record_ref`) e preencher a tabela de resultados | Claude |
 
 ## Comandos
 
