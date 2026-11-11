@@ -161,15 +161,25 @@ class TransformersTextGenerationBackend:
         raw = self.generate(prompt, max_new_tokens=max_new_tokens)
         # Reject malformed output before performing the more expensive scoring pass.
         parse_prediction(raw, valid_labels=task.labels)
-        evidence = self._label_scores(prompt, task.labels)
-        return parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
-                                confidence_method=RAW_SCORE_METHOD)
+        return _scored_prediction(raw, self._label_scores(prompt, task.labels), task)
 
     def predict_prompt(self, prompt: str, *, task: LabelTask, max_new_tokens: int = 256) -> Prediction:
         """Score a frozen prompt with the same generation and exact v2 scoring path."""
         from lazylabel.adapters.outbound.persistence.suggestions import parse_prediction
         raw = self.generate(prompt, max_new_tokens=max_new_tokens)
         parse_prediction(raw, valid_labels=task.labels)
-        evidence = self._label_scores(prompt, task.labels)
-        return parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
-                                confidence_method=RAW_SCORE_METHOD)
+        return _scored_prediction(raw, self._label_scores(prompt, task.labels), task)
+
+
+def _scored_prediction(raw, evidence, task):
+    """The label is the likelihood winner; generation only has to be a valid label JSON.
+
+    Scoring every label decides the class, so the label and its confidence
+    evidence never disagree (decisão 9).
+    """
+    from dataclasses import replace
+    from lazylabel.adapters.outbound.persistence.suggestions import parse_prediction
+
+    prediction = parse_prediction(raw, valid_labels=task.labels, confidence_evidence=evidence,
+                                  confidence_method=RAW_SCORE_METHOD)
+    return replace(prediction, label=max(task.labels, key=evidence.get))

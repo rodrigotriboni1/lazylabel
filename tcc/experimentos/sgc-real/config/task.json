@@ -1,0 +1,9 @@
+{
+  "task_id": "risco",
+  "instructions": "Classify the credit risk of one loan applicant from the South German Credit data as bad or good. Fields use the dataset's German column names and integer codes; laufzeit is duration in months, hoehe is amount in DM, alter is age in years.",
+  "input_columns": ["laufkont","laufzeit","moral","verw","hoehe","sparkont","beszeit","rate","famges","buerge","wohnzeit","verm","alter","weitkred","wohn","bishkred","beruf","pers","telef","gastarb"],
+  "labels": ["bad", "good"],
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": null,
+  "policy_path": "./policy.json"
+}

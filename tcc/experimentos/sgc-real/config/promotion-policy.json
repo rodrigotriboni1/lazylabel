@@ -1,0 +1,10 @@
+{
+  "task_id": "risco",
+  "version": "risco-promotion-2026-11-10",
+  "required_metrics": {"macro_f1": 0.55},
+  "minimum_coverage": 0.10,
+  "allowed_per_label_regression": {"bad": 0.10, "good": 0.10},
+  "max_calibration_error": 0.12,
+  "rollback_monitor_limits": {"macro_f1": 0.50, "calibration_error": 0.20},
+  "min_holdout_count": 100
+}

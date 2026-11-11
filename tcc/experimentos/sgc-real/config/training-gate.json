@@ -1,0 +1,9 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "license": "Apache-2.0 (Qwen2.5-0.5B-Instruct model card), verified 2026-11-10",
+  "hardware": "Apple M4, 16 GB unified memory, MPS",
+  "data_policy": "UCI South German Credit, public dataset (CC BY 4.0); dev split only",
+  "evaluation_protocol": "tcc/protocolo-experimental.md v0.2 and tcc/plano-experimento-real.md (2026-11-10)",
+  "authorized": true,
+  "training": {"epochs": 3}
+}
