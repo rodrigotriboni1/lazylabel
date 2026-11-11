@@ -59,7 +59,8 @@ class Trainer(Protocol):
 class CandidateEvaluator(Protocol):
     def evaluate(self, task: LabelTask, policy: LabelingPolicy, dataset: TrainingDataset,
                  adapter: TrainedAdapter, incumbent_adapter: Optional[str], *,
-                 candidate_id: str, gate_reference: str, gate_sha256: str) -> Mapping[str, object]: ...
+                 candidate_id: str, gate_reference: str, gate_sha256: str,
+                 promotion_policy_sha256: str) -> Mapping[str, object]: ...
 
 
 class TrainingRegistry(Protocol):

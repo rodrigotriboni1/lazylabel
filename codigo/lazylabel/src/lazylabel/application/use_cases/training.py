@@ -103,7 +103,8 @@ def run_training_cycle(task_id: str, *, configuration: TrainingConfiguration,
         })
         registry.transition(candidate_id, 'training')
         evaluation = evaluator.evaluate(task, policy, manifest, result, incumbent_adapter,
-            candidate_id=candidate_id, gate_reference=gate_reference, gate_sha256=gate_digest)
+            candidate_id=candidate_id, gate_reference=gate_reference, gate_sha256=gate_digest,
+            promotion_policy_sha256=promotion_policy.policy_sha256)
         if evaluation['candidate_model_ref'] != candidate_ref or evaluation['incumbent_model_ref'] != incumbent_ref:
             raise ValueError('evaluation_model_identity_mismatch')
         evaluation_id = evaluation['evaluation_id']
