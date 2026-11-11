@@ -1,0 +1,24 @@
+{
+  "policy_id": "risco-policy-v1",
+  "task_id": "risco",
+  "allowed_labels": [
+    "bad",
+    "good"
+  ],
+  "rules_version": "risco-rules-v1",
+  "rules": [
+    {
+      "field": "LIMIT_BAL",
+      "operator": "number_between",
+      "minimum": 0
+    },
+    {
+      "field": "AGE",
+      "operator": "number_between",
+      "minimum": 0
+    }
+  ],
+  "calibration_ref": null,
+  "min_calibrated_confidence": 0.8,
+  "max_staleness_seconds": 300
+}

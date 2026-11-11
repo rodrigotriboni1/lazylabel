@@ -1,0 +1,11 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "license": "Apache-2.0 (Qwen2.5-0.5B-Instruct model card), verified 2026-11-10",
+  "hardware": "Apple M4, 16 GB unified memory, MPS",
+  "data_policy": "UCI Default of Credit Card Clients, public dataset (CC BY 4.0); stratified 1000-row sample, dev split only",
+  "evaluation_protocol": "tcc/protocolo-experimental.md v0.2 and tcc/plano-experimento-real.md (2026-11-10)",
+  "authorized": true,
+  "training": {
+    "epochs": 3
+  }
+}

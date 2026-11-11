@@ -1,0 +1,8 @@
+{
+  "rows_raw": 30000,
+  "rows_after_dedup": 29892,
+  "sample": 1000,
+  "positives": 221,
+  "seed": 42,
+  "sha256": "ed292281e6f35bd3861ab6aa24f0779b341049c8c4df7b68b7ac96042717f952"
+}
