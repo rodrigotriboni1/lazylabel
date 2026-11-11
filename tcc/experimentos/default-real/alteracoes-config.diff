@@ -1,0 +1,89 @@
+diff --git a/../../sgc-real/config/policy.json b/./policy.json
+index 4f2cc6c..ed9eeae 100644
+--- a/../../sgc-real/config/policy.json
++++ b/./policy.json
+@@ -8,17 +8,12 @@
+   "rules_version": "risco-rules-v1",
+   "rules": [
+     {
+-      "field": "laufzeit",
++      "field": "LIMIT_BAL",
+       "operator": "number_between",
+       "minimum": 0
+     },
+     {
+-      "field": "hoehe",
+-      "operator": "number_between",
+-      "minimum": 0
+-    },
+-    {
+-      "field": "alter",
++      "field": "AGE",
+       "operator": "number_between",
+       "minimum": 0
+     }
+diff --git a/../../sgc-real/config/task.json b/./task.json
+index a8b7ac6..3f7abba 100644
+--- a/../../sgc-real/config/task.json
++++ b/./task.json
+@@ -1,9 +1,36 @@
+ {
+   "task_id": "risco",
+-  "instructions": "Classify the credit risk of one loan applicant from the South German Credit data as bad or good. Fields use the dataset's German column names and integer codes; laufzeit is duration in months, hoehe is amount in DM, alter is age in years.",
+-  "input_columns": ["laufkont","laufzeit","moral","verw","hoehe","sparkont","beszeit","rate","famges","buerge","wohnzeit","verm","alter","weitkred","wohn","bishkred","beruf","pers","telef","gastarb"],
+-  "labels": ["bad", "good"],
++  "instructions": "Classify the credit risk of one credit card client from Taiwan (2005) as bad (default next month) or good. Fields use the dataset's column names and codes; LIMIT_BAL, BILL_AMT and PAY_AMT are NT dollars, PAY_ are repayment status codes.",
++  "input_columns": [
++    "LIMIT_BAL",
++    "SEX",
++    "EDUCATION",
++    "MARRIAGE",
++    "AGE",
++    "PAY_0",
++    "PAY_2",
++    "PAY_3",
++    "PAY_4",
++    "PAY_5",
++    "PAY_6",
++    "BILL_AMT1",
++    "BILL_AMT2",
++    "BILL_AMT3",
++    "BILL_AMT4",
++    "BILL_AMT5",
++    "BILL_AMT6",
++    "PAY_AMT1",
++    "PAY_AMT2",
++    "PAY_AMT3",
++    "PAY_AMT4",
++    "PAY_AMT5",
++    "PAY_AMT6"
++  ],
++  "labels": [
++    "bad",
++    "good"
++  ],
+   "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+   "model_revision": null,
+   "policy_path": "./policy.json"
+-}
++}
+\ No newline at end of file
+diff --git a/../../sgc-real/config/training-gate.json b/./training-gate.json
+index be58771..42bee95 100644
+--- a/../../sgc-real/config/training-gate.json
++++ b/./training-gate.json
+@@ -2,8 +2,10 @@
+   "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+   "license": "Apache-2.0 (Qwen2.5-0.5B-Instruct model card), verified 2026-11-10",
+   "hardware": "Apple M4, 16 GB unified memory, MPS",
+-  "data_policy": "UCI South German Credit, public dataset (CC BY 4.0); dev split only",
++  "data_policy": "UCI Default of Credit Card Clients, public dataset (CC BY 4.0); stratified 1000-row sample, dev split only",
+   "evaluation_protocol": "tcc/protocolo-experimental.md v0.2 and tcc/plano-experimento-real.md (2026-11-10)",
+   "authorized": true,
+-  "training": {"epochs": 3}
+-}
++  "training": {
++    "epochs": 3
++  }
++}
+\ No newline at end of file
