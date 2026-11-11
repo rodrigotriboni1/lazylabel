@@ -15,7 +15,7 @@ Atualizado em 09/11/2026. Faça na ordem; cada passo destrava o seguinte.
 
 ## 2. Alinhar o protocolo
 
-- Reescrever [protocolo-experimental.md](protocolo-experimental.md), que ainda descreve redes bayesianas, para o tema aprovado.
+- ~~Reescrever o protocolo~~ feito em 10/11/2026: [protocolo-experimental.md](protocolo-experimental.md) v0.2. Falta o orientador revisar e aprovar.
 
 ## 3. Rodar o experimento real
 

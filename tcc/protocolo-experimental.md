@@ -1,82 +1,96 @@
-# Protocolo experimental preliminar
+# Protocolo experimental
 
-Versão 0.1 — 27/09/2026. Proposta de execução derivada do projeto enviado, ainda sujeita à discussão com o orientador. Nenhum dado foi baixado ou modelo treinado nesta etapa.
+Versão 0.2 — 10/11/2026. Substitui a versão 0.1 (27/09/2026, redes bayesianas e utilidade esperada), que continua no histórico do git. Vale para o tema da [decisão 7](decisoes.md), ainda pendente de aprovação do orientador; base, baseline e segunda base dependem das perguntas 3 e 4 de [perguntas-orientador.md](perguntas-orientador.md). A execução passo a passo está em [plano-experimento-real.md](plano-experimento-real.md).
 
-## Pergunta e critérios de avaliação
+## Pergunta
 
-Avaliar separadamente a estimação probabilística de risco e a seleção de ações sob uma matriz de utilidade demonstrativa. Não adotar superioridade da rede bayesiana como requisito de sucesso do TCC.
+Até que ponto um fluxo configurável de rotulagem de dados financeiros, implementado como biblioteca (o LazyLabel), pode ser reaplicado a outras tarefas e bases sem alterar seu núcleo, mantendo rastreabilidade e controle de qualidade?
 
-Para a previsão, usar Brier score como critério principal de seleção no desenvolvimento, acompanhado de ROC-AUC, log loss e diagrama de calibração. Brier e log loss avaliam a qualidade probabilística e não isolam calibração; interpretar o diagrama em conjunto. Reportar average precision como resumo complementar da curva precisão e revocação, identificando essa definição no texto.
+São dois estudos:
 
-Para a decisão, reportar utilidade média calculada com os rótulos observados sob a matriz simulada, utilidade esperada prevista, custo quando houver matriz de custos definida e distribuição das ações. Distinguir a previsão de utilidade da avaliação feita com os rótulos: nenhuma das duas mede o efeito real de uma intervenção de crédito.
+- **E1 — Qualidade na primeira base.** Os rótulos que o LazyLabel aplica são tão bons quanto os de um baseline simples? Em quantos registros ele aplica?
+- **E2 — Reutilização na segunda base.** O mesmo fluxo roda em outra base mudando só configuração? O que exigiu mudar código?
+
+Não é requisito de sucesso o LazyLabel vencer o baseline. Em dados tabulares, um modelo simples pode empatar ou vencer; esse resultado será reportado como tal.
+
+## Hipóteses (E1)
+
+Fixadas e datadas em [plano-experimento-real.md](plano-experimento-real.md) antes de qualquer resultado.
+
+- **H1:** nos registros aplicados, a acurácia do LazyLabel é maior ou igual à do baseline nesses mesmos registros.
+- **H2:** depois de um ciclo com promoção, a cobertura no teste é maior que zero.
+- **H3:** a confiança do LazyLabel é calibrada (erro de calibração abaixo do limite registrado).
 
 ## Base e variável alvo
 
-Decisão registrada em 19/10/2026: usar **South German Credit**, a versão corrigida publicada na UCI, conforme conversa de Rodrigo com o orientador. A base tem 1000 registros e 20 variáveis preditoras. Preservar o arquivo original com as categorias codificadas e documentar os nomes e significados a partir do código de leitura e da tabela da própria base.
+**South German Credit**, versão corrigida da UCI (escolha do orientador em 19/10/2026): 1000 registros e 20 variáveis preditoras. Preservar o arquivo original com as categorias codificadas e documentar nomes e significados a partir do código de leitura e da tabela da base.
 
-A variável alvo é `kredit` (`credit_risk`): o código bruto `0` representa risco ruim (`bad`) e `1` representa risco bom (`good`), conforme o código de leitura associado à versão corrigida. Para facilitar a interpretação do estudo, propõe-se recodificar para `y=1` como risco ruim e `y=0` como risco bom; deixar essa transformação explícita no pipeline e nos resultados.
+O alvo é `kredit` (`credit_risk`): no código bruto, `0` é risco ruim (`bad`) e `1` é risco bom (`good`). No LazyLabel, os rótulos da tarefa são `bad` e `good`, com o mapeamento `{"0": "bad", "1": "good"}`. Nas métricas binárias, a classe positiva é `bad`. A recodificação fica explícita na configuração e nos resultados.
 
-A amostra é estratificada e contém 300 casos ruins e 700 bons; a frequência amostral não deve ser apresentada como prevalência populacional. Não equiparar automaticamente o rótulo a inadimplência em um horizonte temporal definido.
+A amostra é estratificada (300 ruins e 700 bons); essa frequência não é prevalência populacional. O rótulo não equivale a inadimplência num horizonte definido.
 
-Registrar fonte, data de obtenção, hash do arquivo, número de linhas, dicionário, mapeamento e proporção observada de classes. A proporção é uma verificação descritiva, não uma métrica de desempenho.
+Registrar fonte, data de obtenção, SHA-256 do arquivo, número de linhas, dicionário, mapeamento e proporção observada de classes.
 
 ## Separação e prevenção de vazamento
 
-Proposta: divisão estratificada em 80% para desenvolvimento e 20% para teste final, com semente 42 e índices salvos. Havendo duplicatas ou registros relacionados, revisar o desenho antes de dividir, evitando que casos equivalentes apareçam nos dois lados.
+1. Divisão estratificada em 80% para desenvolvimento e 20% para teste final, com semente 42 e índices salvos (`split-indices.json`). Havendo duplicatas ou registros relacionados, revisar antes de dividir.
+2. **Baseline:** cinco partições estratificadas só no desenvolvimento. Todo pré-processamento aprendido (codificação, escala) acontece dentro do treino de cada partição.
+3. **LazyLabel:** recebe só o desenvolvimento como fonte e cria suas próprias partições congeladas (treino, calibração e holdout interno). O holdout interno decide a promoção; o teste final não participa.
+4. A coluna `kredit` nunca entra nas colunas de entrada da tarefa.
+5. Antes de abrir o teste final, registrar e congelar num commit: configuração do baseline, tarefa, políticas, `training-gate.json` e limiares.
+6. O teste final é avaliado **uma única vez**, pelos dois sistemas. Se um erro exigir repetir, registrar a correção e não apresentar mais o teste como intocado.
 
-No desenvolvimento, usar cinco partições estratificadas compartilhadas entre modelos. Todo pré-processamento aprendido, discretização, seleção de variáveis e aprendizado de estrutura deve ocorrer dentro do treino de cada partição. O conjunto de teste não orienta análise exploratória, escolhas de modelo, limiares ou utilidades.
+## Sistemas comparados
 
-Comparar probabilidades brutas e calibração sigmoidal. Quando houver calibração, gerar as previsões para ajustar o calibrador em subdivisões internas do treino, sem incluir a partição externa usada para avaliar a configuração. Após selecionar a configuração pela média do Brier nas cinco partições, reajustá-la no desenvolvimento completo usando a mesma separação interna para calibração.
+1. **Baseline:** regressão logística com pré-processamento adequado às variáveis (`codigo/experimento/baseline_logreg.py`).
+2. **LazyLabel:** modelo local de linguagem (candidato: `Qwen/Qwen2.5-0.5B-Instruct`) ajustado com LoRA pelo ciclo `lazylabel run`, com calibração e quarentena. O modelo é local porque a calibração precisa da probabilidade de cada rótulo, que o AI Gateway não fornece (decisão 8).
 
-Antes de abrir o teste final, registrar a configuração, os cenários de utilidade, os limiares, as métricas e os testes de robustez. Se um erro de implementação exigir repetir a avaliação, registrar a correção e não apresentar o teste como intocado após essa consulta.
+Se o orientador pedir (pergunta 2), acrescentar o LazyLabel com o modelo-base sem ajuste, para separar o efeito do ajuste fino. Não acrescentar sistemas só para tentar vencer no teste.
 
-## Modelos comparados
+## Métricas (E1)
 
-1. Regressão logística com pré-processamento adequado às variáveis.
-2. Rede bayesiana com estrutura inicial justificada pelo conhecimento do problema.
-3. Rede bayesiana com estrutura aprendida apenas nos dados de treino.
+No teste final:
 
-Documentar suavização das probabilidades condicionais e limites da complexidade da rede. Como ponto de partida para conter o esforço, propor no máximo dois pais por nó e um único critério de busca, BIC, sujeito à revisão antes dos experimentos. Definir previamente uma grade pequena de configurações. Não acrescentar modelos apenas para tentar obter vantagem no teste.
+| Métrica | Baseline (todos) | Baseline (só aplicados pelo LazyLabel) | LazyLabel (aplicados) |
+|---|---|---|---|
+| Acurácia | ✓ | ✓ | ✓ |
+| Macro-F1 | ✓ | ✓ | ✓ |
+| Brier | ✓ | ✓ | ✓ |
+| Erro de calibração (ECE, 10 faixas de mesma largura) | ✓ | ✓ | ✓ |
+| Cobertura (aplicados ÷ total) | 100% | — | ✓ |
 
-## Decisão e utilidade
+A comparação justa para H1 é a coluna do meio contra a da direita: os dois sistemas nos mesmos registros. Reportar também a curva de risco por cobertura do baseline (acurácia ao manter só os x% de maior confiança), para comparar com a cobertura que o LazyLabel escolheu.
 
-No caso inicial, usar EU(a|x) = soma_y P(y|x) U(a,y), tratando y como o estado de risco observado e adotando explicitamente a hipótese simplificadora de que sua distribuição não muda com a ação na simulação.
+## Medida de reutilização (E2)
 
-Não estimar P(y|a,x) a partir desta base: ela não contém os resultados das diferentes ações. Ações como solicitar informação ou garantia e análise manual precisam de hipóteses explícitas sobre custo e resultado, sem atribuir benefício comprovado. Começar por aprovar e rejeitar e acrescentar ações intermediárias quando suas hipóteses estiverem documentadas.
+Na segunda base (candidata: UCI Default of Credit Card Clients, sujeita à pergunta 4 e à checagem de vazamento temporal):
 
-Comparações propostas: regressão logística com limiar; regressão logística com utilidade esperada; rede bayesiana com limiar; rede bayesiana com utilidade esperada. Assim, é possível examinar a contribuição do modelo de risco e a do critério de decisão separadamente. Usar a mesma matriz em todas as avaliações comparáveis. Em um caso binário simples, o máximo de utilidade pode equivaler a um limiar; essa equivalência é um resultado a explicar, não uma falha.
+1. Repetir o mesmo fluxo e as mesmas métricas do E1.
+2. Registrar cada alteração em duas colunas: **só configuração** (tarefa, política, mapeamento de rótulos, tipos de coluna, `training-gate.json`) e **exigiu mudar código** (qualquer diff em `codigo/lazylabel/src/`, com o `git diff` anexado).
+3. Registrar os passos executados e o tempo de cada um, sem alegar economia de tempo sem uma tarefa de referência comparável.
 
-Definir limiar fixo de 0,5 como referência simples e um limiar selecionado no desenvolvimento pela utilidade média simulada. Registrar como cada política mapeia probabilidades para ações. No caso de ações adicionais, explicitar que uma comparação com política binária também envolve conjuntos diferentes de ações.
+"Exigiu mudar código" também é resultado válido e responde à pergunta da tese.
 
-Guardar a ação escolhida, o ranking, a segunda opção e a diferença de utilidade. Documentar um critério determinístico para empates antes da avaliação. Valores monetários ou utilidades serão hipotéticos, não estimativas de retorno financeiro real.
+## Incerteza
 
-## Sensibilidade e evidências incompletas
+O teste tem cerca de 200 registros, e o subconjunto aplicado pode ser menor. Para as diferenças principais, usar bootstrap pareado e estratificado com 1000 reamostragens, reutilizando os mesmos casos em cada comparação. Esses intervalos descrevem a incerteza de amostragem condicionada aos modelos ajustados, não toda a variabilidade do treino. Não concluir superioridade com diferenças pequenas ou intervalos amplos.
 
-Propor cenários com variação de 10%, 25% e 50% nos custos e benefícios não nulos, mantendo também o cenário central. Reportar utilidade e proporção de recomendações alteradas; cenários não serão selecionados pelo resultado mais favorável.
+## Reprodutibilidade
 
-Propor remoção simulada de 10%, 20% e 30% das evidências de entrada, com máscaras e sementes comuns entre modelos. Para a rede, inferir marginalizando variáveis não observadas; para o baseline, usar tratamento de ausências definido e ajustado no treino. Verificar a compatibilidade entre calibração e entradas incompletas e registrar limitações. Esse teste representa o mecanismo de ausência simulado, não qualquer situação real de dados faltantes.
+Guardar em `tcc/experimentos/<experimento>/`: arquivo original e hash, índices da divisão, configurações congeladas, versões das bibliotecas, sementes, comandos executados, saídas de `run-status` e `model-status`, previsões por caso e tabela de resultados. O commit do código usado fica anotado no plano.
 
-## Incerteza e reprodutibilidade
+## Limitações conhecidas
 
-Guardar previsões por caso e apresentar variação das métricas nas partições. No teste, propor intervalos por bootstrap pareado estratificado com 1000 reamostragens para diferenças principais, reutilizando os mesmos casos em cada comparação. Esses intervalos descrevem incerteza de amostragem condicionada aos modelos ajustados; não capturam toda a variabilidade do treinamento. Evitar concluir superioridade com diferenças pequenas ou intervalos amplos.
+- Uma base de crédito alemã antiga não permite afirmar nada sobre carteiras brasileiras.
+- O holdout interno do LazyLabel sai de cerca de 800 registros divididos em três partições; o mínimo de holdout para promoção precisa caber nisso.
+- Antes da primeira promoção, toda previsão pode ficar em quarentena; o resultado pode ser cobertura zero.
+- O ciclo de treino real ainda não rodou de ponta a ponta fora de testes com stub.
 
-Guardar versões das bibliotecas, sementes, índices das divisões, parâmetros, matriz de utilidade, logs e instruções de execução. Construir o protótipo somente após a avaliação metodológica.
+## Fontes
 
-## Fontes consultadas
-
-- Projeto de TCC fornecido por Rodrigo, seções de objetivos, metodologia e cronograma.
-- [UCI Statlog German Credit Data](https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data): características e arquivos da base prevista.
 - [UCI South German Credit](https://archive.ics.uci.edu/dataset/573/south+german+credit+update): correção da documentação e contexto amostral.
-- [scikit-learn sobre calibração](https://scikit-learn.org/stable/modules/calibration.html): separação dos dados para calibração e interpretação das métricas probabilísticas.
+- [Grömping (2019), *South German Credit Data: Correcting a Widely Used Data Set*](https://www1.beuth-hochschule.de/FB_II/reports/Report-2019-004.pdf), apêndice B: codificação do alvo.
+- [UCI Default of Credit Card Clients](https://archive.ics.uci.edu/dataset/350/defaultofcreditcardclients): segunda base candidata.
+- [scikit-learn sobre calibração](https://scikit-learn.org/stable/modules/calibration.html): métricas probabilísticas e separação de dados para calibração.
 
-Consultas realizadas em 27/09/2026. Proporções de divisão, sementes, grades e cenários acima são propostas deste protocolo, não exigências da UCI, da UFU ou do projeto original.
-
-
-## Registro de atualização — 19/10/2026
-
-- Rodrigo informou que o orientador escolheu a base **South German Credit**, versão corrigida. A UCI descreve o alvo `kredit` como contrato cumprido (`good`) ou não cumprido (`bad`). A nota técnica associada à versão corrigida define os níveis do alvo como `0 = bad` e `1 = good`.
-- Para os modelos, ainda falta registrar se a classe positiva será risco ruim (`bad = 1`), que é uma recodificação de análise, não o código bruto da base.
-- Rodrigo prefere usar 20% como teste final e cinco partições estratificadas no conjunto de desenvolvimento. Manter como desenho de trabalho, sujeito à confirmação metodológica do orientador.
-- O orientador encorajou flexibilidade no tema. Reavaliar problema, modelos e caso de estudo se isso melhorar relevância ou viabilidade; o resultado desejado segue sendo uma análise comparativa e um protótipo demonstrativo.
-
-Fontes para a codificação: [UCI South German Credit](https://archive.ics.uci.edu/dataset/573/south%2Bgerman%2Bcredit%2Bupdate) e [Grömping (2019), *South German Credit Data: Correcting a Widely Used Data Set*](https://www1.beuth-hochschule.de/FB_II/reports/Report-2019-004.pdf), apêndice B.
+Proporções de divisão, sementes, número de faixas e reamostragens são propostas deste protocolo, não exigências da UCI, da UFU ou do projeto original.
