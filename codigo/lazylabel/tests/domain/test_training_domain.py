@@ -218,3 +218,26 @@ def test_holdout_metrics_include_abstentions_and_enforce_threshold():
     assert derived["per_label"]["high"]["recall"] == 0.0
     with pytest.raises(ValueError, match="applied_flag_mismatches_threshold"):
         _derive_holdout_metrics(rows, task().labels, 0.9)
+
+
+def test_calibration_counts_rare_unusable_outputs_as_wrong_and_rejects_many():
+    labeling = LabelingPolicy("risk-v1", "risk", ("low", "high"), "rules-v1", "cal-v1", 0.7, 30)
+    predictions, labels = [], {}
+    for index in range(20):
+        predicted, target = ("low", "high")[index % 2], ("low", "high")[(index // 3) % 2]
+        ref, top = digest(index), -3.0 + index * 0.2
+        scores = {label: top if label == predicted else top - 1.0 for label in task().labels}
+        prediction = None if index == 7 else Prediction(predicted, None, scores, None, None,
+                                                        SUPPORTED_SCORE_METHOD, ref)
+        predictions.append({"record_ref": ref, "prediction": prediction})
+        labels[ref] = target
+    frozen = {"task_spec_sha256": task_spec_sha256(task()), "manifest_sha256": "a" * 64,
+              "partition_sha256": "b" * 64, "dataset_sha256": "c" * 64,
+              "refs": tuple(labels), "labels": labels}
+    options = {"method": SUPPORTED_SCORE_METHOD, "frozen_partition": frozen, "task": task(),
+               "policy": labeling, "model_ref": "model-v1", "calibration_ref": "cal-v1"}
+    artifact = fit_calibrator_from_partition(predictions, labels, **options)
+    assert artifact.metrics["row_count"] == 20  # 1/20 unusable: kept as a wrong answer
+    predictions[8] = {**predictions[8], "prediction": None}
+    with pytest.raises(ValueError, match="calibration_partition_inference_incomplete"):
+        fit_calibrator_from_partition(predictions, labels, **options)

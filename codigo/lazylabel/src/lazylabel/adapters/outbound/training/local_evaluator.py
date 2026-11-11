@@ -109,7 +109,8 @@ def _score(rows, backend, task, policy, *, apply_rules=False):
             if (not isinstance(prediction, Prediction) or prediction.label not in task.labels
                     or prediction.confidence_method != RAW_SCORE_METHOD
                     or prediction.confidence_evidence is None
-                    or list(prediction.confidence_evidence) != list(task.labels)):
+                    or list(prediction.confidence_evidence) != list(task.labels)
+                    or prediction.label != max(task.labels, key=prediction.confidence_evidence.get)):
                 raise PredictionError("Prediction or score evidence did not match the task.")
         except PredictionError as exc:
             result.append({"record_ref": record_ref, "input_digest": input_digest,
@@ -168,8 +169,6 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
                                                     adapter_path=str(directory) if directory else None,
                                                     model_ref=model_ref)
         calibration_scored = _score(calibration_rows, backend, task, policy)
-        if any(row["prediction"] is None for row in calibration_scored):
-            raise ValueError("calibration_partition_inference_incomplete")
         labels = {row["record_ref"]: row["target"] for row in calibration_scored}
         fitted = fit_calibrator([{"record_ref": row["record_ref"], "prediction": row["prediction"]}
                                  for row in calibration_scored], labels, method=RAW_SCORE_METHOD,

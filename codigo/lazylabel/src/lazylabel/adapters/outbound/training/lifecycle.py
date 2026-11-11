@@ -176,7 +176,14 @@ class LocalTrainingEffects:
         return _sha(dataset.manifest_reference)
 
     def _training_args(self, task, dataset, output_reference, gate_reference):
-        config = TrainingConfig(task.model_id, task.model_revision, Path(output_reference))
+        try:
+            options = json.loads(Path(gate_reference).read_text(encoding="utf-8")).get("training") or {}
+        except (OSError, ValueError, AttributeError):
+            options = {}  # validate_training_request reports the unreadable gate
+        allowed = {"epochs", "batch_size", "learning_rate", "lora_rank"}
+        if not isinstance(options, dict) or set(options) - allowed:
+            raise ValueError("training gate 'training' accepts only: " + ", ".join(sorted(allowed)))
+        config = TrainingConfig(task.model_id, task.model_revision, Path(output_reference), **options)
         return (Path(dataset.train_reference), config), {
             "gate_path": Path(gate_reference),
             "trusted_dataset_manifest": self.manifests[dataset.manifest_reference],

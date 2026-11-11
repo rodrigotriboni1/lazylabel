@@ -49,6 +49,9 @@ def _number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+MAX_INVALID_CALIBRATION_FRACTION = 0.05
+
+
 def _records(predictions, labels):
     if isinstance(labels, Mapping):
         label_by_ref = dict(labels)
@@ -71,7 +74,7 @@ def _records(predictions, labels):
             raise ValueError("Calibration predictions require record_ref provenance.")
         ref = item["record_ref"]
         prediction = item.get("prediction")
-        if not re.fullmatch(r"[0-9a-f]{64}", ref) or ref in seen or prediction is None:
+        if not re.fullmatch(r"[0-9a-f]{64}", ref) or ref in seen:
             raise ValueError("Calibration predictions contain a duplicate ID or missing prediction.")
         seen.add(ref)
         if ref not in label_by_ref:
@@ -281,11 +284,21 @@ def fit_calibrator_from_partition(calibration_predictions, trusted_labels, *, me
     xs, ys = [], []
     observed = set()
     content = []
+    invalid = sum(1 for row in rows if row[1] is None)
+    if invalid > MAX_INVALID_CALIBRATION_FRACTION * len(rows):
+        raise ValueError("calibration_partition_inference_incomplete")
     for record_ref, prediction, trusted_label in rows:
         if trusted_label not in task.labels:
             raise ValueError("Trusted calibration label is outside the task taxonomy.")
-        evidence, predicted = _scores(prediction, task, method)
         observed.add(trusted_label)
+        if prediction is None:
+            # An unusable output counts as a wrong answer with zero score, never dropped.
+            xs.append(0.0)
+            ys.append(0.0)
+            content.append({"record_ref": record_ref, "scores": None, "predicted": None,
+                            "trusted_label": trusted_label})
+            continue
+        evidence, predicted = _scores(prediction, task, method)
         top_score = max(evidence[label] for label in task.labels)
         xs.append(float(top_score))
         ys.append(float(predicted == trusted_label))

@@ -74,6 +74,6 @@ Proposta fixada antes de qualquer resultado; ainda sujeita ao orientador (pergun
 - **Primeiro uso (pergunta 8):** a opção C fica para depois do E2, porque mudaria o núcleo no meio da medida de reutilização e contraria a decisão 5.
 - **Correções no núcleo antes do congelamento** (entram no E1, não contam como mudança do E2):
   1. o mesmo prompt para treino, calibração e rotulagem;
-  2. a calibração tolera poucas saídas inválidas (mínimo de 95% válidas) em vez de abortar;
-  3. épocas de treino configuráveis na política.
+  2. a calibração tolera poucas saídas inválidas (até 5%, contadas como erro com pontuação zero) em vez de abortar;
+  3. hiperparâmetros de treino (`epochs`, `batch_size`, `learning_rate`, `lora_rank`) lidos do campo opcional `training` do `training-gate.json`, que já tem hash registrado no ciclo.
 - **Por quê:** sem essas correções, o ciclo provavelmente aborta na calibração, ou o calibrador é ajustado num prompt diferente do usado na rotulagem.
