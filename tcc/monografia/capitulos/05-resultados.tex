@@ -1,0 +1,180 @@
+\chapter{Resultados e discussão}
+\label{cap:resultados}
+
+% RASCUNHO: este capítulo é ESTRUTURA. Só aparecem números que já estão
+% registrados em arquivos do repositório (citados em cada seção). Tudo o que
+% depende do teste final está marcado com \pendente{...}.
+
+Este capítulo apresenta primeiro os resultados preliminares, obtidos antes de abrir qualquer teste final, e depois os resultados dos estudos E1 e E2. \pendente{os resultados do E1 e do E2 ainda não foram obtidos; as seções correspondentes contêm apenas a estrutura}.
+
+\section{Resultados preliminares}
+
+\subsection{Experimento sintético}
+
+Antes dos dados reais, a cadeia técnica (exportar exemplos, ajustar um adapter LoRA, recarregá-lo e inferir) foi verificada em dados sintéticos: descrições financeiras geradas por moldes de frase (\emph{templates}), classificadas em três categorias, com 72 exemplos de treino e 24 reservados. O ajuste usou posto 8, três épocas, lote 1, taxa de aprendizado $2\times10^{-4}$ e semente 42. A \autoref{tab:sintetico} traz o resultado nos 24 exemplos reservados.
+
+\begin{table}[htb]
+  \centering
+  \caption{Experimento sintético: modelo-base e adapter LoRA nos 24 exemplos reservados}
+  \label{tab:sintetico}
+  \begin{tabular}{lcc}
+    \toprule
+    Métrica & Modelo-base & Com adapter LoRA \\
+    \midrule
+    Acurácia exata & 9/24 (37,5\%) & 17/24 (70,8\%) \\
+    Macro-F1 & 0,300 & 0,706 \\
+    Saídas válidas & 23/24 (95,8\%) & 24/24 (100\%) \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \cod{tcc/experimentos/sintetico-qwen-0.5b/RESULTS.md}.}
+\end{table}
+
+Esse resultado mostra apenas que a cadeia funciona. A amostra é pequena e artificial, os rótulos foram gerados por regras, e treino e avaliação compartilham vocabulário e padrões; nada disso permite concluir qualidade em dados reais. Além disso, o experimento é anterior ao fluxo autônomo atual: o adapter produzido não tem calibrador e não pode ser promovido pelo ciclo descrito no \autoref{cap:desenvolvimento}.
+
+\subsection{Teste de fumaça do modelo-base}
+\label{sec:fumaca}
+
+Em 10/11/2026, antes do congelamento da configuração do E1, o modelo-base sem ajuste foi executado nos 50 primeiros registros do conjunto de desenvolvimento da South German Credit, para medir a taxa de saídas válidas (\autoref{tab:fumaca}). O teste final não foi usado, e não houve medida de acerto.
+
+\begin{table}[htb]
+  \centering
+  \caption{Teste de fumaça do modelo-base em 50 registros de desenvolvimento}
+  \label{tab:fumaca}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Rodada & Saídas válidas & Rótulo igual ao vencedor & Previstos & Tempo \\
+    & & por pontuação & (\texttt{good}/\texttt{bad}) & \\
+    \midrule
+    1 (rótulo gerado) & 50/50 & 33/50 & 22/28 & 28 s \\
+    2 (rótulo = vencedor) & 50/50 & 50/50 & 39/11 & 29 s \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \cod{tcc/experimentos/sgc-real/fumaca-2026-11-10.md}.}
+\end{table}
+
+Na primeira rodada, o rótulo escrito no texto gerado discordava do rótulo de maior pontuação em 17 dos 50 casos (34\%). Como a calibração opera sobre a pontuação, o ciclo abortaria. Esse achado levou à regra, registrada na decisão~9, de que o rótulo previsto é o de maior verossimilhança.
+
+\subsection{Baseline por validação cruzada no desenvolvimento}
+
+A \autoref{tab:baseline-cv} traz as médias da validação cruzada de cinco partições do baseline, calculadas só nos 800 registros de desenvolvimento de cada base. O teste final permanecia fechado quando esses números foram registrados.
+
+\begin{table}[htb]
+  \centering
+  \caption{Baseline (regressão logística): média da validação cruzada no desenvolvimento}
+  \label{tab:baseline-cv}
+  \begin{tabular}{lcc}
+    \toprule
+    Métrica & South German Credit & Default of Credit Card Clients \\
+    \midrule
+    Acurácia & 0,744 & 0,816 \\
+    Macro-F1 & 0,678 & 0,688 \\
+    Brier (\emph{top-label}) & 0,170 & 0,137 \\
+    ECE (\emph{top-label}, 10 faixas) & 0,080 & 0,049 \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \cod{resultados/baseline/baseline.json} em \cod{tcc/experimentos/sgc-real/} e em \cod{tcc/experimentos/default-real/}.}
+\end{table}
+
+Para referência, prever sempre a classe majoritária acerta 70,0\% na primeira base e 77,9\% na amostra da segunda. Na segunda base, portanto, a acurácia do baseline fica poucos pontos acima da taxa-base, e o macro-F1 é a medida mais informativa. Esses números são de desenvolvimento e servem apenas para dimensionar a comparação; os resultados válidos para as hipóteses são os do teste final.
+
+\section{E1: qualidade na South German Credit}
+
+\subsection{Ciclo de treino e promoção}
+
+\pendente{resultado do ciclo \cod{lazylabel run} no desenvolvimento: tamanho real das partições de treino, calibração e holdout; métricas do candidato e do incumbente no holdout interno; quais gates passaram; ação final (promoção, rejeição ou bloqueio); tempo de treino; saídas de \cod{run-status} e \cod{model-status}}.
+
+\subsection{Teste final}
+
+\pendente{data e commit da abertura única do teste final}.
+
+\begin{table}[htb]
+  \centering
+  \caption{E1: resultados no teste final (200 registros)}
+  \label{tab:e1}
+  \begin{tabular}{lccc}
+    \toprule
+    Métrica & Baseline (todos) & Baseline (só aplicados) & LazyLabel \\
+    \midrule
+    Acurácia & \pendente{} & \pendente{} & \pendente{} \\
+    Macro-F1 & \pendente{} & \pendente{} & \pendente{} \\
+    Brier (\emph{top-label}) & \pendente{} & \pendente{} & \pendente{} \\
+    ECE (\emph{top-label}) & \pendente{} & \pendente{} & \pendente{} \\
+    Cobertura & 100\% & -- & \pendente{} \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \pendente{arquivo de resultados do E1}.}
+\end{table}
+
+\pendente{intervalos de confiança por bootstrap pareado (1000 reamostragens) para as diferenças principais}.
+
+\pendente{figura: curva de risco por cobertura do baseline, com o ponto do LazyLabel marcado}.
+
+\pendente{tabela: matriz de confusão do LazyLabel nos registros aplicados}.
+
+\pendente{tabela: contagem de quarentenas por motivo}.
+
+\subsection{Discussão das hipóteses}
+
+\begin{description}
+  \item[H1.] \pendente{diferença de acurácia entre o LazyLabel nos aplicados e o baseline na mesma cobertura; dizer se ficou dentro dos 5 pontos percentuais e com que intervalo}.
+  \item[H2.] \pendente{houve promoção? cobertura no teste e comparação com o mínimo de 0,10}.
+  \item[H3.] \pendente{ECE e Brier do LazyLabel em todas as previsões do teste, comparados aos do baseline e ao limite de 0,12}.
+\end{description}
+
+\pendente{se houver, comparação com o modelo-base calibrado sem ajuste (efeito do ajuste fino)}.
+
+\section{E2: reutilização na Default of Credit Card Clients}
+
+\subsection{O que mudou}
+
+Até a preparação do E2, a comparação entre as configurações dos dois estudos (arquivo \cod{tcc/experimentos/default-real/alteracoes-config.diff}) mostra alterações apenas em arquivos de configuração: na tarefa, as instruções e as colunas de entrada; na política de rotulagem, os campos das regras; e no gate de treino, a descrição da política de dados. Nenhum arquivo em \cod{codigo/lazylabel/src/} foi alterado. Essa constatação vale para a preparação; \pendente{confirmar, depois de rodar o ciclo e o teste do E2, se alguma mudança de código foi necessária, e anexar o \cod{git diff} correspondente}.
+
+\begin{quadro}[htb]
+  \caption{E2: alterações em relação ao E1}
+  \label{qua:e2-alteracoes}
+  \small
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Item} & \textbf{Só configuração} & \textbf{Exigiu mudar código} \\ \hline
+    Tarefa (instruções, colunas de entrada) & Sim & \pendente{} \\ \hline
+    Política de rotulagem (regras) & Sim & \pendente{} \\ \hline
+    Gate de treino (política de dados) & Sim & \pendente{} \\ \hline
+    Política de promoção & Sem alteração & \pendente{} \\ \hline
+    Mapeamento de rótulos e tipos de coluna & \pendente{} & \pendente{} \\ \hline
+    Execução do ciclo e do teste & \pendente{} & \pendente{} \\ \hline
+  \end{tabularx}
+  \legend{Fonte: \cod{tcc/experimentos/default-real/alteracoes-config.diff} e \pendente{registro da execução do E2}.}
+\end{quadro}
+
+\pendente{tabela: passos executados no E2 e tempo de cada um}.
+
+\subsection{Qualidade na segunda base}
+
+\begin{table}[htb]
+  \centering
+  \caption{E2: resultados no teste final (200 registros)}
+  \label{tab:e2}
+  \begin{tabular}{lccc}
+    \toprule
+    Métrica & Baseline (todos) & Baseline (só aplicados) & LazyLabel \\
+    \midrule
+    Acurácia & \pendente{} & \pendente{} & \pendente{} \\
+    Macro-F1 & \pendente{} & \pendente{} & \pendente{} \\
+    Brier (\emph{top-label}) & \pendente{} & \pendente{} & \pendente{} \\
+    ECE (\emph{top-label}) & \pendente{} & \pendente{} & \pendente{} \\
+    Cobertura & 100\% & -- & \pendente{} \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \pendente{arquivo de resultados do E2}.}
+\end{table}
+
+\pendente{resultado do ciclo de treino e promoção no E2, intervalos por bootstrap e contagem de quarentenas por motivo}.
+
+\section{Discussão geral}
+
+\pendente{resposta à pergunta de pesquisa à luz do E1 e do E2: até que ponto o fluxo foi reaplicado sem alterar o núcleo; o que a rastreabilidade registrou; o que o controle de qualidade (quarentena e gates) impediu ou permitiu}.
+
+\pendente{discutir o custo: tempo de treino e de inferência do modelo de linguagem em comparação com o baseline, e se o resultado justifica um modelo de linguagem em dados tabulares}.
+
+\pendente{ameaças à validade observadas na execução (por exemplo, necessidade de repetir alguma etapa)}.

@@ -1,0 +1,197 @@
+\chapter{Desenvolvimento: o LazyLabel}
+\label{cap:desenvolvimento}
+
+O LazyLabel é uma biblioteca em Python para analisar e rotular dados financeiros, com interface de linha de comando (CLI) e painel web. Ela lê arquivos CSV e bancos SQLite somente para leitura, monitora o esquema das fontes, calcula análises exatas, rotula com quarentena e treina modelos com gates de promoção e rollback. O código está em \cod{codigo/lazylabel/} no repositório do projeto. Este capítulo descreve os requisitos, a arquitetura, o fluxo de uso, as decisões de projeto e os testes.
+
+\section{Requisitos}
+
+O usuário principal é um desenvolvedor ou analista que conecta uma fonte, configura uma tarefa reutilizável e opera pela biblioteca, pela CLI ou pelo painel. Os requisitos funcionais estão no \autoref{qua:requisitos} e derivam das decisões de projeto (\autoref{sec:decisoes}).
+
+\begin{quadro}[htb]
+  \caption{Requisitos funcionais do LazyLabel}
+  \label{qua:requisitos}
+  \small
+  \begin{tabularx}{\textwidth}{|l|X|l|}
+    \hline
+    \textbf{ID} & \textbf{Requisito} & \textbf{Origem} \\ \hline
+    RF1 & Abrir CSV e SQLite somente para leitura e nunca alterar a origem & Decisão 2 \\ \hline
+    RF2 & Mapear tipos de coluna explicitamente; salvar o esquema de referência só após confirmação & Documentação \\ \hline
+    RF3 & Executar análises a partir de um plano revisável e gravar plano, resultados, gráfico e \emph{hashes} & Decisão 6 \\ \hline
+    RF4 & Enviar ao modelo apenas as colunas de entrada da tarefa & Decisões 1 e 4 \\ \hline
+    RF5 & Aplicar rótulo só com política válida, regras satisfeitas, origem atual e confiança calibrada suficiente; caso contrário, quarentena com motivo codificado & Decisão 4 \\ \hline
+    RF6 & Treinar só com rótulos confiáveis, em partições congeladas & Decisão 5 \\ \hline
+    RF7 & Promover somente se todos os gates passam; registrar rejeição e rollback & Decisão 5 \\ \hline
+    RF8 & Expor o estado de execuções e modelos na CLI e no painel, sem controles por registro & Decisão 4 \\ \hline
+    RF9 & Servir o painel somente em \emph{loopback}, com validação de Host, Origin e CSRF & Decisão 1 \\ \hline
+  \end{tabularx}
+  \legend{Fonte: \cod{tcc/produto.md}.}
+\end{quadro}
+
+Os requisitos não funcionais são:
+
+\begin{itemize}
+  \item \textbf{Privacidade.} Registros e evidências usam referências opacas e \emph{digests}; linhas da fonte, \emph{prompts} e textos livres não são gravados em \emph{logs}.
+  \item \textbf{Falha segura (\emph{fail closed}).} Na ausência de política, rótulos confiáveis, artefatos ou gates, a biblioteca não aplica rótulo e não promove modelo.
+  \item \textbf{Dependências opcionais.} O núcleo não tem dependências obrigatórias; o painel, a inferência local e o treino são extras de instalação. A versão mínima de Python é 3.10.
+  \item \textbf{Manutenibilidade.} As regras de dependência entre camadas são verificadas por teste automatizado.
+\end{itemize}
+
+Ficam fora do escopo: conformidade regulatória automática, decisão de concessão de crédito, detecção de dados pessoais, revisão humana por registro no fluxo normal, fontes além de CSV e SQLite e escrita na origem.
+
+\section{Arquitetura}
+
+O código segue a arquitetura hexagonal (\autoref{sec:arquitetura-teoria}), em quatro camadas, com as dependências apontando para dentro (\autoref{fig:camadas}).
+
+\begin{figure}[htb]
+  \centering
+  \caption{Camadas do LazyLabel e direção das dependências}
+  \label{fig:camadas}
+  \begin{tikzpicture}[
+      caixa/.style={draw, rounded corners, minimum width=11.5cm, minimum height=1.25cm, align=center, font=\small},
+      seta/.style={-{Stealth[length=2.5mm]}, thick},
+      node distance=0.75cm]
+    \node[caixa] (boot) {\textbf{Composição} (\texttt{bootstrap/})\\ conecta os adaptadores concretos aos casos de uso};
+    \node[caixa, below=of boot] (adap) {\textbf{Adaptadores} (\texttt{adapters/})\\ entrada: CLI, HTTP \quad|\quad saída: fontes, persistência, modelos, treino};
+    \node[caixa, below=of adap] (app) {\textbf{Aplicação} (\texttt{application/})\\ casos de uso e portas};
+    \node[caixa, below=of app] (dom) {\textbf{Domínio} (\texttt{domain/})\\ regras e cálculos puros, sem entrada e saída};
+    \draw[seta] (boot) -- node[right, font=\footnotesize] {depende de} (adap);
+    \draw[seta] (adap) -- node[right, font=\footnotesize] {depende de} (app);
+    \draw[seta] (app) -- node[right, font=\footnotesize] {depende de} (dom);
+  \end{tikzpicture}
+  \legend{Fonte: elaborado pelo autor a partir de \cod{codigo/lazylabel/docs/architecture/clean-hexagonal.md}.}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{Domínio} (\cod{src/lazylabel/domain/}). Valores, validações e cálculos independentes de bibliotecas externas, de rede e de arquivos. Está dividido em análise, rotulagem, monitoramento, projetos e treino. É aqui que ficam a política de rotulagem, a decisão entre aplicado e quarentena, a divisão em partições, o ajuste do calibrador, as métricas e as regras de promoção.
+  \item \textbf{Aplicação} (\cod{src/lazylabel/application/}). Os casos de uso orquestram o trabalho e declaram \emph{portas}, isto é, protocolos que descrevem o que a aplicação precisa de fontes, persistência, modelos e treino. Os casos de uso recebem suas dependências prontas e não criam adaptadores.
+  \item \textbf{Adaptadores} (\cod{src/lazylabel/adapters/}). Os de entrada traduzem argumentos da CLI e requisições HTTP em chamadas à aplicação. Os de saída implementam as portas: leitura de CSV e SQLite, arquivos do \emph{workspace}, modelos locais (Transformers) e treino (PEFT/LoRA).
+  \item \textbf{Composição} (\cod{src/lazylabel/bootstrap/}). É a única camada que escolhe e conecta implementações concretas.
+\end{itemize}
+
+O painel repete a mesma organização no navegador: as telas consomem uma porta tipada, implementada por um cliente HTTP em produção e por um cliente em memória nos testes.
+
+Para acrescentar uma fonte de dados, por exemplo, define-se a capacidade de leitura na porta de fontes, implementa-se o conector entre os adaptadores de saída e registra-se a escolha na composição. O domínio e os casos de uso não mudam. É essa propriedade que o estudo E2 põe à prova do ponto de vista do usuário: mudar de base sem tocar em \cod{src/}.
+
+\section{Fluxo de uso}
+\label{sec:fluxo}
+
+A \autoref{fig:fluxo} resume o fluxo, e as subseções seguintes descrevem cada passo em linguagem simples.
+
+\begin{figure}[htb]
+  \centering
+  \caption{Fluxo de uso do LazyLabel}
+  \label{fig:fluxo}
+  \begin{tikzpicture}[
+      passo/.style={draw, rounded corners, minimum width=3.1cm, minimum height=1cm, align=center, font=\footnotesize},
+      dec/.style={draw, diamond, aspect=2.2, align=center, font=\footnotesize, inner sep=1pt},
+      seta/.style={-{Stealth[length=2mm]}, thick},
+      node distance=0.6cm and 0.55cm]
+    \node[passo] (proj) {1. Projeto};
+    \node[passo, right=of proj] (fonte) {2. Fonte\\(só leitura)};
+    \node[passo, right=of fonte] (tarefa) {3. Tarefa\\e políticas};
+    \node[passo, right=of tarefa] (conf) {4. Rótulos\\confiáveis};
+    \node[passo, below=1.1cm of conf] (run) {5. Execução\\(\texttt{run})};
+    \node[dec, left=of run] (ok) {confiança\\calibrada\\suficiente?};
+    \node[passo, left=of ok] (apl) {6a. Aplicado};
+    \node[passo, below=0.8cm of ok] (quar) {6b. Quarentena};
+    \node[passo, below=3.6cm of run] (treino) {7. Treino\\do candidato};
+    \node[dec, left=of treino] (gate) {todos os\\gates\\passam?};
+    \node[passo, left=of gate] (prom) {8a. Promoção};
+    \node[passo, below=0.8cm of gate] (rej) {8b. Rejeição};
+    \node[passo, below=0.8cm of prom] (roll) {9. Rollback\\se a saúde piorar};
+    \draw[seta] (proj) -- (fonte);
+    \draw[seta] (fonte) -- (tarefa);
+    \draw[seta] (tarefa) -- (conf);
+    \draw[seta] (conf) -- (run);
+    \draw[seta] (run) -- (ok);
+    \draw[seta] (ok) -- node[above, font=\scriptsize] {sim} (apl);
+    \draw[seta] (ok) -- node[right, font=\scriptsize] {não} (quar);
+    \draw[seta] (run) -- (treino);
+    \draw[seta] (treino) -- (gate);
+    \draw[seta] (gate) -- node[above, font=\scriptsize] {sim} (prom);
+    \draw[seta] (gate) -- node[right, font=\scriptsize] {não} (rej);
+    \draw[seta] (prom) -- (roll);
+  \end{tikzpicture}
+  \legend{Fonte: elaborado pelo autor.}
+\end{figure}
+
+\subsection{Projeto}
+
+O usuário cria uma pasta de trabalho com \cod{lazylabel project init}. Tudo o que a biblioteca produz (configuração, execuções, modelos, partições) fica dentro dela, no diretório \cod{.lazylabel/}. Essa pasta é a fronteira de confiança: os \emph{hashes} gravados detectam alterações acidentais ou externas, mas não protegem contra o próprio dono da pasta.
+
+\subsection{Fonte}
+
+Uma fonte é um arquivo CSV ou uma tabela SQLite, registrada com \cod{lazylabel source add-csv} ou \cod{source add-sqlite}. A fonte é sempre aberta somente para leitura. Os tipos de data e de número são mapeados à mão pelo usuário. É possível capturar o esquema esperado (colunas, tipos, limites de valores ausentes) e, mais tarde, comparar a fonte atual com ele (\cod{lazylabel monitor}).
+
+\subsection{Tarefa e políticas}
+
+Uma tarefa é um arquivo JSON que declara as instruções, as colunas de entrada, os rótulos permitidos e o modelo. O modelo só vê as colunas listadas. A tarefa aponta para uma \emph{política de rotulagem}, que define as regras que todo registro precisa satisfazer (por exemplo, valor não negativo), o limite mínimo de confiança calibrada e o tempo máximo entre a inferência e a decisão. A política não aceita código nem expressões, apenas quatro operadores fixos. Nenhum limite é presumido pela biblioteca: sem política, nada é aplicado.
+
+\subsection{Rótulos confiáveis}
+
+Para treinar e avaliar, o usuário registra uma coluna de referência com \cod{lazylabel supervision add}, informando a proveniência e o tipo de confiança (\cod{provided_ground_truth} ou \cod{validated_rule}) e, se necessário, um mapeamento entre os valores da fonte e os rótulos da tarefa. Esses são os \emph{rótulos confiáveis}: o único alvo permitido para treino e avaliação. A biblioteca valida formato, mapeamento e origem, mas a proveniência é uma declaração do operador. A coluna de rótulo não pode estar entre as colunas de entrada da tarefa.
+
+\subsection{Execução}
+
+O comando \cod{lazylabel run} faz uma rodada de rotulagem seguida do ciclo de treino. Antes de treinar, a biblioteca exige o \emph{gate de treino}, um arquivo (\cod{training-gate.json}) em que o usuário declara modelo, licença, hardware, política de dados e protocolo de avaliação e autoriza explicitamente o treino, e o \emph{gate de promoção}, uma política por tarefa com métricas mínimas, cobertura mínima, regressão máxima por rótulo, erro de calibração máximo, limites de rollback e tamanho mínimo do \emph{holdout}. Se algum pré-requisito falta, o ciclo fica \emph{bloqueado}: nada é treinado nem promovido.
+
+\subsection{Aplicado ou quarentena}
+
+Cada registro termina em um de dois estados. É \emph{aplicado} quando a saída do modelo é válida, as regras da política são satisfeitas, a fonte não mudou desde a leitura e a confiança calibrada atinge o limite. Em qualquer outro caso vai para \emph{quarentena}, com um código de motivo, por exemplo: saída inválida (\cod{invalid_output}), rótulo fora da tarefa (\cod{unknown_label}), regra violada (\cod{rule_conflict}), ausência de calibrador (\cod{uncalibrated}), confiança abaixo do limite (\cod{below_threshold}) ou fonte alterada (\cod{stale_source}). Um registro em quarentena não recebe rótulo e não exige revisão humana; ele apenas conta contra a cobertura.
+
+A confiança usada é sempre a do calibrador. Uma confiança que o modelo declare no próprio texto é rejeitada. Como o calibrador só existe depois que um modelo é avaliado e promovido, na primeira execução de um projeto todas as previsões ficam em quarentena com o motivo \cod{uncalibrated}.
+
+\subsection{Treino com gates}
+
+O ciclo de treino (i) valida a fonte de rótulos confiáveis; (ii) congela partições disjuntas de treino, calibração e \emph{holdout}, gravadas com \emph{hash} e reconstruídas e comparadas byte a byte em execuções posteriores; (iii) treina um candidato com LoRA só na partição de treino; (iv) ajusta um calibrador para cada modelo na partição de calibração; e (v) avalia candidato e incumbente no mesmo \emph{holdout}. Antes da primeira promoção, o incumbente é o modelo-base exato da tarefa.
+
+O calibrador é um artefato imutável, ligado à tarefa, à política, ao modelo exato e ao método de pontuação. Mudar qualquer um desses elementos invalida o calibrador, e as previsões voltam para quarentena.
+
+\subsection{Promoção, rejeição e rollback}
+
+O candidato é \emph{promovido} somente se todos os gates passam: métricas mínimas, cobertura mínima, erro de calibração máximo, ausência de regressão por rótulo acima do permitido e \emph{holdout} com tamanho suficiente. A promoção troca o ponteiro do modelo ativo e grava um evento encadeado por \emph{hash} no registro de modelos. Se algum gate falha, o candidato é \emph{rejeitado}, o modelo ativo permanece e o motivo é registrado. Não existe botão manual de promoção. Depois de uma promoção, se a saúde do modelo violar os limites de rollback, a biblioteca volta automaticamente à versão anterior verificada.
+
+Os comandos \cod{lazylabel run-status} e \cod{lazylabel model-status} mostram o resultado: contagens de aplicados e de quarentenas, motivos, estado do treino, ação de promoção e histórico do modelo, sempre depois de conferir os \emph{hashes} dos artefatos.
+
+\section{Painel}
+
+O comando \cod{lazylabel serve} abre um painel web local, servido em \cod{127.0.0.1}, com checagem de Host, Origin e CSRF. São seis telas: Visão geral, Perguntar, Análises, Monitoramento, Rotulagem e Treinamento. Cada tela é descrita por um arquivo JSON e renderizada por componentes prontos, de modo que alterar uma tela é editar o seu arquivo.
+
+O painel mostra estados agregados (cobertura, motivos de quarentena, histórico de promoção, rejeição e rollback) e não oferece controles por registro, em coerência com a decisão de não haver revisão linha a linha. Na tela Perguntar, o usuário faz uma pergunta sobre uma fonte, revisa o plano de análise proposto, o LazyLabel calcula os números de forma exata e um modelo de linguagem apenas monta a apresentação; telas que contenham números que não vieram do cálculo são descartadas. \pendente{incluir capturas de tela do painel}.
+
+\section{Decisões de projeto}
+\label{sec:decisoes}
+
+As decisões que moldaram a biblioteca estão registradas, com motivo e custo, em \cod{tcc/decisoes.md}. O \autoref{qua:decisoes} as resume.
+
+\begin{quadro}[htb]
+  \caption{Decisões de projeto}
+  \label{qua:decisoes}
+  \small
+  \begin{tabularx}{\textwidth}{|c|X|X|}
+    \hline
+    \textbf{N.º} & \textbf{Decisão} & \textbf{Motivo e custo} \\ \hline
+    1 & Tudo roda na máquina do usuário; nenhum dado sai dela. Substituída pela decisão 8; o modo local continua como opção. & Dados financeiros são sensíveis. Custo: qualidade limitada a modelos leves. \\ \hline
+    2 & Fontes CSV e SQLite abertas só para leitura. & Ler sem risco de alterar. Custo: não escreve de volta; só dois tipos de fonte. \\ \hline
+    3 & Código em camadas, com o domínio no centro. & Trocar modelo, fonte ou interface sem reescrever regras. Custo: mais arquivos. \\ \hline
+    4 & Rotulagem autônoma: cada registro é aplicado ou vai para quarentena. & Ninguém revisa linha a linha; na dúvida, o sistema se abstém. Custo: sem calibrador, tudo vai para quarentena na primeira execução. \\ \hline
+    5 & Treino só com rótulos confiáveis; promoção só se todos os gates passam; rollback automático. & Trocar de modelo só com evidência e poder voltar atrás. Custo: exige configurar autorização, políticas e rótulos antes do treino. \\ \hline
+    6 & Análises calculadas de forma exata, com aritmética decimal, a partir de um plano revisável. & Números financeiros não podem variar por arredondamento ou pelo modelo. Custo: só operações simples. \\ \hline
+    7 & O tema do TCC passa a ser a biblioteca, avaliada por reutilização. & Define a pergunta de pesquisa deste trabalho. \\ \hline
+    8 & Modelos na nuvem por um \emph{gateway} de modelos e painel descrito em JSON. & Autorizada em 09/11/2026. A rotulagem continua local, pois a calibração precisa da pontuação de cada rótulo. \\ \hline
+    9 & Desenho final do experimento, fixado em 10/11/2026 antes dos resultados. & Baseline, comparação entre modelo-base e ajustado, segunda base, correções no núcleo antes do congelamento e rótulo pela pontuação. \\ \hline
+  \end{tabularx}
+  \legend{Fonte: \cod{tcc/decisoes.md}.}
+\end{quadro}
+
+Duas dessas decisões merecem comentário. A decisão~1 foi substituída pela~8: o envio de dados à nuvem deixou de ser proibido, mas o que sustentava a decisão original continua valendo no fluxo de rotulagem, isto é, o modelo recebe só as colunas da tarefa, os \emph{logs} não guardam linhas e a ausência de confiança calibrada leva à quarentena. Nos experimentos deste trabalho, toda a rotulagem e todo o treino foram locais.
+
+A decisão~9 inclui uma mudança motivada por evidência. Em um teste preliminar com o modelo-base em 50 registros de desenvolvimento, o rótulo escrito pelo modelo no texto gerado discordava do rótulo de maior pontuação em 34\% dos casos (\autoref{sec:fumaca}). Como a calibração é feita sobre a pontuação, essa divergência faria o ciclo abortar. A partir daí, o rótulo previsto passou a ser, por definição, o de maior verossimilhança, e a geração de texto serve apenas para validar o formato.
+
+\section{Testes}
+
+A biblioteca tem testes automatizados em quatro grupos: testes de domínio e de aplicação, testes dos adaptadores, testes de ponta a ponta da CLI e do painel, e um teste de arquitetura (\cod{tests/architecture/test_layer_dependencies.py}) que falha se alguma camada importar código de uma camada externa a ela. O painel tem testes próprios e verificação de tipos. Um único comando, \cod{bash factory/checks.sh}, executa todas as verificações.
+
+Em 09/11/2026, o arquivo \cod{README.md} do repositório registrava 340 testes em Python e 57 testes do painel passando. \pendente{reexecutar \cod{bash factory/checks.sh} no commit final e atualizar as contagens}.
+
+Os testes do ciclo de treino usam um modelo substituto (\emph{stub}), para não depender de pesos reais nem de hardware específico. Por isso, eles verificam as regras do ciclo (bloqueio, promoção, rejeição, rollback, integridade dos artefatos), mas não a qualidade de um modelo real. Essa segunda verificação é o papel dos experimentos do \autoref{cap:resultados}.

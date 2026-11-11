@@ -1,0 +1,64 @@
+\chapter{Introdução}
+\label{cap:introducao}
+
+\section{Contexto}
+
+Modelos de aprendizado supervisionado dependem de exemplos rotulados, e produzir esses rótulos costuma ser a parte mais demorada de um projeto. \citeonline{ratner2017snorkel} descrevem a rotulagem manual como o principal gargalo na construção de sistemas de aprendizado de máquina e propõem substituí-la, em parte, por fontes de supervisão mais baratas e imperfeitas. Com a popularização dos modelos de linguagem, tornou-se comum pedir a um modelo pré-treinado que classifique registros a partir de uma instrução em texto, sem treinar um classificador do zero.
+
+Em dados financeiros, esse atalho esbarra em três exigências. A primeira é a cautela com os registros: nem toda equipe pode enviar linhas de uma carteira a um serviço externo, e mesmo quando pode, convém limitar o que o modelo enxerga. A segunda é a exatidão: um número financeiro não pode variar por arredondamento ou por capricho de um modelo gerador. A terceira é a rastreabilidade: é preciso saber o que foi rotulado, por qual modelo, com que configuração, e o que foi recusado. Um modelo de linguagem que sempre devolve um rótulo, com a mesma segurança aparente em casos fáceis e difíceis, não atende a nenhuma das três.
+
+Este trabalho trata desse problema do ponto de vista da engenharia: em vez de propor um novo classificador, constrói e avalia uma biblioteca, o LazyLabel, que organiza o fluxo de rotulagem em torno de duas ideias. A primeira é a abstenção: um rótulo só é \emph{aplicado} quando há evidência suficiente; caso contrário, o registro vai para \emph{quarentena}. A segunda é a separação entre o núcleo do fluxo e aquilo que muda de uma base para outra, de modo que trocar de tarefa ou de base seja, tanto quanto possível, uma questão de configuração.
+
+\section{Problema}
+
+Equipes que lidam com dados financeiros querem analisar e rotular tabelas com modelos de linguagem leves, mas precisam de resultados numéricos exatos e de registro do que foi aplicado, rejeitado e treinado. Na prática, isso leva a montar roteiros específicos para cada base e cada tarefa, que raramente são reaproveitados e quase nunca guardam a proveniência das decisões (arquivo \cod{tcc/produto.md} do repositório do projeto).
+
+Há ainda um problema de confiança. A probabilidade que um modelo atribui à própria resposta nem sempre corresponde à frequência com que ele acerta \cite{guo2017}. Sem calibração, um limite de confiança não significa o que parece significar, e a decisão de aplicar ou não um rótulo fica sem base.
+
+\section{Pergunta de pesquisa}
+
+A pergunta que orienta o trabalho é a registrada na decisão~7 do projeto (arquivo \cod{tcc/decisoes.md}):
+
+\begin{citacao}
+Até que ponto um fluxo configurável de rotulagem de dados financeiros, implementado como biblioteca (o LazyLabel), pode ser reaplicado a outras tarefas e bases sem alterar seu núcleo, mantendo rastreabilidade e controle de qualidade?
+\end{citacao}
+
+Ela se desdobra em dois estudos, detalhados no \autoref{cap:metodologia}:
+
+\begin{itemize}
+  \item \textbf{E1 -- Qualidade na primeira base.} Os rótulos que o LazyLabel aplica são tão bons quanto os de um baseline simples? Em quantos registros ele aplica?
+  \item \textbf{E2 -- Reutilização na segunda base.} O mesmo fluxo roda em outra base mudando só configuração? O que exigiu mudar código?
+\end{itemize}
+
+Não é requisito de sucesso que o LazyLabel vença o baseline. Em dados tabulares, um modelo simples pode empatar ou vencer um modelo de linguagem, e esse resultado, se ocorrer, é reportado como tal.
+
+\section{Objetivos}
+
+\subsection{Objetivo geral}
+
+Desenvolver e avaliar uma biblioteca reutilizável de rotulagem autônoma de dados financeiros tabulares, que aplique rótulos apenas com confiança calibrada suficiente, se abstenha nos demais casos e registre cada decisão de forma rastreável.
+
+\subsection{Objetivos específicos}
+
+\begin{alineas}
+  \item Especificar os requisitos da biblioteca a partir das decisões de projeto registradas (fontes somente leitura, abstenção, treino com gates, análise exata).
+  \item Implementar o fluxo completo em uma arquitetura em camadas: fonte, tarefa, rótulos confiáveis, rotulagem com quarentena, treino com LoRA, calibração, promoção e rollback.
+  \item Definir, antes de qualquer resultado, um protocolo experimental com hipóteses, limiares, divisão dos dados e métricas.
+  \item Comparar a qualidade dos rótulos aplicados pelo LazyLabel com a de uma regressão logística na base South German Credit (E1).
+  \item Medir a reutilização aplicando o mesmo fluxo a uma segunda base, Default of Credit Card Clients, e separando o que mudou em configuração do que exigiu mudar código (E2).
+  \item Discutir as limitações do método e dos resultados.
+\end{alineas}
+
+\section{Justificativa}
+
+O trabalho se justifica por três razões. Do ponto de vista prático, rotular com um modelo que sabe dizer ``não sei'' é mais útil, em contexto financeiro, do que rotular tudo com qualidade desconhecida: a cobertura passa a ser uma medida explícita, e o erro fica restrito aos casos em que o sistema decidiu agir. Do ponto de vista de engenharia, o valor de uma biblioteca está em ser reaplicada; por isso a reutilização é tratada aqui como objeto de medida, e não como alegação. Do ponto de vista metodológico, o trabalho fixa hipóteses e limiares antes de abrir o conjunto de teste e reporta desfechos desfavoráveis (``sem promoção'', ``cobertura zero'', ``o baseline venceu'') como resultados válidos, o que reduz o risco de conclusões otimistas por vazamento de dados \cite{kaufman2012}.
+
+O tema também dialoga com a formação em Engenharia de Controle e Automação: o fluxo é, em essência, um laço de decisão automática com critérios de segurança, em que o sistema atua quando a evidência permite, se abstém quando não permite, e volta a um estado anterior verificado quando a qualidade piora. \pendente{o autor deve revisar esta ligação com o curso e confirmar com o orientador}.
+
+\section{Delimitação}
+
+O trabalho não trata de decisão de concessão de crédito, de conformidade regulatória, de efeitos causais nem de lucro. As bases usadas são públicas e antigas, e nada do que for medido nelas permite afirmar desempenho em carteiras brasileiras atuais. A biblioteca lê apenas arquivos CSV e bancos SQLite, e a rotulagem usa um modelo local, porque a calibração precisa da probabilidade de cada rótulo. A avaliação de usabilidade com usuários está fora do escopo.
+
+\section{Organização do trabalho}
+
+O \autoref{cap:fundamentacao} apresenta os conceitos usados: rotulagem e supervisão fraca, modelos de linguagem como classificadores, ajuste fino com LoRA, calibração, classificação seletiva, regressão logística, arquitetura hexagonal e vazamento de dados. O \autoref{cap:metodologia} descreve o protocolo experimental. O \autoref{cap:desenvolvimento} descreve o LazyLabel: requisitos, arquitetura, fluxo de uso, decisões e testes. O \autoref{cap:resultados} reúne os resultados, e o \autoref{cap:conclusao} traz as conclusões, limitações e trabalhos futuros. O \autoref{ap:uso-de-ia} declara o uso de ferramentas de inteligência artificial na elaboração do trabalho. A apresentação segue as normas da \citeonline{abnt14724}, da \citeonline{abnt6023} e da \citeonline{abnt10520}.

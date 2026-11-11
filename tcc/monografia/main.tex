@@ -1,0 +1,214 @@
+% Monografia do TCC -- RASCUNHO para revisão do autor.
+% Compilar: tectonic main.tex
+%
+% Nota sobre as opções da classe: o babel usa a ÚLTIMA língua como principal,
+% por isso "brazil" vem depois de "english" (documento em português).
+\PassOptionsToPackage{obeyspaces}{url}
+\documentclass[12pt,oneside,a4paper,chapter=TITLE,section=TITLE,english,brazil]{abntex2}
+
+\usepackage{fontspec}            % tectonic usa XeTeX; fonte padrão Latin Modern
+\usepackage{indentfirst}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+\usepackage[brazilian,hyperpageref]{backref}
+\usepackage[alf]{abntex2cite}
+
+% Marcador de conteúdo pendente (números e fatos que ainda não existem).
+\newcommand{\pendente}[1]{\textbf{[PENDENTE: #1]}}
+% Código, caminhos e identificadores (aceita _ e quebra de linha).
+% Robusto para poder aparecer em \legend e \caption.
+\DeclareUrlCommand\codurl{\urlstyle{tt}\def\UrlLeft{}\def\UrlRight{}}
+\DeclareRobustCommand{\cod}{\codurl}
+
+% Ambiente "quadro" (conteúdo textual, bordas fechadas), como no modelo canônico do abnTeX2.
+\newcommand{\quadroname}{Quadro}
+\newcommand{\quadroautorefname}{Quadro}
+\newcommand{\listofquadrosname}{Lista de quadros}
+\newfloat[chapter]{quadro}{loq}{\quadroname}
+\newlistof{listofquadros}{loq}{\listofquadrosname}
+\newlistentry{quadro}{loq}{0}
+\counterwithout{quadro}{chapter}
+\renewcommand{\cftquadroname}{\quadroname\space}
+\renewcommand*{\cftquadroaftersnum}{\hfill--\hfill}
+
+\renewcommand{\backrefpagesname}{Citado na(s) página(s):~}
+\renewcommand{\backref}{}
+\renewcommand*{\backrefalt}[4]{%
+  \ifcase #1 Nenhuma citação no texto.%
+  \or Citado na página #2.%
+  \else Citado #1 vezes nas páginas #2.%
+  \fi}
+
+% ---------------------------------------------------------------------------
+% Dados do trabalho
+% ---------------------------------------------------------------------------
+\titulo{LazyLabel: uma biblioteca reutilizável para rotulagem autônoma de dados financeiros com confiança calibrada e abstenção}
+\autor{Rodrigo Mialichi Triboni}
+\local{Uberlândia}
+\data{2026}
+\orientador{\pendente{nome do orientador}}
+\instituicao{%
+  Universidade Federal de Uberlândia
+  \par
+  \pendente{conferir unidade acadêmica: Faculdade de Engenharia Elétrica}
+  \par
+  Curso de Graduação em Engenharia de Controle e Automação}
+\tipotrabalho{Trabalho de Conclusão de Curso}
+\preambulo{Trabalho de Conclusão de Curso apresentado ao Curso de Graduação em Engenharia de Controle e Automação da Universidade Federal de Uberlândia, como requisito parcial para a obtenção do título de Bacharel em Engenharia de Controle e Automação.}
+
+\makeatletter
+\hypersetup{
+  pdftitle={\@title},
+  pdfauthor={\@author},
+  pdfsubject={Trabalho de Conclusão de Curso},
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black,
+  bookmarksdepth=4
+}
+\makeatother
+
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2cm}
+
+\makeindex
+
+\begin{document}
+\selectlanguage{brazil}
+\frenchspacing
+\emergencystretch=3em
+
+% ---------------------------------------------------------------------------
+% ELEMENTOS PRÉ-TEXTUAIS
+% ---------------------------------------------------------------------------
+\pretextual
+
+\imprimircapa
+\imprimirfolhaderosto
+% FICHA CATALOGRÁFICA: inserir aqui o PDF fornecido pela biblioteca da UFU,
+% no verso da folha de rosto. Exemplo:
+% \begin{fichacatalografica}
+%   \includepdf{ficha-catalografica.pdf}   % requer \usepackage{pdfpages}
+% \end{fichacatalografica}
+
+\begin{folhadeaprovacao}
+  \begin{center}
+    {\ABNTEXchapterfont\large\imprimirautor}
+
+    \vspace*{\fill}\vspace*{\fill}
+    \begin{center}
+      \ABNTEXchapterfont\bfseries\Large\imprimirtitulo
+    \end{center}
+    \vspace*{\fill}
+
+    \hspace{.45\textwidth}
+    \begin{minipage}{.5\textwidth}
+      \imprimirpreambulo
+    \end{minipage}%
+    \vspace*{\fill}
+  \end{center}
+
+  Trabalho aprovado. \imprimirlocal, \pendente{data da defesa}:
+
+  \assinatura{\textbf{\imprimirorientador} \\ Orientador}
+  \assinatura{\textbf{\pendente{membro da banca 1}} \\ \pendente{instituição}}
+  \assinatura{\textbf{\pendente{membro da banca 2}} \\ \pendente{instituição}}
+
+  \begin{center}
+    \vspace*{0.5cm}
+    {\large\imprimirlocal}
+    \par
+    {\large\imprimirdata}
+    \vspace*{1cm}
+  \end{center}
+\end{folhadeaprovacao}
+
+% --- Resumo ---
+\setlength{\absparsep}{18pt}
+\begin{resumo}
+Rotular dados é uma etapa cara do aprendizado supervisionado, e em dados financeiros ela ainda exige rastreabilidade e cautela com registros sensíveis. Este trabalho apresenta o LazyLabel, uma biblioteca em Python, com linha de comando e painel web, que rotula tabelas com um modelo de linguagem leve e só aplica um rótulo quando a saída é válida, as regras da tarefa são satisfeitas e a confiança calibrada supera um limite definido pelo usuário; nos demais casos o registro vai para quarentena. O modelo é ajustado com LoRA apenas a partir de rótulos confiáveis, em partições congeladas, e um candidato só substitui o modelo ativo quando passa em todos os gates de promoção. A pergunta de pesquisa é até que ponto esse fluxo configurável pode ser reaplicado a outras tarefas e bases sem alterar o núcleo da biblioteca, mantendo rastreabilidade e controle de qualidade. O protocolo, fixado antes dos resultados, compara o LazyLabel (Qwen2.5-0.5B-Instruct com LoRA e calibração de Platt) com uma regressão logística na base South German Credit (estudo E1) e repete o fluxo, mudando apenas configuração, em uma amostra da base Default of Credit Card Clients (estudo E2). As métricas são acurácia, macro-F1, escore de Brier, erro de calibração esperado e cobertura, com intervalos por \emph{bootstrap} pareado. \pendente{resultados do E1: cobertura, acurácia nos aplicados e comparação com o baseline}. \pendente{resultados do E2: o que mudou em configuração e o que exigiu mudar código}. \pendente{conclusão principal em uma frase}.
+
+\textbf{Palavras-chave}: rotulagem de dados; modelos de linguagem; calibração de confiança; classificação seletiva; LoRA; arquitetura hexagonal.
+\end{resumo}
+
+% --- Abstract ---
+\begin{resumo}[Abstract]
+\begin{otherlanguage*}{english}
+Labeling data is a costly step in supervised learning, and with financial data it also demands traceability and care with sensitive records. This work presents LazyLabel, a Python library with a command-line interface and a web dashboard that labels tabular data with a small language model and only applies a label when the output is valid, the task rules hold and the calibrated confidence exceeds a user-defined threshold; otherwise the record is quarantined. The model is fine-tuned with LoRA using trusted labels only, on frozen partitions, and a candidate replaces the active model only when it passes every promotion gate. The research question is to what extent this configurable workflow can be reapplied to other tasks and datasets without changing the core of the library, while keeping traceability and quality control. The protocol, fixed before any result, compares LazyLabel (Qwen2.5-0.5B-Instruct with LoRA and Platt scaling) with logistic regression on the South German Credit dataset (study E1) and repeats the workflow, changing configuration only, on a sample of the Default of Credit Card Clients dataset (study E2). Metrics are accuracy, macro-F1, Brier score, expected calibration error and coverage, with paired bootstrap intervals. \pendente{E1 results}. \pendente{E2 results}. \pendente{main conclusion}.
+
+\vspace{\onelineskip}
+\noindent
+\textbf{Keywords}: data labeling; language models; confidence calibration; selective classification; LoRA; hexagonal architecture.
+\end{otherlanguage*}
+\end{resumo}
+
+% --- Listas ---
+\pdfbookmark[0]{\listfigurename}{lof}
+\listoffigures*
+\cleardoublepage
+
+\pdfbookmark[0]{\listofquadrosname}{loq}
+\listofquadros*
+\cleardoublepage
+
+\pdfbookmark[0]{\listtablename}{lot}
+\listoftables*
+\cleardoublepage
+
+\begin{siglas}
+  \item[ABNT] Associação Brasileira de Normas Técnicas
+  \item[API] \emph{Application Programming Interface}
+  \item[CLI] \emph{Command-Line Interface} (interface de linha de comando)
+  \item[CSRF] \emph{Cross-Site Request Forgery}
+  \item[CSV] \emph{Comma-Separated Values}
+  \item[E1] Estudo 1: qualidade na primeira base
+  \item[E2] Estudo 2: reutilização na segunda base
+  \item[ECE] \emph{Expected Calibration Error} (erro de calibração esperado)
+  \item[HTTP] \emph{Hypertext Transfer Protocol}
+  \item[IA] Inteligência Artificial
+  \item[JSON] \emph{JavaScript Object Notation}
+  \item[LLM] \emph{Large Language Model} (modelo de linguagem de grande porte)
+  \item[LoRA] \emph{Low-Rank Adaptation}
+  \item[MPS] \emph{Metal Performance Shaders}
+  \item[PEFT] \emph{Parameter-Efficient Fine-Tuning}
+  \item[SGC] \emph{South German Credit}
+  \item[SHA-256] \emph{Secure Hash Algorithm}, 256 bits
+  \item[TCC] Trabalho de Conclusão de Curso
+  \item[UCI] \emph{University of California, Irvine} (repositório de aprendizado de máquina)
+  \item[UFU] Universidade Federal de Uberlândia
+\end{siglas}
+
+\pdfbookmark[0]{\contentsname}{toc}
+\tableofcontents*
+\cleardoublepage
+
+% ---------------------------------------------------------------------------
+% ELEMENTOS TEXTUAIS
+% ---------------------------------------------------------------------------
+\textual
+
+\input{capitulos/01-introducao}
+\input{capitulos/02-fundamentacao}
+\input{capitulos/03-metodologia}
+\input{capitulos/04-desenvolvimento}
+\input{capitulos/05-resultados}
+\input{capitulos/06-conclusao}
+
+% ---------------------------------------------------------------------------
+% ELEMENTOS PÓS-TEXTUAIS
+% ---------------------------------------------------------------------------
+\postextual
+
+\bibliography{referencias}
+
+\begin{apendicesenv}
+\partapendices
+\input{apendices/a-uso-de-ia}
+\end{apendicesenv}
+
+\end{document}

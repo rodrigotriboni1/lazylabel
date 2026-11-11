@@ -1,0 +1,111 @@
+\chapter{Fundamentação teórica}
+\label{cap:fundamentacao}
+
+Este capítulo apresenta os conceitos em que o LazyLabel e o protocolo experimental se apoiam. \pendente{o autor deve ampliar a revisão de literatura com trabalhos relacionados que tenha lido; este rascunho cita apenas referências conferidas}.
+
+\section{Rotulagem de dados e supervisão fraca}
+
+No aprendizado supervisionado, um modelo aprende uma função a partir de pares de entrada e rótulo. A qualidade do modelo depende da qualidade e da quantidade desses pares, e obtê-los por anotação manual é caro. \citeonline{ratner2017snorkel} propõem, no sistema Snorkel, que o usuário escreva \emph{funções de rotulagem}, regras e heurísticas imperfeitas, e que um modelo combine essas fontes ruidosas em rótulos probabilísticos. A essa família de técnicas dá-se o nome de supervisão fraca.
+
+A ideia que este trabalho aproveita da supervisão fraca é a de que um rótulo automático é uma evidência com incerteza, e não uma verdade. Daí decorre uma regra central do LazyLabel: a previsão do modelo nunca se torna alvo de treino. Treino e avaliação usam apenas \emph{rótulos confiáveis}, isto é, rótulos de referência declarados pelo operador, com proveniência registrada. Se um modelo fosse treinado com as próprias previsões como se fossem corretas, os erros seriam realimentados e amplificados a cada ciclo.
+
+\section{Modelos de linguagem como classificadores por verossimilhança}
+\label{sec:llm-classificador}
+
+Um modelo de linguagem autorregressivo atribui a uma sequência de \emph{tokens} $t_1,\dots,t_n$ a probabilidade
+\begin{equation}
+  p(t_1,\dots,t_n) = \prod_{i=1}^{n} p(t_i \mid t_1,\dots,t_{i-1}).
+\end{equation}
+Os modelos atuais implementam essa distribuição com redes do tipo \emph{Transformer}, disponíveis em bibliotecas como a Transformers \cite{wolf2020}. O modelo usado neste trabalho é o Qwen2.5-0.5B-Instruct, a menor variante da família Qwen2.5 \cite{qwen25}, com cerca de meio bilhão de parâmetros, o que permite inferência e ajuste em um computador pessoal.
+
+Há duas formas de usar um modelo desses como classificador. A primeira é a geração: escreve-se uma instrução, o modelo produz um texto e extrai-se dele o rótulo. É simples, mas a saída pode ser malformada, e o texto gerado não vem acompanhado de uma medida de confiança utilizável. A segunda é a pontuação por verossimilhança: para cada rótulo possível $k$, calcula-se quão provável é, segundo o modelo, a continuação que expressa aquele rótulo, dado o mesmo \emph{prompt} $x$. Se a continuação do rótulo $k$ tem os tokens $c^{(k)}_1,\dots,c^{(k)}_{m_k}$, a pontuação é a média dos logaritmos das probabilidades:
+\begin{equation}
+  s_k(x) = \frac{1}{m_k}\sum_{j=1}^{m_k} \log p\!\left(c^{(k)}_j \mid x, c^{(k)}_1,\dots,c^{(k)}_{j-1}\right),
+  \label{eq:pontuacao}
+\end{equation}
+e o rótulo previsto é o de maior pontuação, $\hat{y} = \arg\max_k s_k(x)$. A média, em vez da soma, evita favorecer rótulos cuja escrita ocupa menos tokens.
+
+A pontuação $s_k$ não é uma probabilidade de acerto. Ela ordena os rótulos, mas seu valor absoluto depende do modelo, do \emph{prompt} e do tamanho da continuação. Para transformá-la em uma confiança utilizável é preciso calibrá-la (\autoref{sec:calibracao}).
+
+\section{Ajuste fino com LoRA}
+
+Ajustar todos os parâmetros de um modelo de linguagem a uma tarefa é custoso em memória e gera uma cópia completa do modelo por tarefa. A técnica LoRA (\emph{Low-Rank Adaptation}), de \citeonline{hu2022lora}, mantém os pesos originais congelados e aprende apenas uma correção de posto baixo. Para uma matriz de pesos $W_0 \in \mathbb{R}^{d\times k}$, a matriz ajustada é
+\begin{equation}
+  W = W_0 + BA, \qquad B \in \mathbb{R}^{d\times r},\; A \in \mathbb{R}^{r\times k},\; r \ll \min(d,k),
+\end{equation}
+e só $A$ e $B$ são treinados. O resultado é um \emph{adapter}: um arquivo pequeno, separado dos pesos-base, que pode ser carregado, trocado ou descartado sem alterar o modelo original.
+
+Essa separação é útil para o ciclo de vida descrito neste trabalho. Um adapter novo é um \emph{candidato}; o modelo em uso é o \emph{incumbente}. Promover um candidato é trocar um ponteiro, e desfazer a promoção (\emph{rollback}) é voltar ao ponteiro anterior.
+
+\section{Calibração de confiança}
+\label{sec:calibracao}
+
+Um classificador é calibrado quando a confiança que ele declara corresponde à frequência com que acerta: entre todas as previsões feitas com confiança 0{,}8, cerca de 80\% devem estar corretas. \citeonline{guo2017} mostram que redes neurais modernas tendem a ser mal calibradas e que métodos simples, aplicados depois do treino, corrigem boa parte do problema.
+
+\subsection{Escalonamento de Platt}
+
+O método de \citeonline{platt1999}, proposto originalmente para máquinas de vetores de suporte, ajusta uma função sigmoide que transforma uma pontuação bruta $s$ em probabilidade:
+\begin{equation}
+  \hat{p}(s) = \frac{1}{1 + \exp\!\big(-(a\,s + b)\big)},
+  \label{eq:platt}
+\end{equation}
+em que $a$ e $b$ são estimados por máxima verossimilhança em um conjunto separado do de treino. Usar dados separados é essencial: calibrar nos mesmos dados em que o modelo foi ajustado produziria confianças otimistas.
+
+No LazyLabel, a variável de entrada é a pontuação do rótulo vencedor (\autoref{eq:pontuacao}) e o evento modelado é ``a previsão está correta''. A saída $\hat{p}$ é, portanto, uma estimativa da probabilidade de acerto do rótulo previsto, chamada de confiança \emph{top-label}.
+
+\subsection{Erro de calibração esperado}
+
+O erro de calibração esperado (ECE), na forma usada por \citeonline{naeini2015} e \citeonline{guo2017}, divide as previsões em $M$ faixas de confiança e compara, em cada faixa, a acurácia observada com a confiança média:
+\begin{equation}
+  \mathrm{ECE} = \sum_{m=1}^{M} \frac{|B_m|}{n}\,\Big|\operatorname{acc}(B_m) - \operatorname{conf}(B_m)\Big|,
+  \label{eq:ece}
+\end{equation}
+em que $B_m$ é o conjunto de previsões na faixa $m$ e $n$ é o total. Um ECE igual a zero indica calibração perfeita nas faixas consideradas. Com amostras pequenas, o ECE é positivo mesmo para um modelo perfeitamente calibrado, porque cada faixa tem poucos casos; isso precisa ser levado em conta ao fixar limites.
+
+\subsection{Escore de Brier}
+
+O escore de \citeonline{brier1950} é o erro quadrático médio entre a probabilidade prevista e o desfecho. Na forma binária usada neste trabalho,
+\begin{equation}
+  \mathrm{Brier} = \frac{1}{n}\sum_{i=1}^{n} (\hat{p}_i - o_i)^2,
+  \label{eq:brier}
+\end{equation}
+com $o_i \in \{0,1\}$. Quanto menor, melhor. Diferentemente do ECE, o escore de Brier também penaliza a falta de discriminação: um modelo que sempre prevê a taxa-base pode ter ECE baixo, mas terá Brier pior que o de um modelo que separa bem os casos.
+
+\section{Classificação seletiva, abstenção e cobertura}
+\label{sec:seletiva}
+
+Um classificador seletivo é um par formado por um classificador $f$ e uma função de seleção $g$ que decide, para cada entrada, se a previsão de $f$ será usada ou se o sistema se abstém \cite{geifman2017}. Duas medidas descrevem o resultado. A \emph{cobertura} é a fração das entradas em que o sistema não se abstém, e o \emph{risco seletivo} é o erro medido apenas nessas entradas. Há um compromisso entre as duas: abster-se mais reduz a cobertura e, se a função de seleção for boa, reduz também o risco. A curva de risco por cobertura mostra esse compromisso para todos os limites possíveis.
+
+No LazyLabel, a função de seleção é a conjunção de várias condições (\autoref{sec:fluxo}), sendo a principal a confiança calibrada acima do limite da política da tarefa. A cobertura é definida como a fração de registros efetivamente aplicados, e as quarentenas permanecem no denominador:
+\begin{equation}
+  \text{cobertura} = \frac{\text{registros aplicados}}{\text{total de registros}}.
+\end{equation}
+
+Comparar um sistema que se abstém com um que responde sempre exige cuidado. Se o primeiro for avaliado só nos casos que escolheu e o segundo em todos, a comparação favorece o primeiro. Por isso o protocolo deste trabalho compara os dois sistemas nos mesmos registros e, adicionalmente, na mesma cobertura (\autoref{sec:metricas}).
+
+\section{Regressão logística como baseline}
+
+A regressão logística modela a probabilidade da classe positiva como uma sigmoide de uma combinação linear das variáveis:
+\begin{equation}
+  P(y=1 \mid \mathbf{x}) = \frac{1}{1 + \exp\!\big(-(\mathbf{w}^\top \mathbf{x} + w_0)\big)}.
+\end{equation}
+É um modelo simples, rápido de treinar, que costuma produzir probabilidades razoavelmente calibradas e que funciona bem em dados tabulares com poucas centenas de exemplos. Por isso é um baseline adequado: se um modelo de linguagem com ajuste fino não se aproximar dele, a complexidade adicional não se justifica para aquela tarefa. A implementação usada é a da biblioteca scikit-learn \cite{pedregosa2011}.
+
+As métricas de qualidade usadas para os dois sistemas são a acurácia e o macro-F1. O F1 de uma classe é a média harmônica entre precisão e revocação, e o macro-F1 é a média simples dos F1 de todas as classes; por dar o mesmo peso a cada classe, ele não é inflado por acertos na classe majoritária.
+
+\section{Arquitetura hexagonal e arquitetura limpa}
+\label{sec:arquitetura-teoria}
+
+A arquitetura hexagonal, ou de portas e adaptadores, proposta por \citeonline{cockburn2005}, organiza um sistema de modo que as regras de negócio não dependam de interface de usuário, banco de dados ou serviços externos. A aplicação define \emph{portas}, que são interfaces que descrevem o que ela precisa, e \emph{adaptadores} implementam essas portas para cada tecnologia. A arquitetura limpa, de \citeonline{martin2017}, formula a mesma ideia como uma regra de dependência: o código das camadas internas não conhece o das externas.
+
+A consequência prática é que se pode trocar a fonte de dados, o modelo ou a interface sem reescrever as regras. Essa propriedade é o que sustenta, no plano do código, a pergunta de reutilização deste trabalho: se o núcleo não depende dos detalhes, mudar de base deveria exigir apenas configuração e, no máximo, um adaptador novo.
+
+\section{Reprodutibilidade e vazamento de dados}
+
+\citeonline{kaufman2012} definem vazamento como a introdução, no treino, de informação sobre o alvo que não estaria legitimamente disponível no uso real. As formas mais comuns são usar o conjunto de teste para escolher modelo ou hiperparâmetros, ajustar pré-processamento (escala, codificação) com todos os dados antes de dividir, e incluir entre as entradas uma variável derivada do alvo ou registrada depois dele. O efeito é sempre o mesmo: desempenho medido melhor que o real.
+
+As defesas adotadas neste trabalho são as usuais: separar um teste final antes de qualquer análise e abri-lo uma única vez; ajustar todo o pré-processamento dentro de cada partição de treino; manter a coluna-alvo fora das entradas; e fixar por escrito, com data, as hipóteses e os limiares antes de ver resultados.
+
+Para quantificar a incerteza de medidas feitas em amostras pequenas usa-se o \emph{bootstrap} \cite{efron1993}: reamostra-se o conjunto de teste com reposição muitas vezes, recalcula-se a estatística em cada reamostra e toma-se a distribuição resultante como aproximação da distribuição amostral. Quando dois sistemas são avaliados nos mesmos casos, a reamostragem é pareada, isto é, os mesmos casos entram nas duas contas, o que reduz a variância da diferença.
+
+Reprodutibilidade, por fim, depende de registro: versão do código, sementes, versões das bibliotecas, identidade exata do modelo e \emph{hash} dos dados. No LazyLabel, esse registro é parte do funcionamento normal da biblioteca, e não um passo manual.

@@ -1,0 +1,186 @@
+\chapter{Metodologia}
+\label{cap:metodologia}
+
+Este capítulo descreve o protocolo experimental, versão 0.2, de 10/11/2026 (arquivo \cod{tcc/protocolo-experimental.md}), e as hipóteses e limiares fixados no plano de execução (arquivo \cod{tcc/plano-experimento-real.md}). Proporções de divisão, sementes, número de faixas e de reamostragens são escolhas deste protocolo, e não exigências das fontes dos dados ou da instituição.
+
+\section{Desenho geral}
+
+O trabalho tem dois estudos.
+
+\begin{itemize}
+  \item \textbf{E1 -- Qualidade na primeira base.} Na base South German Credit, o LazyLabel e um baseline de regressão logística são avaliados no mesmo teste final, aberto uma única vez.
+  \item \textbf{E2 -- Reutilização na segunda base.} O mesmo fluxo e as mesmas métricas são repetidos em uma amostra da base Default of Credit Card Clients, registrando o que mudou em configuração e o que exigiu mudar código.
+\end{itemize}
+
+A sequência de trabalho, igual nas duas bases, é: (i) guardar o arquivo original com \emph{hash}; (ii) dividir em desenvolvimento e teste; (iii) rodar o baseline por validação cruzada só no desenvolvimento; (iv) rodar o ciclo do LazyLabel só no desenvolvimento; (v) congelar todas as configurações em um \emph{commit}; (vi) avaliar o teste final uma única vez com os dois sistemas.
+
+\section{Bases de dados}
+
+\subsection{South German Credit (E1)}
+
+A base South German Credit, na versão corrigida disponível no repositório da UCI \cite{uci573}, tem 1000 registros de crédito e 20 variáveis preditoras, além do alvo. \citeonline{gromping2019} documenta a origem dos dados e corrige erros de codificação presentes na versão mais difundida, conhecida como \emph{German Credit}.
+
+O alvo é a coluna \cod{kredit}: no código bruto, 0 indica risco ruim e 1 indica risco bom. No LazyLabel, os rótulos da tarefa são \cod{bad} e \cod{good}, com o mapeamento explícito \texttt{\{"0": "bad", "1": "good"\}}. Nas métricas binárias, a classe positiva é \cod{bad}. A base tem 300 registros ruins e 700 bons; essa proporção resulta do desenho amostral e não é uma prevalência populacional. O rótulo tampouco equivale a inadimplência em um horizonte definido.
+
+O arquivo foi obtido em 10/11/2026 e preservado sem alteração, com os SHA-256 do pacote e de cada arquivo registrados em \cod{tcc/experimentos/sgc-real/dados/brutos/README.md}. A conversão para CSV, feita por \cod{codigo/experimento/preparar_sgc.py}, apenas acrescenta um identificador de registro e mantém os nomes de coluna originais, em alemão, e os códigos inteiros das categorias.
+
+\subsection{Default of Credit Card Clients (E2)}
+
+A segunda base é a Default of Credit Card Clients \cite{uci350}, usada por \citeonline{yeh2009}: 30\,000 clientes de cartão de crédito de Taiwan, em 2005, com 23 atributos e um alvo binário que indica inadimplência no mês seguinte. Os atributos incluem limite de crédito, dados demográficos e, para seis meses, a situação de pagamento, o valor da fatura e o valor pago.
+
+Para que o E2 tenha a mesma escala do E1, usa-se uma amostra de 1000 registros (arquivo \cod{tcc/experimentos/default-real/README.md}). O roteiro \cod{codigo/experimento/preparar_default.py} primeiro descarta os grupos de registros com entradas exatamente iguais, o que reduz a base de 30\,000 para 29\,892 registros, e depois sorteia 1000 registros estratificados pela prevalência original, com semente 42. A amostra tem 221 inadimplentes. Na tarefa, inadimplência corresponde ao rótulo \cod{bad}, a classe positiva.
+
+Os atributos mensais exigem atenção a vazamento temporal: é preciso confirmar que todos se referem a meses anteriores ao mês do alvo. \pendente{registrar a checagem de vazamento temporal dos atributos PAY, BILL\_AMT e PAY\_AMT e o seu resultado}.
+
+\autoref{tab:bases} resume as duas bases.
+
+\begin{table}[htb]
+  \centering
+  \caption{Bases usadas nos estudos E1 e E2}
+  \label{tab:bases}
+  \begin{tabular}{lcc}
+    \toprule
+    & South German Credit & Default of Credit Card Clients \\
+    \midrule
+    Estudo & E1 & E2 \\
+    Registros usados & 1000 (base completa) & 1000 (amostra de 29\,892) \\
+    Variáveis de entrada & 20 & 23 \\
+    Classe positiva (\texttt{bad}) & 300 (30,0\%) & 221 (22,1\%) \\
+    Desenvolvimento / teste & 800 / 200 & 800 / 200 \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: elaborado pelo autor a partir de \cod{tcc/experimentos/sgc-real/} e \cod{tcc/experimentos/default-real/}.}
+\end{table}
+
+\section{Divisão dos dados e prevenção de vazamento}
+\label{sec:divisao}
+
+\begin{enumerate}
+  \item Cada base é dividida de forma estratificada em 80\% para desenvolvimento e 20\% para teste final, com semente 42. Os índices ficam salvos em \cod{split-indices.json}.
+  \item O baseline usa validação cruzada estratificada de cinco partições, só no desenvolvimento. Todo pré-processamento aprendido (codificação de categorias e escala) é ajustado dentro do treino de cada partição.
+  \item O LazyLabel recebe apenas o desenvolvimento como fonte e cria as próprias partições congeladas: treino, calibração e \emph{holdout} interno, nas proporções 70\%, 15\% e 15\%, estratificadas, com semente 42. O \emph{holdout} interno decide a promoção; o teste final não participa.
+  \item A coluna-alvo nunca entra nas colunas de entrada da tarefa.
+  \item Antes de abrir o teste final, a configuração do baseline, a tarefa, as políticas, o \cod{training-gate.json} e os limiares são congelados em um \emph{commit}.
+  \item O teste final é avaliado uma única vez, pelos dois sistemas. Se um erro exigir repetir, a correção é registrada e o teste deixa de ser apresentado como intocado.
+\end{enumerate}
+
+Com 800 registros de desenvolvimento, as partições internas do LazyLabel ficam com cerca de 560, 120 e 120 registros.
+
+\section{Sistemas comparados}
+
+\subsection{Baseline: regressão logística}
+
+O baseline (\cod{codigo/experimento/baseline_logreg.py}) é uma regressão logística da biblioteca scikit-learn \cite{pedregosa2011}, com as variáveis numéricas padronizadas e as categóricas codificadas em variáveis indicadoras. O roteiro grava as previsões por caso, as métricas e a curva de risco por cobertura, e só avalia o teste final quando chamado com a opção \cod{--final}.
+
+\subsection{LazyLabel}
+
+O LazyLabel usa o modelo local \cod{Qwen/Qwen2.5-0.5B-Instruct} \cite{qwen25}, ajustado com LoRA \cite{hu2022lora} pelo ciclo \cod{lazylabel run}, com calibração e quarentena. Os elementos do método são:
+
+\begin{itemize}
+  \item \textbf{Entrada.} O modelo recebe as instruções da tarefa e apenas as colunas de entrada do registro, serializadas como dados.
+  \item \textbf{Previsão.} Para cada rótulo, calcula-se a média dos logaritmos das probabilidades dos tokens do JSON canônico \texttt{\{"label":"CLASSE"\}} (\autoref{eq:pontuacao}). O rótulo previsto é o de maior pontuação; a geração de texto serve apenas para validar o formato da saída.
+  \item \textbf{Ajuste.} Um adapter LoRA é treinado só na partição de treino. Os hiperparâmetros registrados são posto 8, taxa de aprendizado $2\times10^{-4}$, lote de tamanho 1 e três épocas (campo \cod{training} do \cod{training-gate.json}; demais valores são os padrões da biblioteca).
+  \item \textbf{Calibração.} Na partição de calibração, ajusta-se um escalonamento de Platt (\autoref{eq:platt}) que leva a pontuação do rótulo vencedor à probabilidade de acerto.
+  \item \textbf{Decisão.} Um rótulo é aplicado se a confiança calibrada é maior ou igual ao limite da política de rotulagem; caso contrário, o registro vai para quarentena.
+  \item \textbf{Promoção.} O candidato e o incumbente são avaliados no mesmo \emph{holdout} interno, e o candidato só é promovido se passar em todos os gates.
+\end{itemize}
+
+O modelo é local porque a calibração precisa da pontuação de cada rótulo, que o serviço de nuvem usado em outras partes da biblioteca não fornece. O hardware registrado é um computador Apple M4 com 16\,GB de memória unificada.
+
+\pendente{se o orientador pedir (pergunta 2 das perguntas ao orientador), acrescentar como terceiro sistema o modelo-base calibrado, sem ajuste, para separar o efeito do ajuste fino; a decisão 9 já prevê essa comparação por roteiro em \cod{codigo/experimento/}}.
+
+\section{Hipóteses}
+
+As hipóteses do E1 foram fixadas em 10/11/2026, antes de qualquer resultado no teste (arquivo \cod{tcc/plano-experimento-real.md}, seção ``Hipóteses refinadas'').
+
+\begin{description}
+  \item[H1 (descritiva).] A acurácia do LazyLabel nos registros aplicados não fica mais de 5 pontos percentuais abaixo da acurácia do baseline na mesma cobertura, lida na curva de risco por cobertura. Os intervalos são declarados largos de antemão.
+  \item[H2.] O ciclo promove um modelo e a cobertura no teste é de pelo menos 0{,}10.
+  \item[H3.] A confiança do LazyLabel é calibrada: ECE e escore de Brier são medidos em todas as previsões do teste, e não só nas aplicadas, como confiança no rótulo previsto (\emph{top-label}), nos dois sistemas.
+\end{description}
+
+Os desfechos ``sem promoção'' e ``cobertura zero'' foram registrados previamente como resultados válidos.
+
+\section{Limiares}
+
+O LazyLabel não presume nenhum limite. Os valores da \autoref{tab:limiares} foram escolhidos e datados antes da execução.
+
+\begin{table}[htb]
+  \centering
+  \caption{Limiares fixados em 10/11/2026, antes da execução}
+  \label{tab:limiares}
+  \small
+  \begin{tabular}{llc}
+    \toprule
+    Arquivo & Campo & Valor \\
+    \midrule
+    Política de rotulagem & \texttt{min\_calibrated\_confidence} & 0,80 \\
+    Política de promoção & \texttt{required\_metrics} (macro-F1) & 0,55 \\
+    Política de promoção & \texttt{minimum\_coverage} & 0,10 \\
+    Política de promoção & \texttt{max\_calibration\_error} & 0,12 \\
+    Política de promoção & \texttt{min\_holdout\_count} & 100 \\
+    Política de promoção & \texttt{allowed\_per\_label\_regression} & 0,10 por rótulo \\
+    Política de promoção & \texttt{rollback\_monitor\_limits} (macro-F1) & 0,50 \\
+    Política de promoção & \texttt{rollback\_monitor\_limits} (erro de calibração) & 0,20 \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: \cod{tcc/plano-experimento-real.md} e \cod{tcc/experimentos/sgc-real/config/}.}
+\end{table}
+
+As justificativas registradas são as seguintes. Prever sempre \cod{good} acerta 70\% dos casos na primeira base, e o limite de confiança de 0{,}80 fica 10 pontos acima disso. Prever sempre \cod{good} dá macro-F1 de cerca de 0{,}41, abaixo do mínimo de 0{,}55. O limite de 0{,}12 para o erro de calibração vem de uma simulação: para um modelo perfeitamente calibrado e $n=120$, o percentil 95 do ECE é cerca de 0{,}107. O mínimo de 100 registros no \emph{holdout} é compatível com a partição real, de cerca de 120. No E2, os mesmos limiares são mantidos.
+
+\section{Métricas}
+\label{sec:metricas}
+
+As métricas do teste final são acurácia, macro-F1, escore de Brier (\autoref{eq:brier}), ECE com 10 faixas de mesma largura (\autoref{eq:ece}) e cobertura. Elas são reportadas em três colunas (\autoref{tab:metricas-desenho}).
+
+\begin{table}[htb]
+  \centering
+  \caption{Métricas reportadas no teste final}
+  \label{tab:metricas-desenho}
+  \begin{tabular}{lccc}
+    \toprule
+    Métrica & Baseline (todos) & Baseline (só aplicados) & LazyLabel \\
+    \midrule
+    Acurácia & sim & sim & sim (aplicados) \\
+    Macro-F1 & sim & sim & sim (aplicados) \\
+    Brier (\emph{top-label}) & sim & sim & sim (todas as previsões) \\
+    ECE (\emph{top-label}) & sim & sim & sim (todas as previsões) \\
+    Cobertura & 100\% & -- & sim \\
+    \bottomrule
+  \end{tabular}
+  \legend{Fonte: elaborado pelo autor a partir de \cod{tcc/protocolo-experimental.md} e das hipóteses refinadas.}
+\end{table}
+
+A coluna do meio restringe o baseline aos registros que o LazyLabel aplicou, de modo que os dois sistemas sejam comparados nos mesmos casos. Além disso, reporta-se a curva de risco por cobertura do baseline, isto é, a acurácia ao manter apenas os $x$\% de previsões de maior confiança, para comparar os sistemas na cobertura que o LazyLabel atingiu, e a matriz de confusão do LazyLabel nos aplicados.
+
+\section{Medida de reutilização (E2)}
+
+Na segunda base, cada alteração necessária é registrada em uma de duas colunas:
+
+\begin{itemize}
+  \item \textbf{só configuração}: tarefa, política de rotulagem, mapeamento de rótulos, tipos de coluna, política de promoção e \cod{training-gate.json};
+  \item \textbf{exigiu mudar código}: qualquer diferença em \cod{codigo/lazylabel/src/}, com o \cod{git diff} anexado.
+\end{itemize}
+
+Registram-se também os passos executados e o tempo de cada um, sem alegar economia de tempo, pois não há tarefa de referência comparável. ``Exigiu mudar código'' é um resultado válido e também responde à pergunta de pesquisa.
+
+Três correções no núcleo foram feitas antes do congelamento do E1 e, por isso, não contam como mudança do E2 (decisão~9): o mesmo \emph{prompt} passou a ser usado em treino, calibração e rotulagem; a calibração passou a tolerar até 5\% de saídas inválidas, contadas como erro; e os hiperparâmetros de treino passaram a ser lidos do \cod{training-gate.json}.
+
+\section{Incerteza}
+
+O teste tem 200 registros, e o subconjunto aplicado pode ser bem menor. Para as diferenças principais usa-se \emph{bootstrap} pareado e estratificado, com 1000 reamostragens, reutilizando os mesmos casos em cada comparação \cite{efron1993}. Esses intervalos descrevem a incerteza de amostragem condicionada aos modelos já ajustados, e não a variabilidade do treino. Diferenças pequenas ou com intervalos amplos não são interpretadas como superioridade. \pendente{indicar o roteiro que calcula os intervalos; ele ainda não existe em \cod{codigo/experimento/}}.
+
+\section{Reprodutibilidade}
+
+Para cada experimento ficam guardados, em \cod{tcc/experimentos/}: o arquivo original e seu \emph{hash}, os índices da divisão, as configurações congeladas, as versões das bibliotecas, as sementes, os comandos executados, as saídas de \cod{run-status} e \cod{model-status}, as previsões por caso e a tabela de resultados. \pendente{anotar o commit do código usado em cada execução e as versões das bibliotecas}.
+
+\section{Limitações do método}
+
+\begin{itemize}
+  \item Uma base de crédito alemã antiga e uma base de Taiwan de 2005 não permitem afirmar nada sobre carteiras brasileiras.
+  \item O \emph{holdout} interno tem cerca de 120 registros, e o teste, 200; os intervalos de confiança são largos.
+  \item Antes da primeira promoção, toda previsão fica em quarentena; o resultado pode ser cobertura zero.
+  \item Há uma única execução de treino por base; a variabilidade entre sementes não é medida.
+  \item A reutilização é medida em duas bases do mesmo domínio (risco de crédito, alvo binário), o que não sustenta generalização para ``qualquer base''.
+\end{itemize}

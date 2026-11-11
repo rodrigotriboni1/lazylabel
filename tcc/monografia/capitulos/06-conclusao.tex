@@ -1,0 +1,46 @@
+\chapter{Conclusão}
+\label{cap:conclusao}
+
+% RASCUNHO: este capítulo é ESTRUTURA. As conclusões dependem dos resultados
+% do Capítulo 5 e devem ser escritas pelo autor depois de obtê-los.
+
+Este trabalho propôs e implementou o LazyLabel, uma biblioteca de rotulagem autônoma de dados financeiros tabulares em que um rótulo só é aplicado com confiança calibrada suficiente, os demais registros vão para quarentena, e um modelo ajustado só substitui o anterior quando passa em todos os gates de promoção. A pergunta de pesquisa era até que ponto esse fluxo configurável pode ser reaplicado a outras tarefas e bases sem alterar o núcleo, mantendo rastreabilidade e controle de qualidade.
+
+\section{Síntese dos resultados}
+
+\pendente{um parágrafo com a resposta à pergunta de pesquisa}.
+
+\pendente{E1: o que se concluiu sobre H1, H2 e H3, com os números principais e seus intervalos}.
+
+\pendente{E2: o que mudou só em configuração e o que exigiu mudar código}.
+
+\section{Atendimento aos objetivos}
+
+\pendente{retomar cada objetivo específico do \autoref{cap:introducao} e dizer, com base nos capítulos anteriores, se foi atendido, parcialmente atendido ou não atendido}.
+
+\section{Limitações}
+
+Algumas limitações são conhecidas desde o desenho do trabalho e independem dos resultados:
+
+\begin{itemize}
+  \item as duas bases são públicas, antigas e de outros países, e não representam carteiras brasileiras atuais;
+  \item os conjuntos de teste têm 200 registros, o que produz intervalos de confiança largos;
+  \item as duas bases pertencem ao mesmo domínio e têm alvo binário, de modo que a reutilização foi medida em um caso próximo do original;
+  \item a biblioteca lê apenas CSV e SQLite, e a rotulagem depende de um modelo local que forneça a pontuação de cada rótulo;
+  \item não houve avaliação de usabilidade com usuários;
+  \item os \emph{hashes} gravados garantem integridade dentro da pasta do projeto, mas não autenticam quem produziu os rótulos confiáveis.
+\end{itemize}
+
+\pendente{limitações observadas na execução dos experimentos}.
+
+\section{Trabalhos futuros}
+
+\begin{itemize}
+  \item Calibração como passo explícito, separado do treino, para que o primeiro uso de um projeto não termine com cobertura zero (opção~C da pergunta~8 em \cod{tcc/perguntas-orientador.md}).
+  \item Rotulagem com modelos em nuvem, o que depende de obter, do serviço, a pontuação de cada rótulo.
+  \item Repetição dos experimentos com várias sementes, para medir a variabilidade do treino.
+  \item Aplicação a uma base de outro domínio e a uma tarefa com mais de duas classes.
+  \item Novas fontes de dados, implementadas como adaptadores.
+\end{itemize}
+
+\pendente{o autor deve rever esta lista depois dos resultados e da conversa com o orientador}.
