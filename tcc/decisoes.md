@@ -77,3 +77,4 @@ Proposta fixada antes de qualquer resultado; ainda sujeita ao orientador (pergun
   2. a calibração tolera poucas saídas inválidas (até 5%, contadas como erro com pontuação zero) em vez de abortar;
   3. hiperparâmetros de treino (`epochs`, `batch_size`, `learning_rate`, `lora_rank`) lidos do campo opcional `training` do `training-gate.json`, que já tem hash registrado no ciclo.
 - **Por quê:** sem essas correções, o ciclo provavelmente aborta na calibração, ou o calibrador é ajustado num prompt diferente do usado na rotulagem.
+- **Rótulo pela pontuação (10/11/2026):** o rótulo previsto é o de maior verossimilhança entre os rótulos da tarefa; a geração só precisa ser um JSON de rótulo válido. Motivo: no teste de fumaça (`experimentos/sgc-real/fumaca-2026-11-10.md`), o texto gerado discordava da pontuação em 34% dos casos.

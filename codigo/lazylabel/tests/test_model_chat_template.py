@@ -303,3 +303,12 @@ class ActiveModelArtifactTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_scored_prediction_uses_the_likelihood_winner_as_label():
+    from lazylabel.adapters.outbound.models.text_generation import _scored_prediction
+    from types import SimpleNamespace
+    task = SimpleNamespace(labels=("bad", "good"))
+    prediction = _scored_prediction('{"label":"good"}', {"bad": -0.5, "good": -1.5}, task)
+    assert prediction.label == "bad"
+    assert dict(prediction.confidence_evidence) == {"bad": -0.5, "good": -1.5}
