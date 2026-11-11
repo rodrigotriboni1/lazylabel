@@ -18,7 +18,7 @@
       "minimum": 0
     }
   ],
-  "calibration_ref": null,
+  "calibration_ref": "risco-cal-v1",
   "min_calibrated_confidence": 0.8,
   "max_staleness_seconds": 300
 }
