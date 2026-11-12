@@ -94,6 +94,8 @@ class LabelingPolicy:
     min_calibrated_confidence: float
     max_staleness_seconds: int
     rules: Sequence[Mapping[str, object]] = ()
+    # Optional per-label override; labels left out use min_calibrated_confidence (decisão 10).
+    min_confidence_by_label: Optional[Mapping[str, float]] = None
 
     def __post_init__(self):
         for name in ("policy_id", "task_id", "rules_version"):
@@ -116,9 +118,24 @@ class LabelingPolicy:
         if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
                 or not math.isfinite(confidence) or not 0 <= confidence <= 1):
             raise ValueError("min_calibrated_confidence must be finite and between 0 and 1.")
+        by_label = self.min_confidence_by_label
+        if by_label is not None:
+            if not isinstance(by_label, Mapping) or not by_label or set(by_label) - set(self.allowed_labels):
+                raise ValueError("min_confidence_by_label must map allowed labels to thresholds.")
+            for value in by_label.values():
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or not 0 <= value <= 1):
+                    raise ValueError("min_confidence_by_label values must be finite and between 0 and 1.")
+            object.__setattr__(self, "min_confidence_by_label", dict(by_label))
         seconds = self.max_staleness_seconds
         if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
             raise ValueError("max_staleness_seconds must be a positive integer.")
+
+    def threshold_for(self, label: str) -> float:
+        return (self.min_confidence_by_label or {}).get(label, self.min_calibrated_confidence)
+
+    def thresholds(self) -> dict:
+        return {label: self.threshold_for(label) for label in self.allowed_labels}
 
     @property
     def has_calibration_configuration(self) -> bool:
@@ -154,7 +171,7 @@ def policy_from_dict(raw: object, *, task: LabelTask) -> LabelingPolicy:
     if not isinstance(raw, dict):
         raise ValueError("Labeling policy document must be a JSON object.")
     fields = {"policy_id", "task_id", "allowed_labels", "rules_version", "rules", "calibration_ref",
-              "min_calibrated_confidence", "max_staleness_seconds"}
+              "min_calibrated_confidence", "max_staleness_seconds", "min_confidence_by_label"}
     unknown = set(raw) - fields
     if unknown:
         raise ValueError("Unknown labeling policy field(s): {}".format(", ".join(sorted(unknown))))

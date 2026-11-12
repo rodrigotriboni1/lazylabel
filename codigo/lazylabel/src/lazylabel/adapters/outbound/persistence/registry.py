@@ -405,7 +405,7 @@ class ModelRegistry:
             seen.add(reference)
         try:
             recomputed = _derive_holdout_metrics(rows, list(task.labels),
-                                                labeling_policy.min_calibrated_confidence)["metrics"]
+                                                labeling_policy.thresholds())["metrics"]
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError("health_row_evidence_invalid") from exc
         if not _metrics_equal(health_evaluation.get("metrics"), recomputed):
@@ -581,8 +581,8 @@ def _promotion_reasons(candidate, result, policy):
                     policy=labeling_policy, model_ref=model["model_ref"]).confidence
                 if not _finite(row["confidence"]) or abs(confidence - row["confidence"]) > 1e-12:
                     raise ValueError("calibrated_confidence_does_not_match_artifact")
-        candidate_derived = _derive_holdout_metrics(candidate_rows, labels, threshold)
-        incumbent_derived = _derive_holdout_metrics(incumbent_rows, labels, threshold)
+        candidate_derived = _derive_holdout_metrics(candidate_rows, labels, labeling_policy.thresholds())
+        incumbent_derived = _derive_holdout_metrics(incumbent_rows, labels, labeling_policy.thresholds())
         if candidate_derived["records_sha256"] != next(
                 row["holdout_scores_sha256"] for row in result["models"] if row.get("role") == "candidate"):
             raise ValueError("candidate_metric_evidence_digest_mismatch")

@@ -69,7 +69,7 @@ def choose_quarantine_reason(
     elif (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
           or not math.isfinite(confidence) or not 0 <= confidence <= 1):
         reason = "uncalibrated"
-    elif confidence < policy.min_calibrated_confidence:
+    elif confidence < policy.threshold_for(label):
         reason = "below_threshold"
     else:
         reason = None

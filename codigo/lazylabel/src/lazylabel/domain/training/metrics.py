@@ -66,12 +66,13 @@ def _derive_holdout_metrics(rows, labels, threshold):
                     or any(not _finite(value) for value in scores.values())
                     or not _finite(confidence) or not 0 <= confidence <= 1):
                 raise ValueError("prediction_score_evidence_invalid")
-            expected_applied = reason is None and confidence >= threshold
+            limit = threshold[predicted] if isinstance(threshold, Mapping) else threshold
+            expected_applied = reason is None and confidence >= limit
             if row["applied"] is not expected_applied:
                 raise ValueError("applied_flag_mismatches_threshold")
-            if reason == "below_threshold" and confidence >= threshold:
+            if reason == "below_threshold" and confidence >= limit:
                 raise ValueError("threshold_reason_mismatch")
-            if reason is None and confidence < threshold:
+            if reason is None and confidence < limit:
                 raise ValueError("threshold_reason_mismatch")
             guess = predicted
             correct.append(float(predicted == target))
@@ -140,7 +141,7 @@ def _metrics(scored, calibrator, task, policy, model_ref):
         confidences.append(confidence)
         is_correct = float(pred.label == target)
         correct.append(is_correct)
-        if row["reason_code"] is None and confidence >= policy.min_calibrated_confidence:
+        if row["reason_code"] is None and confidence >= policy.threshold_for(pred.label):
             row["applied"] = True
             row["reason_code"] = None
         elif row["reason_code"] is None:

@@ -78,3 +78,17 @@ Proposta fixada antes de qualquer resultado; ainda sujeita ao orientador (pergun
   3. hiperparâmetros de treino (`epochs`, `batch_size`, `learning_rate`, `lora_rank`) lidos do campo opcional `training` do `training-gate.json`, que já tem hash registrado no ciclo.
 - **Por quê:** sem essas correções, o ciclo provavelmente aborta na calibração, ou o calibrador é ajustado num prompt diferente do usado na rotulagem.
 - **Rótulo pela pontuação (10/11/2026):** o rótulo previsto é o de maior verossimilhança entre os rótulos da tarefa; a geração só precisa ser um JSON de rótulo válido. Motivo: no teste de fumaça (`experimentos/sgc-real/fumaca-2026-11-10.md`), o texto gerado discordava da pontuação em 34% dos casos.
+
+## 10. Rotulador automático (11/11/2026)
+
+- **Objetivo do autor:** um rotulador automático. Um LLM local interpreta uma base com muitos rótulos, aprende a julgá-la e rotula sozinho, aplicando só quando tem evidência.
+- **Nova pergunta (proposta):** um LLM local consegue configurar e executar sozinho a rotulagem de uma base nova, com controle de qualidade e sem alterar o núcleo?
+- **Duas mudanças no núcleo:**
+  1. **`lazylabel propose`.** O LLM local lê o esquema, estatísticas das colunas e uma amostra pequena e propõe a tarefa: instruções, colunas de entrada e regras. A coluna de rótulos é a única informação humana. Validações fixas: a coluna-alvo e as colunas de identificador nunca entram como entrada, e toda coluna proposta existe na base.
+  2. **Limiar por rótulo** (`min_confidence_by_label` na política de rotulagem), porque no E1 nenhum `bad` foi aplicado.
+- **Valores pré-registrados:** `bad` 0,60 e `good` 0,80. Foram escolhidos só com o holdout interno do E1, que é dado de desenvolvimento: lá, as 8 previsões `bad` com confiança ≥ 0,60 estavam certas, mas n = 8 é pequeno.
+- **Validade:**
+  - O teste do E1 já foi aberto. Reavaliá-lo com o limiar por rótulo (E1b) é **exploratório** e não confirma nada.
+  - O teste confirmatório é o do E2, ainda fechado. Ele usa a configuração gerada por `propose` e o limiar por rótulo.
+  - O E2 em andamento com configuração manual vira a referência manual.
+- **Fora do escopo:** pesquisar o domínio fora dos dados (internet, normas) e afirmar que funciona "para qualquer base". A evidência são duas bases de crédito.

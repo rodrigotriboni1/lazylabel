@@ -53,7 +53,8 @@ class TrainingRollbackTests(unittest.TestCase):
             }},
         )
         self.task = SimpleNamespace(task_id="risk", labels=self.labels, input_columns=("amount",))
-        self.labeling_policy = SimpleNamespace(min_calibrated_confidence=0.5)
+        self.labeling_policy = SimpleNamespace(min_calibrated_confidence=0.5,
+                                               thresholds=lambda: {label: 0.5 for label in self.labels})
         self.snapshot_sha256 = "a" * 64
         self.records = [
             SimpleNamespace(record_ref="1" * 64, input_digest="2" * 64, label="good"),

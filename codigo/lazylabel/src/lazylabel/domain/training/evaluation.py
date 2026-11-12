@@ -33,7 +33,10 @@ def labeling_policy_sha256(policy) -> str:
         "allowed_labels": list(policy.allowed_labels), "rules_version": policy.rules_version,
         "rules": rules, "calibration_ref": policy.calibration_ref,
         "min_calibrated_confidence": policy.min_calibrated_confidence,
-        "max_staleness_seconds": policy.max_staleness_seconds})
+        "max_staleness_seconds": policy.max_staleness_seconds,
+        # Only present when set, so hashes of policies without it stay unchanged.
+        **({"min_confidence_by_label": dict(sorted(policy.min_confidence_by_label.items()))}
+           if policy.min_confidence_by_label else {})})
 
 
 def _unique_object(pairs):
