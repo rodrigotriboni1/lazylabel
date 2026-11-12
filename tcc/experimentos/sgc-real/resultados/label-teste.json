@@ -1,0 +1,18 @@
+{
+  "run_id": "889ec7fee3b645ec939e1c1ffd372bb2",
+  "task_id": "risco",
+  "policy_id": "risco-policy-v1",
+  "model_ref": "Qwen/Qwen2.5-0.5B-Instruct+peft:b597effbb2a7d4db49cb613bcae617cf8e1aaf8c9c736c99dfed5c315a8dd676",
+  "started_at": "2026-11-12T00:28:22.664991Z",
+  "finished_at": "2026-11-12T00:30:19.276561Z",
+  "applied_count": 104,
+  "quarantined_count": 96,
+  "outcome_count": 200,
+  "reason_counts": {
+    "below_threshold": 96
+  },
+  "artifact_dir": "/Users/rodrigotriboni1/Documents/Projetos/lazylabel/tcc/experimentos/sgc-real/projeto/.lazylabel/label-runs/889ec7fee3b645ec939e1c1ffd372bb2",
+  "outcomes_sha256": "02cbc703dc35c8f9bba76870ac20fa016f617a8b105d6d1fb2646d94518ade6f",
+  "processed_batch_sha256": "10693359f351fdcedda00124b2143bf885bf7385f46b02cc2c7f8724eef8a4c8",
+  "source_rechecked_before_publish": true
+}
