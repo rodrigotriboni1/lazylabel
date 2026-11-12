@@ -1,0 +1,40 @@
+\chapter{Declaração de uso de inteligência artificial}
+\label{ap:uso-de-ia}
+
+Este apêndice declara como ferramentas de inteligência artificial (IA) generativa foram usadas neste trabalho. Ele se baseia no acordo de trabalho registrado no arquivo \cod{tcc/uso-de-ia.md} do repositório do projeto.
+
+\section{Autorização e princípios}
+
+Em 19/10/2026, o autor informou ter conversado com o professor e recebido autorização para usar IA como apoio no TCC, com o objetivo de otimizar o tempo. \pendente{confirmar com o orientador quais usos específicos são aceitos e como devem ser declarados; registrar a data da confirmação}. A Universidade Federal de Uberlândia publicou recomendações de uso ético e responsável de IA, que orientam supervisão humana, transparência, privacidade e registro quando necessário para validação ou reprodução\footnote{Portaria REITO n.º 539/2026, conforme citada em \cod{tcc/uso-de-ia.md}. \pendente{o autor deve conferir o número, a data e o texto da portaria na fonte oficial antes de mantê-la aqui}.}.
+
+Os princípios adotados foram: a IA pode acelerar tarefas de pesquisa e de execução, mas não substitui as decisões, a análise nem a responsabilidade do autor; referências sugeridas por IA só são usadas depois de conferidas na fonte original; texto ou código produzido por IA não é comprovação de resultado; e só dados públicos ou sintéticos foram compartilhados com as ferramentas.
+
+\section{Como a IA foi usada}
+
+\begin{itemize}
+  \item \textbf{Texto da monografia.} A primeira versão deste documento foi redigida com assistência do Claude, um modelo de linguagem da Anthropic, usado pela ferramenta Claude Code, a partir dos documentos do repositório (decisões, protocolo, plano do experimento, documentação do código e registros dos experimentos). O autor revisou o texto, conferiu as afirmações e as referências e reescreveu o conteúdo. \pendente{o autor deve confirmar esta frase depois de concluir a revisão e indicar a versão do modelo usada}.
+  \item \textbf{Código.} O código do LazyLabel e os roteiros dos experimentos foram desenvolvidos com assistência de agentes de programação baseados em modelos de linguagem. As alterações passaram por testes automatizados e por revisão antes de serem incorporadas. \pendente{o autor deve descrever a extensão desse uso e nomear as ferramentas e versões, a partir do histórico do repositório}.
+  \item \textbf{Protocolo e decisões.} A IA foi usada para organizar decisões, redigir e revisar o protocolo experimental e apontar riscos de vazamento. As hipóteses, os limiares e as escolhas de base e de baseline são de responsabilidade do autor e estão sujeitas à aprovação do orientador.
+  \item \textbf{Estudo e literatura.} A IA foi usada para explicar conceitos e sugerir termos de busca e referências. \pendente{o autor deve confirmar que leu e conferiu cada referência citada; as entradas marcadas com VERIFICAR no arquivo de referências ainda têm dados a conferir}.
+\end{itemize}
+
+\section{O que não foi delegado}
+
+Os resultados numéricos deste trabalho vêm da execução dos programas sobre os dados e estão registrados em arquivos do repositório; nenhum número foi produzido por um modelo de linguagem. A interpretação dos resultados e as conclusões são do autor.
+
+\section{Registro de uso}
+
+O \autoref{qua:registro-ia} é o registro resumido dos usos relevantes, no formato previsto em \cod{tcc/uso-de-ia.md}. \pendente{preencher; o registro no repositório estava vazio quando este rascunho foi gerado}.
+
+\begin{quadro}[htb]
+  \caption{Registro de uso de IA}
+  \label{qua:registro-ia}
+  \small
+  \begin{tabularx}{\textwidth}{|p{1.9cm}|>{\raggedright\arraybackslash}p{2.2cm}|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
+    \hline
+    \textbf{Data} & \textbf{Ferramenta} & \textbf{Tarefa} & \textbf{O que foi aproveitado} & \textbf{Como foi validado} \\ \hline
+    10/11/2026 & Claude (Claude Code) & Rascunho da monografia & Estrutura e primeira redação dos capítulos & \pendente{revisão do autor} \\ \hline
+    \multicolumn{5}{|l|}{\pendente{demais usos, uma linha por uso relevante}} \\ \hline
+  \end{tabularx}
+  \legend{Fonte: elaborado pelo autor.}
+\end{quadro}
