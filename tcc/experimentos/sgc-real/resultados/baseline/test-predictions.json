@@ -1,0 +1,1202 @@
+[
+ {
+  "record_id": "sgc-0021",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6918408496779664
+ },
+ {
+  "record_id": "sgc-0099",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6716883703484553
+ },
+ {
+  "record_id": "sgc-0777",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8380255941254773
+ },
+ {
+  "record_id": "sgc-0162",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8273146344984204
+ },
+ {
+  "record_id": "sgc-0991",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7012180827045463
+ },
+ {
+  "record_id": "sgc-0259",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9850162657099778
+ },
+ {
+  "record_id": "sgc-0401",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9373468881609173
+ },
+ {
+  "record_id": "sgc-0036",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.921368495326758
+ },
+ {
+  "record_id": "sgc-0088",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9479765572439853
+ },
+ {
+  "record_id": "sgc-0654",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6711804059740492
+ },
+ {
+  "record_id": "sgc-0035",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5977519846754566
+ },
+ {
+  "record_id": "sgc-0904",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7499374894796792
+ },
+ {
+  "record_id": "sgc-0177",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.961496538820491
+ },
+ {
+  "record_id": "sgc-0916",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.5057070086509023
+ },
+ {
+  "record_id": "sgc-0928",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6832383501961576
+ },
+ {
+  "record_id": "sgc-0322",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9804169319443461
+ },
+ {
+  "record_id": "sgc-0143",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9674796059245244
+ },
+ {
+  "record_id": "sgc-0194",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9077441324721371
+ },
+ {
+  "record_id": "sgc-0418",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.975719107878131
+ },
+ {
+  "record_id": "sgc-0490",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8940485926222337
+ },
+ {
+  "record_id": "sgc-0383",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5174031802543233
+ },
+ {
+  "record_id": "sgc-0657",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8740781136462326
+ },
+ {
+  "record_id": "sgc-0811",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.9304711427449526
+ },
+ {
+  "record_id": "sgc-0864",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7935369322023249
+ },
+ {
+  "record_id": "sgc-0597",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6126785854226143
+ },
+ {
+  "record_id": "sgc-0570",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7115084145573453
+ },
+ {
+  "record_id": "sgc-0126",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9260997466282419
+ },
+ {
+  "record_id": "sgc-0413",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9415522181402798
+ },
+ {
+  "record_id": "sgc-0492",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6187596035061133
+ },
+ {
+  "record_id": "sgc-0067",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9209701932015338
+ },
+ {
+  "record_id": "sgc-0409",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8975364675896185
+ },
+ {
+  "record_id": "sgc-0248",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.540481345607313
+ },
+ {
+  "record_id": "sgc-0094",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8036474444775878
+ },
+ {
+  "record_id": "sgc-0966",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8116577200852038
+ },
+ {
+  "record_id": "sgc-0482",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9016629447050583
+ },
+ {
+  "record_id": "sgc-0487",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9115985987788148
+ },
+ {
+  "record_id": "sgc-0251",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8228274264463307
+ },
+ {
+  "record_id": "sgc-0110",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7857828752670211
+ },
+ {
+  "record_id": "sgc-0013",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6564804392423567
+ },
+ {
+  "record_id": "sgc-0613",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5754942750543016
+ },
+ {
+  "record_id": "sgc-0959",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5376362739442339
+ },
+ {
+  "record_id": "sgc-0774",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8519181183226918
+ },
+ {
+  "record_id": "sgc-0238",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8855546075174249
+ },
+ {
+  "record_id": "sgc-0278",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5092119623696949
+ },
+ {
+  "record_id": "sgc-0531",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9952931255741005
+ },
+ {
+  "record_id": "sgc-0697",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.721978719991822
+ },
+ {
+  "record_id": "sgc-0949",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.9715625417065877
+ },
+ {
+  "record_id": "sgc-0921",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.8581088474020722
+ },
+ {
+  "record_id": "sgc-0208",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.926965780608275
+ },
+ {
+  "record_id": "sgc-0818",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.6433662261926134
+ },
+ {
+  "record_id": "sgc-0004",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7532508203273897
+ },
+ {
+  "record_id": "sgc-0207",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8256387171616287
+ },
+ {
+  "record_id": "sgc-0249",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9863479806702506
+ },
+ {
+  "record_id": "sgc-0022",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7861568952588898
+ },
+ {
+  "record_id": "sgc-0610",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7260227543119672
+ },
+ {
+  "record_id": "sgc-0938",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6720257088303805
+ },
+ {
+  "record_id": "sgc-0352",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.707962278897899
+ },
+ {
+  "record_id": "sgc-0106",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9663938994875946
+ },
+ {
+  "record_id": "sgc-0756",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.6344645183928224
+ },
+ {
+  "record_id": "sgc-0953",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8588106009127127
+ },
+ {
+  "record_id": "sgc-0981",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.925789010571037
+ },
+ {
+  "record_id": "sgc-0958",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7316320948935395
+ },
+ {
+  "record_id": "sgc-0033",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9323894710232101
+ },
+ {
+  "record_id": "sgc-0817",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5282356862332152
+ },
+ {
+  "record_id": "sgc-0896",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.9363581696265068
+ },
+ {
+  "record_id": "sgc-0284",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5116398233010159
+ },
+ {
+  "record_id": "sgc-0601",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9550146461113777
+ },
+ {
+  "record_id": "sgc-0612",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5532721288480402
+ },
+ {
+  "record_id": "sgc-0971",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.8567511031443887
+ },
+ {
+  "record_id": "sgc-0109",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9658642037895988
+ },
+ {
+  "record_id": "sgc-0765",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.9298233815808453
+ },
+ {
+  "record_id": "sgc-0706",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7721236381748595
+ },
+ {
+  "record_id": "sgc-0324",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.950269192853222
+ },
+ {
+  "record_id": "sgc-0346",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9105123084500444
+ },
+ {
+  "record_id": "sgc-0979",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8051077672429076
+ },
+ {
+  "record_id": "sgc-0377",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.897843564386017
+ },
+ {
+  "record_id": "sgc-0595",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5481805894700125
+ },
+ {
+  "record_id": "sgc-0762",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.6871784876921259
+ },
+ {
+  "record_id": "sgc-0764",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8249365636862579
+ },
+ {
+  "record_id": "sgc-0441",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9277915469257373
+ },
+ {
+  "record_id": "sgc-0845",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7674437716375353
+ },
+ {
+  "record_id": "sgc-0491",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9373472901193907
+ },
+ {
+  "record_id": "sgc-0901",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.533849594549458
+ },
+ {
+  "record_id": "sgc-0397",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7772945610560078
+ },
+ {
+  "record_id": "sgc-0135",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9380956622916288
+ },
+ {
+  "record_id": "sgc-0477",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8706240724543226
+ },
+ {
+  "record_id": "sgc-0391",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8828490002897652
+ },
+ {
+  "record_id": "sgc-0281",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.822899529199291
+ },
+ {
+  "record_id": "sgc-0853",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8930409566020496
+ },
+ {
+  "record_id": "sgc-0403",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7372855338704574
+ },
+ {
+  "record_id": "sgc-0982",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.6635811302570971
+ },
+ {
+  "record_id": "sgc-0794",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.9336162286014487
+ },
+ {
+  "record_id": "sgc-0475",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8378263255591387
+ },
+ {
+  "record_id": "sgc-0635",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.7748203107085069
+ },
+ {
+  "record_id": "sgc-0784",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.8266565995658736
+ },
+ {
+  "record_id": "sgc-0474",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5804073416086781
+ },
+ {
+  "record_id": "sgc-0950",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6878825095374917
+ },
+ {
+  "record_id": "sgc-0752",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8109747399511519
+ },
+ {
+  "record_id": "sgc-0602",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5471519527385597
+ },
+ {
+  "record_id": "sgc-0212",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5904443144227094
+ },
+ {
+  "record_id": "sgc-0090",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8191173281207715
+ },
+ {
+  "record_id": "sgc-0277",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8446031517544774
+ },
+ {
+  "record_id": "sgc-0638",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5538425871912702
+ },
+ {
+  "record_id": "sgc-0629",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.7086876556806129
+ },
+ {
+  "record_id": "sgc-0523",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8877932183736075
+ },
+ {
+  "record_id": "sgc-0065",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9660111568973698
+ },
+ {
+  "record_id": "sgc-0630",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.6665575451447737
+ },
+ {
+  "record_id": "sgc-0514",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9203294553226584
+ },
+ {
+  "record_id": "sgc-0028",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8006307445121457
+ },
+ {
+  "record_id": "sgc-0876",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.77037885565279
+ },
+ {
+  "record_id": "sgc-0782",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.9246182312267098
+ },
+ {
+  "record_id": "sgc-0742",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7714911458289107
+ },
+ {
+  "record_id": "sgc-0471",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.912467576155852
+ },
+ {
+  "record_id": "sgc-0165",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9351795719667223
+ },
+ {
+  "record_id": "sgc-0525",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5413756433991712
+ },
+ {
+  "record_id": "sgc-0542",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5980668013731212
+ },
+ {
+  "record_id": "sgc-0753",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7287701888380309
+ },
+ {
+  "record_id": "sgc-0102",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7340172884552096
+ },
+ {
+  "record_id": "sgc-0339",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9979060476298989
+ },
+ {
+  "record_id": "sgc-0476",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7260429499630885
+ },
+ {
+  "record_id": "sgc-0588",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7212514420086589
+ },
+ {
+  "record_id": "sgc-0592",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.8467427819419003
+ },
+ {
+  "record_id": "sgc-0111",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6261128973070137
+ },
+ {
+  "record_id": "sgc-0470",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6158500153330343
+ },
+ {
+  "record_id": "sgc-0355",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9589016888395687
+ },
+ {
+  "record_id": "sgc-0603",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7882843393458886
+ },
+ {
+  "record_id": "sgc-0507",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9906231444589868
+ },
+ {
+  "record_id": "sgc-0449",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8051168273619685
+ },
+ {
+  "record_id": "sgc-0260",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7875186623525459
+ },
+ {
+  "record_id": "sgc-0771",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6112689791527511
+ },
+ {
+  "record_id": "sgc-0055",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8508135816423918
+ },
+ {
+  "record_id": "sgc-0303",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9843667510905356
+ },
+ {
+  "record_id": "sgc-0296",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8286876938337265
+ },
+ {
+  "record_id": "sgc-0167",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9674689333598417
+ },
+ {
+  "record_id": "sgc-0872",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7314933650297039
+ },
+ {
+  "record_id": "sgc-0923",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6658474292319448
+ },
+ {
+  "record_id": "sgc-0589",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5114081412377014
+ },
+ {
+  "record_id": "sgc-0596",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8353134321533995
+ },
+ {
+  "record_id": "sgc-0598",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7188600756989197
+ },
+ {
+  "record_id": "sgc-0432",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9395017966567898
+ },
+ {
+  "record_id": "sgc-0348",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.5965499494894511
+ },
+ {
+  "record_id": "sgc-0988",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.592612793716929
+ },
+ {
+  "record_id": "sgc-0564",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9157566109409138
+ },
+ {
+  "record_id": "sgc-0666",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8741704000790678
+ },
+ {
+  "record_id": "sgc-0500",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6053209569927445
+ },
+ {
+  "record_id": "sgc-0841",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8316186141984101
+ },
+ {
+  "record_id": "sgc-0404",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8758534334566139
+ },
+ {
+  "record_id": "sgc-0390",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.97945291032257
+ },
+ {
+  "record_id": "sgc-0586",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5843723357131091
+ },
+ {
+  "record_id": "sgc-0832",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.8825222504934013
+ },
+ {
+  "record_id": "sgc-0703",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.580937946213745
+ },
+ {
+  "record_id": "sgc-0709",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7330568416080865
+ },
+ {
+  "record_id": "sgc-0166",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7915122549967607
+ },
+ {
+  "record_id": "sgc-0505",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9264209347999864
+ },
+ {
+  "record_id": "sgc-0547",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9717769221702779
+ },
+ {
+  "record_id": "sgc-0083",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.991906048197852
+ },
+ {
+  "record_id": "sgc-0748",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5457246052339175
+ },
+ {
+  "record_id": "sgc-0690",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7572342311603766
+ },
+ {
+  "record_id": "sgc-0198",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9419304422491219
+ },
+ {
+  "record_id": "sgc-0158",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.9637408217563168
+ },
+ {
+  "record_id": "sgc-0804",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.55714675936599
+ },
+ {
+  "record_id": "sgc-0730",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.755017086624558
+ },
+ {
+  "record_id": "sgc-0999",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5278575887922636
+ },
+ {
+  "record_id": "sgc-0213",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9888326347142504
+ },
+ {
+  "record_id": "sgc-0103",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.8489436706078908
+ },
+ {
+  "record_id": "sgc-0061",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8739321040137942
+ },
+ {
+  "record_id": "sgc-0250",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8178681309789322
+ },
+ {
+  "record_id": "sgc-0797",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7558591777023596
+ },
+ {
+  "record_id": "sgc-0717",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.9692126965221726
+ },
+ {
+  "record_id": "sgc-0224",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7680520847022303
+ },
+ {
+  "record_id": "sgc-0861",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.8771969765179197
+ },
+ {
+  "record_id": "sgc-0399",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5904057664065956
+ },
+ {
+  "record_id": "sgc-0133",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8550250625093855
+ },
+ {
+  "record_id": "sgc-0001",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5016324444729852
+ },
+ {
+  "record_id": "sgc-0020",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.6042728773531816
+ },
+ {
+  "record_id": "sgc-0745",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8243353213457092
+ },
+ {
+  "record_id": "sgc-0641",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.729210607161588
+ },
+ {
+  "record_id": "sgc-0139",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9540539158444791
+ },
+ {
+  "record_id": "sgc-0935",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5401954212310436
+ },
+ {
+  "record_id": "sgc-0221",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8762289287466575
+ },
+ {
+  "record_id": "sgc-0223",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9792437108625557
+ },
+ {
+  "record_id": "sgc-0196",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9138958690860904
+ },
+ {
+  "record_id": "sgc-0508",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9457002259708268
+ },
+ {
+  "record_id": "sgc-0173",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9112941394614229
+ },
+ {
+  "record_id": "sgc-0744",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9436919675281555
+ },
+ {
+  "record_id": "sgc-0972",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7420076921096792
+ },
+ {
+  "record_id": "sgc-0906",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.7367071153763114
+ },
+ {
+  "record_id": "sgc-0529",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9348695241515769
+ },
+ {
+  "record_id": "sgc-0632",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.6311650471152352
+ },
+ {
+  "record_id": "sgc-0543",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.5435874538687322
+ },
+ {
+  "record_id": "sgc-0050",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.7305011344865391
+ },
+ {
+  "record_id": "sgc-0798",
+  "target": 1,
+  "pred": 1,
+  "confidence": 0.6844285514763289
+ },
+ {
+  "record_id": "sgc-0014",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8293619807131904
+ },
+ {
+  "record_id": "sgc-0425",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9629874469886338
+ },
+ {
+  "record_id": "sgc-0074",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.9590466536163896
+ },
+ {
+  "record_id": "sgc-0844",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.7392800770804435
+ },
+ {
+  "record_id": "sgc-0733",
+  "target": 0,
+  "pred": 1,
+  "confidence": 0.7562049322353197
+ },
+ {
+  "record_id": "sgc-0041",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8399710478315515
+ },
+ {
+  "record_id": "sgc-0850",
+  "target": 1,
+  "pred": 0,
+  "confidence": 0.5593957185676237
+ },
+ {
+  "record_id": "sgc-0317",
+  "target": 0,
+  "pred": 0,
+  "confidence": 0.8125490185926522
+ }
+]

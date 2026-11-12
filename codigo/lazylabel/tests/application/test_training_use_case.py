@@ -74,7 +74,8 @@ class MemoryLifecycle:
         self.candidates[candidate_id].update(status=status, **changes)
     def candidate(self, candidate_id): return self.candidates[candidate_id]
     def evaluate(self, task, policy, dataset, adapter, incumbent_adapter, *, candidate_id,
-                 gate_reference, gate_sha256):
+                 gate_reference, gate_sha256, promotion_policy_sha256):
+        assert promotion_policy_sha256 == self.promotion.policy_sha256
         self.calls.append(('evaluate', dataset, incumbent_adapter, gate_sha256))
         if self.failure == 'evaluate': raise RuntimeError('evaluation_failed')
         if self.failure == 'deleted_promotion': self.failure = 'config'

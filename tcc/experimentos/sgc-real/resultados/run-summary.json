@@ -1,0 +1,53 @@
+{
+  "run_id": "48feaa913d4949d198ff2440b30558fd",
+  "task_id": "risco",
+  "source": "dev",
+  "started_at": "2026-11-11T23:57:55.032090Z",
+  "finished_at": "2026-11-12T00:27:50.283024Z",
+  "label_run_id": "e4d43466a4294223ab906647e6f7e19a",
+  "label_model_ref": "Qwen/Qwen2.5-0.5B-Instruct",
+  "labels": {
+    "applied": 0,
+    "quarantined": 800,
+    "reason_counts": {
+      "uncalibrated": 800
+    }
+  },
+  "training": {
+    "state": "complete",
+    "reason_codes": [],
+    "candidate_id": "20102da0455b4f04be436feccbc71e18",
+    "evaluation_id": "549543361509425aae8937f5c8acd0bc",
+    "promotion_action": "promote",
+    "active_model_ref": "Qwen/Qwen2.5-0.5B-Instruct+peft:b597effbb2a7d4db49cb613bcae617cf8e1aaf8c9c736c99dfed5c315a8dd676"
+  },
+  "artifacts": {
+    "pipeline_manifest": "/Users/rodrigotriboni1/Documents/Projetos/lazylabel/tcc/experimentos/sgc-real/projeto/.lazylabel/pipeline-runs/48feaa913d4949d198ff2440b30558fd/run.json",
+    "label_run_dir": "/Users/rodrigotriboni1/Documents/Projetos/lazylabel/tcc/experimentos/sgc-real/projeto/.lazylabel/label-runs/e4d43466a4294223ab906647e6f7e19a",
+    "label_outcomes": "/Users/rodrigotriboni1/Documents/Projetos/lazylabel/tcc/experimentos/sgc-real/projeto/.lazylabel/label-runs/e4d43466a4294223ab906647e6f7e19a/outcomes.jsonl",
+    "training_cycle": "/Users/rodrigotriboni1/Documents/Projetos/lazylabel/tcc/experimentos/sgc-real/projeto/.lazylabel/training/cycles/1de752db1d6441f39501902237b34c37.json"
+  },
+  "integrity_sha256": "f99cf0bed2b8d3416fdd70330cb6f85a340b6fdf24e83d91d332f4a8c292adaf",
+  "prerequisites": [
+    {
+      "check": "labeling_policy",
+      "status": "present"
+    },
+    {
+      "check": "trusted_label_source",
+      "status": "present"
+    },
+    {
+      "check": "training_gate",
+      "status": "present"
+    },
+    {
+      "check": "promotion_policy",
+      "status": "present"
+    },
+    {
+      "check": "calibrator",
+      "status": "present"
+    }
+  ]
+}

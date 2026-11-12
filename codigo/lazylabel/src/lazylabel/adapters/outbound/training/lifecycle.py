@@ -200,11 +200,12 @@ class LocalTrainingEffects:
         return TrainedAdapter(str(result.output_dir), result.base_model_ref, result.artifact_sha256)
 
     def evaluate(self, task, policy, dataset, adapter, incumbent_adapter, *, candidate_id,
-                 gate_reference, gate_sha256):
+                 gate_reference, gate_sha256, promotion_policy_sha256):
         path = evaluate_candidate(task, policy, self.manifests[dataset.manifest_reference],
             Path(adapter.output_reference), incumbent_adapter,
             workspace_dir=self.project.workspace_dir, candidate_id=candidate_id,
-            training_gate_path=Path(gate_reference), training_gate_sha256=gate_sha256)
+            training_gate_path=Path(gate_reference), training_gate_sha256=gate_sha256,
+            promotion_policy_sha256=promotion_policy_sha256)
         return json.loads(path.read_text(encoding="utf-8"))
 
     def active(self, task_id):

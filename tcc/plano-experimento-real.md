@@ -109,13 +109,22 @@ Detalhes do ciclo de treino: [codigo/lazylabel/docs/verified-training-cycle.md](
 
 ## Resultados (preencher no passo 8)
 
-| Métrica (teste final) | Baseline (todos) | Baseline (só aplicados) | LazyLabel |
-|---|---|---|---|
-| Acurácia | | | |
-| Macro-F1 | | | |
-| Brier | | | |
-| Erro de calibração | | | |
-| Cobertura | 100% | | |
+Teste final aberto uma única vez em 11/11/2026 (`resultados/TESTE-ABERTO`), 200 registros. Fonte: `experimentos/sgc-real/resultados/final.json`.
+
+| Métrica (teste final) | Baseline (todos) | Baseline (mesmos registros) | Baseline (mesma cobertura) | LazyLabel (aplicados) | LazyLabel (todas as previsões) |
+|---|---|---|---|---|---|
+| n | 200 | 104 | 104 | 104 | 200 |
+| Acurácia | 0,740 | 0,817 | 0,837 | 0,837 | 0,740 |
+| Macro-F1 | 0,662 | 0,450 | 0,694 | 0,455 | 0,615 |
+| Brier (top-label) | 0,179 | 0,144 | 0,137 | 0,136 | 0,179 |
+| ECE (top-label) | 0,068 | 0,059 | 0,072 | 0,010 | 0,020 |
+| Cobertura | 100% | — | 52% | 52% | — |
+
+- **Ciclo:** o candidato LoRA foi promovido. No holdout interno (120 registros), teve acurácia 0,758, macro-F1 0,658, ECE 0,087 e cobertura 0,44, contra 0,667, 0,479 e cobertura 0 do modelo-base.
+- **H1:** sustentada. Na mesma cobertura, as acurácias são iguais (0,837 e 0,837). Nos mesmos registros, o IC 95% pareado da diferença de acurácia é [0,000; 0,048].
+- **H2:** sustentada. Houve promoção, e a cobertura no teste foi de 0,52, acima de 0,10.
+- **H3:** favorável. O ECE do LazyLabel em todas as previsões é 0,020, contra 0,068 do baseline; o Brier é igual (0,179). Não havia limite fixado para H3 no teste.
+- **Achado principal:** os 104 registros aplicados são todos `good`, e nenhum `bad` passou do limiar. O LazyLabel só automatiza a classe majoritária; dos 60 `bad` do teste, 17 foram aplicados errado como `good` e 43 ficaram em quarentena (17 deles com a previsão `bad` correta, mas abaixo do limiar). Por isso o macro-F1 nos aplicados é baixo (0,455), mesmo com acurácia alta.
 
 ## Riscos
 

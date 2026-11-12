@@ -131,7 +131,8 @@ def _score(rows, backend, task, policy, *, apply_rules=False):
 
 
 def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumbent_adapter, *,
-                       workspace_dir, candidate_id, training_gate_path, training_gate_sha256):
+                       workspace_dir, candidate_id, training_gate_path, training_gate_sha256,
+                       promotion_policy_sha256=None):
     """Evaluate candidate/incumbent on identical frozen holdout and persist aggregate evidence.
 
     Calibrators live under models/calibrators/task/policy/model-digest.json. The policy calibration_ref
@@ -207,7 +208,9 @@ def evaluate_candidate(task, policy, dataset_manifest, candidate_adapter, incumb
     payload = {"schema_version": 1, "evaluation_id": evaluation_id,
                "evaluator": "finlabel-local-transformers-peft-v1", "task_id": task.task_id,
                "task_spec_sha256": task_spec_sha256(task), "policy_id": policy.policy_id,
-               "policy_sha256": policy.policy_sha256,
+               # The cycle passes a labeling policy; the promotion gate compares this field.
+               "policy_sha256": (promotion_policy_sha256 if promotion_policy_sha256 is not None
+                                 else policy.policy_sha256),
                "labeling_policy_sha256": labeling_policy_sha256(policy),
                "score_method": RAW_SCORE_METHOD,
                "dataset_manifest_sha256": _sha(dataset_manifest.manifest_path),
