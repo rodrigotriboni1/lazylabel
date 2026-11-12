@@ -132,3 +132,17 @@ Teste final aberto uma única vez em 11/11/2026 (`resultados/TESTE-ABERTO`), 200
 - Antes da primeira promoção, toda previsão pode ir para quarentena (`uncalibrated`), e o resultado pode ser "cobertura zero". Ver a pergunta 8 em [perguntas-orientador.md](perguntas-orientador.md).
 - Com 800 registros de desenvolvimento divididos em três partições, o holdout interno fica pequeno; `min_holdout_count` precisa ser compatível com isso.
 - A South German Credit não permite afirmar nada sobre carteiras brasileiras nem sobre inadimplência num horizonte definido.
+
+## E1b — limiar por rótulo (exploratório, 11/11/2026)
+
+**Exploratório.** O teste do E1 já tinha sido aberto. Aqui as mesmas 200 previsões salvas são reclassificadas com os limiares da decisão 10 (`bad` 0,60, `good` 0,80), sem inferência nova. Fonte: `experimentos/sgc-real/resultados/e1b-exploratorio.json`.
+
+| | LazyLabel (aplicados) | Baseline (mesma cobertura) |
+|---|---|---|
+| n (cobertura) | 116 (58%) | 116 |
+| Acurácia | 0,828 | 0,836 |
+| Macro-F1 | 0,685 | 0,719 |
+| `bad` aplicados (certos) | 12 (9) | 14 (11) |
+| ECE | 0,015 | 0,072 |
+
+O limiar por rótulo passa a aplicar a classe `bad`: a precisão nela foi de 75% e o macro-F1 nos aplicados subiu de 0,455 para 0,685, com a acurácia praticamente igual. A confirmação fica para o teste do E2, que ainda está fechado.

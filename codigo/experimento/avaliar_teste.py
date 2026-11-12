@@ -53,6 +53,8 @@ def main():
     for name in ("teste", "target", "label-map", "outcomes", "baseline", "baseline-positive", "out"):
         ap.add_argument("--" + name, required=True)
     ap.add_argument("--source", default="teste")
+    ap.add_argument("--thresholds", default=None,
+                    help="EXPLORATÓRIO: reaplica limiares por rótulo às previsões salvas, ex. '{\"bad\":0.6,\"good\":0.8}'")
     a = ap.parse_args()
     label_map = json.loads(a.label_map)
     labels = sorted(set(label_map.values()))
@@ -66,9 +68,13 @@ def main():
     lazy = []
     for o in outcomes:
         rid, target = truth[o["record_ref"]]
+        applied = o["state"] == "applied"
+        reason = o.get("reason_code")
+        if a.thresholds and reason in (None, "below_threshold") and o.get("confidence") is not None:
+            applied = o["confidence"] >= json.loads(a.thresholds)[o["predicted_label"]]
+            reason = None if applied else "below_threshold"
         lazy.append({"record_id": rid, "target": target, "pred": o.get("predicted_label"),
-                     "confidence": o.get("confidence"), "applied": o["state"] == "applied",
-                     "reason": o.get("reason_code")})
+                     "confidence": o.get("confidence"), "applied": applied, "reason": reason})
     neg = [l for l in labels if label_map[a.baseline_positive] != l][0]
     base = {}
     for c in json.load(open(a.baseline, encoding="utf-8")):
